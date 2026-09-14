@@ -27,6 +27,10 @@
             <svg viewBox="0 0 24 24"><path d="m14.5 9.5-3 2-2 3 3-2 2-3Z"/><circle cx="12" cy="12" r="8.5"/></svg>
             <span>ค้นหา</span>
           </button>
+          <button class="nav-item" data-section="swipe">
+            <svg viewBox="0 0 24 24"><rect x="7" y="4" width="11" height="16" rx="2"/><path d="m4 9-2 3 2 3M20 9l2 3-2 3"/></svg>
+            <span>ปัดหาเพื่อน</span>
+          </button>
           <button class="nav-item" data-section="rooms">
             <svg viewBox="0 0 24 24"><path d="M3 20h18M5 20V9l7-5 7 5v11M9 20v-6h6v6"/></svg>
             <span>ห้องพัก</span>
@@ -184,6 +188,63 @@
           </aside>
         </section>
 
+        <section class="content-view swipe-view" id="swipeSection" hidden>
+          <div class="view-heading swipe-heading">
+            <div><p class="section-kicker" lang="en">SWIPE MATCH</p><h2>ปัดเพื่อเลือกคนที่เข้ากัน</h2><p>ปัดขวาเมื่อสนใจ หรือปัดซ้ายเมื่อยังไม่ใช่ ระบบจะจดจำความต้องการของคุณ</p></div>
+            <div class="swipe-counter"><strong id="cardsLeft">3</strong><span>โปรไฟล์ที่เหลือ</span></div>
+          </div>
+
+          <div class="swipe-layout">
+            <aside class="swipe-guide" aria-label="วิธีปัดโปรไฟล์">
+              <div class="swipe-guide-icon">↔</div>
+              <h3>ลองลากการ์ดดู</h3>
+              <p>ใช้เมาส์ นิ้ว หรือปุ่มลูกศรบนคีย์บอร์ดก็ได้</p>
+              <div class="guide-row pass-guide"><span>←</span><div><strong>ปัดซ้าย</strong><small>ยังไม่เข้ากัน</small></div></div>
+              <div class="guide-row like-guide"><span>→</span><div><strong>ปัดขวา</strong><small>สนใจคนนี้</small></div></div>
+              <div class="decision-stats">
+                <span><b id="passCount">0</b><small>ผ่าน</small></span>
+                <span><b id="likeCount">0</b><small>สนใจ</small></span>
+              </div>
+            </aside>
+
+            <div class="swipe-center">
+              <div class="swipe-deck" id="swipeDeck">
+                <article class="swipe-card" id="swipeCard" tabindex="0" aria-label="โปรไฟล์สำหรับปัด ใช้ลูกศรซ้ายเพื่อผ่าน หรือลูกศรขวาเพื่อสนใจ">
+                  <div class="swipe-stamp stamp-pass" id="passStamp" lang="en">PASS</div>
+                  <div class="swipe-stamp stamp-like" id="likeStamp" lang="en">LIKE</div>
+                  <div class="swipe-image-wrap"><img id="swipeImage" src="./assets/nicha-profile.png" alt="โปรไฟล์ณิชา" draggable="false"/></div>
+                  <div class="swipe-card-copy">
+                    <div class="swipe-name-row"><div><h3><span id="swipeName">ณิชา</span>, <span id="swipeAge">21</span></h3><p id="swipeFaculty">คณะสถาปัตยกรรมศาสตร์ · ปี 3</p></div><div class="swipe-score"><b id="swipeScore">92%</b><small>เข้ากันได้</small></div></div>
+                    <p class="swipe-bio" id="swipeBio">ชอบห้องที่เป็นระเบียบ ทำอาหารง่าย ๆ และอ่านหนังสือตอนค่ำ</p>
+                    <div class="swipe-traits" id="swipeTraits"><span>☾ 23:30 น.</span><span>✦ ไม่สูบบุหรี่</span><span>♡ รักสัตว์</span></div>
+                  </div>
+                </article>
+                <div class="swipe-empty" id="swipeEmpty" hidden>
+                  <div class="swipe-empty-icon">✓</div>
+                  <h3>ดูครบแล้ววันนี้</h3>
+                  <p>คุณเลือกครบทุกโปรไฟล์ที่เราแนะนำแล้ว</p>
+                  <button class="outline-button" id="resetSwipe">ดูโปรไฟล์อีกครั้ง</button>
+                </div>
+              </div>
+              <div class="swipe-actions" aria-label="ตัวเลือกโปรไฟล์">
+                <button class="swipe-action swipe-pass" id="swipePass" aria-label="ปัดซ้าย ยังไม่เข้ากัน"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+                <button class="swipe-action swipe-undo" id="swipeUndo" aria-label="ย้อนกลับ" disabled><svg viewBox="0 0 24 24"><path d="M4 9h11a5 5 0 1 1 0 10h-3M4 9l4-4M4 9l4 4"/></svg></button>
+                <button class="swipe-action swipe-like" id="swipeLike" aria-label="ปัดขวา สนใจ"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/></svg></button>
+              </div>
+              <p class="swipe-key-hint"><kbd>←</kbd> ผ่าน <kbd>→</kbd> สนใจ</p>
+            </div>
+
+            <aside class="swipe-insights">
+              <p class="section-kicker">เหตุผลที่แนะนำ</p>
+              <h3>ไลฟ์สไตล์ใกล้กัน</h3>
+              <div class="match-meter"><span><b>เวลานอน</b><small id="sleepMatch">96%</small></span><div><i id="sleepBar"></i></div></div>
+              <div class="match-meter"><span><b>ความสะอาด</b><small id="cleanMatch">92%</small></span><div><i id="cleanBar"></i></div></div>
+              <div class="match-meter"><span><b>งบประมาณ</b><small id="budgetMatch">88%</small></span><div><i id="budgetBar"></i></div></div>
+              <div class="privacy-note"><span>✓</span><p><strong>เป็นส่วนตัว</strong><br/>ช่องทางติดต่อจะแสดงเมื่อสนใจกันทั้งสองคน</p></div>
+            </aside>
+          </div>
+        </section>
+
         <section class="content-view" id="roomsSection" hidden>
           <div class="view-heading">
             <div><p class="section-kicker" lang="en">ROOM LISTING</p><h2>ห้องพักที่เหมาะกับคุณ</h2><p>คัดจากทำเล งบประมาณ และจำนวนสมาชิกที่คุณต้องการ</p></div>
@@ -255,6 +316,7 @@
 
       <nav class="mobile-nav" aria-label="เมนูบนมือถือ">
         <button class="mobile-nav-item active" data-section="explore"><svg viewBox="0 0 24 24"><path d="m14.5 9.5-3 2-2 3 3-2 2-3Z"/><circle cx="12" cy="12" r="8.5"/></svg><span>ค้นหา</span></button>
+        <button class="mobile-nav-item" data-section="swipe"><svg viewBox="0 0 24 24"><rect x="7" y="4" width="11" height="16" rx="2"/><path d="m4 9-2 3 2 3M20 9l2 3-2 3"/></svg><span>ปัด</span></button>
         <button class="mobile-nav-item" data-section="rooms"><svg viewBox="0 0 24 24"><path d="M3 20h18M5 20V9l7-5 7 5v11"/></svg><span>ห้องพัก</span></button>
         <button class="mobile-nav-item" data-section="matches"><svg viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/></svg><span>แมตช์</span></button>
         <button class="mobile-nav-item" data-section="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg><span>โปรไฟล์</span></button>

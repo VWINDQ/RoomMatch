@@ -53,7 +53,7 @@ function setSection(section) {
     item.classList.toggle('active', active);
     if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
   });
-  ['explore', 'rooms', 'matches', 'profile'].forEach((view) => {
+  ['explore', 'swipe', 'rooms', 'matches', 'profile'].forEach((view) => {
     $(`#${view}Section`).hidden = view !== section;
   });
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -68,3 +68,181 @@ $('#createRoom').addEventListener('click', () => showToast('แบบฟอร�
 $$('.room-detail-button, .mini-room').forEach((button) => button.addEventListener('click', () => showToast('เปิดรายละเอียดห้องตัวอย่างแล้ว')));
 $$('.copy-contact').forEach((button) => button.addEventListener('click', () => showToast('คัดลอกช่องทางติดต่อแล้ว')));
 $('#profileForm').addEventListener('submit', (event) => { event.preventDefault(); showToast('บันทึกโปรไฟล์และไลฟ์สไตล์แล้ว'); });
+
+const swipeProfiles = [
+  {
+    name: 'ณิชา',
+    age: 21,
+    faculty: 'คณะสถาปัตยกรรมศาสตร์ · ปี 3',
+    image: './assets/nicha-profile.png',
+    score: 92,
+    bio: 'มองหาเพื่อนร่วมห้องที่คุยกันตรงไปตรงมา รักษาพื้นที่ส่วนกลาง และชอบมุมห้องสบาย ๆ เหมือนกัน',
+    traits: ['☾ นอน 23:30 น.', '✦ ไม่สูบบุหรี่', '♡ รักสัตว์'],
+    metrics: { sleep: 96, clean: 92, budget: 88 },
+  },
+  {
+    name: 'กานต์',
+    age: 22,
+    faculty: 'คณะวิศวกรรมศาสตร์ · ปี 4',
+    image: './assets/kant-profile.png',
+    score: 88,
+    bio: 'เป็นคนสบาย ๆ แต่มีระเบียบ ชอบออกกำลังกายหลังเลิกเรียน และแบ่งงานบ้านกันแบบชัดเจน',
+    traits: ['☾ นอน 00:30 น.', '✦ เป็นระเบียบ', '⌁ เล่นกีฬา'],
+    metrics: { sleep: 89, clean: 90, budget: 85 },
+  },
+  {
+    name: 'มินตรา',
+    age: 20,
+    faculty: 'คณะนิเทศศาสตร์ · ปี 2',
+    image: './assets/mintra-profile.png',
+    score: 85,
+    bio: 'ชอบทำอาหารง่าย ๆ และดูหนังช่วงวันหยุด อยากได้รูมเมตที่เป็นมิตร เคารพเวลาพัก และช่วยกันดูแลห้อง',
+    traits: ['☾ นอน 23:00 น.', '✦ ชอบทำอาหาร', '♡ รักแมว'],
+    metrics: { sleep: 94, clean: 84, budget: 82 },
+  },
+];
+
+const swipeCard = $('#swipeCard');
+const swipeEmpty = $('#swipeEmpty');
+const passStamp = $('#passStamp');
+const likeStamp = $('#likeStamp');
+let swipeIndex = 0;
+let swipeHistory = [];
+let swipeStats = { pass: 0, like: 0 };
+let dragging = false;
+let pointerStartX = 0;
+
+function resetCardPosition() {
+  swipeCard.classList.remove('dragging');
+  swipeCard.style.transition = '';
+  swipeCard.style.transform = '';
+  swipeCard.style.opacity = '';
+  passStamp.style.opacity = '';
+  likeStamp.style.opacity = '';
+}
+
+function renderSwipeProfile() {
+  const profile = swipeProfiles[swipeIndex];
+  $('#passCount').textContent = swipeStats.pass;
+  $('#likeCount').textContent = swipeStats.like;
+  $('#cardsLeft').textContent = profile ? swipeProfiles.length - swipeIndex : 0;
+  $('#swipeUndo').disabled = swipeHistory.length === 0;
+  $('#swipePass').disabled = !profile;
+  $('#swipeLike').disabled = !profile;
+  swipeCard.hidden = !profile;
+  swipeEmpty.hidden = Boolean(profile);
+  resetCardPosition();
+
+  if (!profile) return;
+
+  $('#swipeImage').src = profile.image;
+  $('#swipeImage').alt = `ภาพโปรไฟล์ของ${profile.name}`;
+  $('#swipeName').textContent = profile.name;
+  $('#swipeAge').textContent = `${profile.age} ปี`;
+  $('#swipeFaculty').textContent = profile.faculty;
+  $('#swipeScore').textContent = `${profile.score}%`;
+  $('#swipeBio').textContent = profile.bio;
+  $('#swipeTraits').innerHTML = profile.traits.map((trait) => `<span>${trait}</span>`).join('');
+
+  ['sleep', 'clean', 'budget'].forEach((metric) => {
+    const value = profile.metrics[metric];
+    $(`#${metric}Match`).textContent = `${value}%`;
+    $(`#${metric}Bar`).style.width = `${value}%`;
+  });
+}
+
+function completeSwipe(decision) {
+  const profile = swipeProfiles[swipeIndex];
+  if (!profile || dragging) return;
+
+  dragging = true;
+  const liked = decision === 'like';
+  swipeHistory.push({ index: swipeIndex, decision });
+  swipeStats[decision] += 1;
+  swipeCard.style.transition = 'transform 280ms ease, opacity 280ms ease';
+  swipeCard.style.transform = `translateX(${liked ? 130 : -130}%) rotate(${liked ? 12 : -12}deg)`;
+  swipeCard.style.opacity = '0';
+  (liked ? likeStamp : passStamp).style.opacity = '1';
+
+  window.setTimeout(() => {
+    swipeIndex += 1;
+    dragging = false;
+    renderSwipeProfile();
+    showToast(liked ? `เลือก ${profile.name} ไว้แล้ว — พร้อมเริ่มทำความรู้จัก` : `ผ่าน ${profile.name} แล้ว`);
+  }, 280);
+}
+
+function undoSwipe() {
+  const previous = swipeHistory.pop();
+  if (!previous || dragging) return;
+  swipeStats[previous.decision] = Math.max(0, swipeStats[previous.decision] - 1);
+  swipeIndex = previous.index;
+  renderSwipeProfile();
+  showToast('ย้อนกลับมาให้เลือกอีกครั้งแล้ว');
+}
+
+function resetSwipe() {
+  swipeIndex = 0;
+  swipeHistory = [];
+  swipeStats = { pass: 0, like: 0 };
+  dragging = false;
+  renderSwipeProfile();
+  showToast('เริ่มดูโปรไฟล์ใหม่ตั้งแต่คนแรก');
+}
+
+function previewDrag(distance) {
+  const strength = Math.min(Math.abs(distance) / 110, 1);
+  swipeCard.style.transform = `translateX(${distance}px) rotate(${distance * 0.035}deg)`;
+  likeStamp.style.opacity = distance > 0 ? strength : 0;
+  passStamp.style.opacity = distance < 0 ? strength : 0;
+}
+
+swipeCard.addEventListener('pointerdown', (event) => {
+  if (dragging || swipeCard.hidden) return;
+  dragging = true;
+  pointerStartX = event.clientX;
+  swipeCard.setPointerCapture(event.pointerId);
+  swipeCard.classList.add('dragging');
+});
+
+swipeCard.addEventListener('pointermove', (event) => {
+  if (!dragging || !swipeCard.hasPointerCapture(event.pointerId)) return;
+  previewDrag(event.clientX - pointerStartX);
+});
+
+function finishPointerSwipe(event) {
+  if (!dragging || !swipeCard.hasPointerCapture(event.pointerId)) return;
+  const distance = event.clientX - pointerStartX;
+  swipeCard.releasePointerCapture(event.pointerId);
+  dragging = false;
+  swipeCard.classList.remove('dragging');
+  if (Math.abs(distance) >= 100) {
+    completeSwipe(distance > 0 ? 'like' : 'pass');
+  } else {
+    swipeCard.style.transition = 'transform 220ms ease';
+    swipeCard.style.transform = '';
+    passStamp.style.opacity = '';
+    likeStamp.style.opacity = '';
+    window.setTimeout(() => { swipeCard.style.transition = ''; }, 220);
+  }
+}
+
+swipeCard.addEventListener('pointerup', finishPointerSwipe);
+swipeCard.addEventListener('pointercancel', finishPointerSwipe);
+swipeCard.addEventListener('keydown', (event) => {
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    completeSwipe('pass');
+  }
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    completeSwipe('like');
+  }
+});
+
+$('#swipePass').addEventListener('click', () => completeSwipe('pass'));
+$('#swipeLike').addEventListener('click', () => completeSwipe('like'));
+$('#swipeUndo').addEventListener('click', undoSwipe);
+$('#resetSwipe').addEventListener('click', resetSwipe);
+
+renderSwipeProfile();
