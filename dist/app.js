@@ -109,10 +109,15 @@ const likeStamp = $('#likeStamp');
 let swipeIndex = 0;
 let swipeHistory = [];
 let swipeStats = { pass: 0, like: 0 };
-let dragging = false;
+let activePointerId = null;
 let pointerStartX = 0;
+let pointerCurrentX = 0;
+let swipeAnimating = false;
+let swipeAnimationTimer;
+let snapBackTimer;
 
 function resetCardPosition() {
+  clearTimeout(snapBackTimer);
   swipeCard.classList.remove('dragging');
   swipeCard.style.transition = '';
   swipeCard.style.transform = '';
@@ -153,28 +158,32 @@ function renderSwipeProfile() {
 
 function completeSwipe(decision) {
   const profile = swipeProfiles[swipeIndex];
-  if (!profile || dragging) return;
+  if (!profile || swipeAnimating || activePointerId !== null) return;
 
-  dragging = true;
+  swipeAnimating = true;
   const liked = decision === 'like';
   swipeHistory.push({ index: swipeIndex, decision });
   swipeStats[decision] += 1;
+  $('#swipePass').disabled = true;
+  $('#swipeLike').disabled = true;
+  $('#swipeUndo').disabled = true;
   swipeCard.style.transition = 'transform 280ms ease, opacity 280ms ease';
   swipeCard.style.transform = `translateX(${liked ? 130 : -130}%) rotate(${liked ? 12 : -12}deg)`;
   swipeCard.style.opacity = '0';
   (liked ? likeStamp : passStamp).style.opacity = '1';
 
-  window.setTimeout(() => {
+  swipeAnimationTimer = window.setTimeout(() => {
     swipeIndex += 1;
-    dragging = false;
+    swipeAnimating = false;
     renderSwipeProfile();
     showToast(liked ? `เลือก ${profile.name} ไว้แล้ว — พร้อมเริ่มทำความรู้จัก` : `ผ่าน ${profile.name} แล้ว`);
   }, 280);
 }
 
 function undoSwipe() {
+  if (swipeAnimating || activePointerId !== null) return;
   const previous = swipeHistory.pop();
-  if (!previous || dragging) return;
+  if (!previous) return;
   swipeStats[previous.decision] = Math.max(0, swipeStats[previous.decision] - 1);
   swipeIndex = previous.index;
   renderSwipeProfile();
@@ -182,10 +191,12 @@ function undoSwipe() {
 }
 
 function resetSwipe() {
+  clearTimeout(swipeAnimationTimer);
   swipeIndex = 0;
   swipeHistory = [];
   swipeStats = { pass: 0, like: 0 };
-  dragging = false;
+  activePointerId = null;
+  swipeAnimating = false;
   renderSwipeProfile();
   showToast('เริ่มดูโปรไฟล์ใหม่ตั้งแต่คนแรก');
 }
@@ -198,37 +209,72 @@ function previewDrag(distance) {
 }
 
 swipeCard.addEventListener('pointerdown', (event) => {
-  if (dragging || swipeCard.hidden) return;
-  dragging = true;
+  if (swipeAnimating || activePointerId !== null || swipeCard.hidden) return;
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  event.preventDefault();
+  activePointerId = event.pointerId;
   pointerStartX = event.clientX;
-  swipeCard.setPointerCapture(event.pointerId);
+  pointerCurrentX = event.clientX;
+  clearTimeout(snapBackTimer);
+  swipeCard.style.transition = '';
   swipeCard.classList.add('dragging');
+  try {
+    swipeCard.setPointerCapture(event.pointerId);
+  } catch {
+    activePointerId = null;
+    swipeCard.classList.remove('dragging');
+  }
 });
 
 swipeCard.addEventListener('pointermove', (event) => {
-  if (!dragging || !swipeCard.hasPointerCapture(event.pointerId)) return;
-  previewDrag(event.clientX - pointerStartX);
+  if (event.pointerId !== activePointerId) return;
+  pointerCurrentX = event.clientX;
+  previewDrag(pointerCurrentX - pointerStartX);
 });
 
-function finishPointerSwipe(event) {
-  if (!dragging || !swipeCard.hasPointerCapture(event.pointerId)) return;
-  const distance = event.clientX - pointerStartX;
-  swipeCard.releasePointerCapture(event.pointerId);
-  dragging = false;
+function snapCardBack() {
   swipeCard.classList.remove('dragging');
-  if (Math.abs(distance) >= 100) {
-    completeSwipe(distance > 0 ? 'like' : 'pass');
-  } else {
-    swipeCard.style.transition = 'transform 220ms ease';
-    swipeCard.style.transform = '';
-    passStamp.style.opacity = '';
-    likeStamp.style.opacity = '';
-    window.setTimeout(() => { swipeCard.style.transition = ''; }, 220);
+  swipeCard.style.transition = 'transform 220ms ease';
+  swipeCard.style.transform = '';
+  passStamp.style.opacity = '';
+  likeStamp.style.opacity = '';
+  clearTimeout(snapBackTimer);
+  snapBackTimer = window.setTimeout(() => { swipeCard.style.transition = ''; }, 220);
+}
+
+function releaseActivePointer(pointerId) {
+  if (swipeCard.hasPointerCapture(pointerId)) {
+    try { swipeCard.releasePointerCapture(pointerId); } catch { /* capture already ended */ }
   }
 }
 
+function finishPointerSwipe(event) {
+  if (event.pointerId !== activePointerId) return;
+  pointerCurrentX = event.clientX;
+  const distance = pointerCurrentX - pointerStartX;
+  activePointerId = null;
+  releaseActivePointer(event.pointerId);
+  swipeCard.classList.remove('dragging');
+  if (Math.abs(distance) >= 100) completeSwipe(distance > 0 ? 'like' : 'pass');
+  else snapCardBack();
+}
+
+function cancelPointerSwipe(event) {
+  if (event && event.pointerId !== activePointerId) return;
+  const pointerId = activePointerId;
+  activePointerId = null;
+  if (pointerId !== null) releaseActivePointer(pointerId);
+  snapCardBack();
+}
+
 swipeCard.addEventListener('pointerup', finishPointerSwipe);
-swipeCard.addEventListener('pointercancel', finishPointerSwipe);
+swipeCard.addEventListener('pointercancel', cancelPointerSwipe);
+swipeCard.addEventListener('lostpointercapture', (event) => {
+  if (event.pointerId === activePointerId) cancelPointerSwipe(event);
+});
+window.addEventListener('blur', () => {
+  if (activePointerId !== null) cancelPointerSwipe();
+});
 swipeCard.addEventListener('keydown', (event) => {
   if (event.key === 'ArrowLeft') {
     event.preventDefault();
