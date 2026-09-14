@@ -22,10 +22,19 @@ body {
   margin: 0;
   background: var(--canvas);
   color: var(--ink);
-  font-family: "Noto Sans Thai", "Leelawadee UI", Tahoma, Arial, sans-serif;
+  font-family: "Prompt", "Noto Sans Thai", "Leelawadee UI", Tahoma, sans-serif;
   font-size: 16px;
+  font-weight: 400;
   line-height: 1.5;
 }
+
+:lang(en),
+.contact-chips span {
+  font-family: "Fredoka", "Prompt", sans-serif;
+}
+
+.brand [lang="en"] { font-weight: 700; letter-spacing: .01em; }
+.section-kicker[lang="en"], .modal-kicker[lang="en"] { font-weight: 600; letter-spacing: .075em; }
 
 button, a { font: inherit; }
 button { color: inherit; }
