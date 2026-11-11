@@ -199,6 +199,7 @@ function roomDto(row, images = [], options = {}) {
     memberCount,
     availableSlots: Math.max(0, row.capacity - 1 - memberCount),
     ...(options.currentUserId ? { isOwner: row.owner_id === options.currentUserId } : {}),
+    ...(options.isFavorite !== undefined ? { isFavorite: options.isFavorite } : {}),
     ...(options.requestStatus !== undefined ? { requestStatus: options.requestStatus } : {}),
     ...(options.members ? { members: options.members } : {}),
   };
@@ -593,6 +594,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'GET' && pathname === '/api/rooms') {
+        const currentUser = authenticate(db, request, { optional: true });
         const conditions = [];
         const parameters = [];
         const search = url.searchParams.get('q')?.trim();
@@ -632,7 +634,20 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           ORDER BY ${sortMap[sort]}
           LIMIT ? OFFSET ?
         `).all(...parameters);
-        const rooms = rows.map((row) => roomDto(row, imageRows(db, row.room_id)));
+        const favoriteRoomIds = new Set(
+          currentUser
+            ? db
+                .prepare('SELECT room_id FROM ROOM_FAVORITE WHERE user_id = ?')
+                .all(currentUser.user_id)
+                .map((favorite) => Number(favorite.room_id))
+            : [],
+        );
+
+        const rooms = rows.map((row) =>
+          roomDto(row, imageRows(db, row.room_id), {
+            isFavorite: favoriteRoomIds.has(Number(row.room_id)),
+          }),
+        );
         sendJson(response, 200, { rooms }, request);
         return;
       }
@@ -644,10 +659,21 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         assert(room, 404, 'Room not found');
         const currentUser = authenticate(db, request, { optional: true });
         let requestStatus;
+        let isFavorite = false;
+
         if (currentUser) {
           requestStatus = db.prepare(`
-            SELECT status FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? ORDER BY request_id DESC LIMIT 1
+            SELECT status FROM ROOM_REQUEST
+            WHERE room_id = ? AND user_id = ?
+            ORDER BY request_id DESC LIMIT 1
           `).get(roomId, currentUser.user_id)?.status ?? null;
+
+          isFavorite = Boolean(
+            db.prepare(`
+              SELECT 1 FROM ROOM_FAVORITE
+              WHERE user_id = ? AND room_id = ?
+            `).get(currentUser.user_id, roomId),
+          );
         }
         const members = db.prepare(`
           SELECT u.user_id, u.first_name, u.last_name, u.profile_image, rm.status, rm.joined_at
@@ -662,7 +688,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           joinedAt: member.joined_at,
         }));
         sendJson(response, 200, {
-          room: roomDto(room, imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, members }),
+          room: roomDto(room, imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, isFavorite, members }),
         }, request);
         return;
       }
@@ -796,8 +822,12 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         `).all(user.user_id);
 
         const rooms = rows.map((row) =>
-          roomDto(row, imageRows(db, row.room_id), { currentUserId: user.user_id }),
+          roomDto(row, imageRows(db, row.room_id), {
+            currentUserId: user.user_id,
+            isFavorite: true,
+          }),
         );
+
         sendJson(response, 200, { rooms }, request);
         return;
       }
