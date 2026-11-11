@@ -786,6 +786,54 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         return;
       }
 
+      if (request.method === 'GET' && pathname === '/api/favorites') {
+        const user = authenticate(db, request);
+        const rows = db.prepare(`
+          ${ROOM_SELECT}
+          JOIN ROOM_FAVORITE favorite ON favorite.room_id = r.room_id
+          WHERE favorite.user_id = ?
+          ORDER BY favorite.created_at DESC, r.room_id DESC
+        `).all(user.user_id);
+
+        const rooms = rows.map((row) =>
+          roomDto(row, imageRows(db, row.room_id), { currentUserId: user.user_id }),
+        );
+        sendJson(response, 200, { rooms }, request);
+        return;
+      }
+
+      pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)\/favorite$/);
+
+      if (request.method === 'PUT' && pathMatch) {
+        const user = authenticate(db, request);
+        const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
+        const room = getRoomRow(db, roomId);
+        assert(room, 404, 'Room not found');
+
+        db.prepare(`
+          INSERT OR IGNORE INTO ROOM_FAVORITE (user_id, room_id)
+          VALUES (?, ?)
+        `).run(user.user_id, roomId);
+
+        sendJson(response, 200, { success: true }, request);
+        return;
+      }
+
+      if (request.method === 'DELETE' && pathMatch) {
+        const user = authenticate(db, request);
+        const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
+        const room = getRoomRow(db, roomId);
+        assert(room, 404, 'Room not found');
+
+        db.prepare(`
+          DELETE FROM ROOM_FAVORITE
+          WHERE user_id = ? AND room_id = ?
+        `).run(user.user_id, roomId);
+
+        sendJson(response, 200, { success: true }, request);
+        return;
+      }
+
       pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)\/requests$/);
       if (request.method === 'POST' && pathMatch) {
         const user = authenticate(db, request);
