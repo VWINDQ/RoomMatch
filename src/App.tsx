@@ -14,7 +14,21 @@ import { RoomsPage } from './pages/RoomsPage';
 import { FriendsPage } from './pages/FriendsPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 
-function ScrollToTop() { const { pathname } = useLocation(); useEffect(() => { window.scrollTo(0, 0); }, [pathname]); return null; }
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    const workspace = document.querySelector<HTMLElement>('.workspace');
+
+    if (workspace) {
+      workspace.scrollTop = 0;
+    } else {
+      window.scrollTo(0, 0);
+    }
+  }, [pathname]);
+
+  return null;
+}
 
 function ProtectedRoutes() {
   const { user, authLoading, authError, retryAuth } = useApp(); const location = useLocation();

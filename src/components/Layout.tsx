@@ -16,8 +16,34 @@ export function Logo({ compact = false }: { compact?: boolean }) {
   return <NavLink to="/rooms" className="logo" aria-label="ROOMMATCH หน้าแรก"><span className="logo-mark"><Building2 size={20}/></span>{!compact && <span>ROOMMATCH</span>}</NavLink>;
 }
 
+const mobileOrder = [
+  '/rooms',
+  '/friends',
+  '/my-listings',
+  '/favorites',
+  '/requests',
+  '/matches',
+];
+
 function NavItems({ mobile = false }: { mobile?: boolean }) {
-  return <>{destinations.map(({ to, label, mobile: mobileLabel, icon: Icon }) => <NavLink key={to} to={to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}><Icon size={20}/><span>{mobile ? mobileLabel : label}</span></NavLink>)}</>;
+  const items = mobile
+    ? mobileOrder.map(path => destinations.find(item => item.to === path)!)
+    : destinations;
+
+  return (
+    <>
+      {items.map(({ to, label, mobile: mobileLabel, icon: Icon }) => (
+        <NavLink
+          key={to}
+          to={to}
+          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+        >
+          <Icon size={20} />
+          <span>{mobile ? mobileLabel : label}</span>
+        </NavLink>
+      ))}
+    </>
+  );
 }
 
 export function AppShell() {
