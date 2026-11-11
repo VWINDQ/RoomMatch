@@ -108,6 +108,13 @@ export const api = {
   async rooms(params: URLSearchParams) { return list(await request(`/rooms${params.size ? `?${params}` : ''}`), 'rooms').map(normalizeRoom); },
   async room(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}`); return normalizeRoom(result.room); },
   async myRooms() { return list(await request('/my/rooms'), 'rooms').map(normalizeRoom); },
+  async favorites() {
+    return list(await request('/favorites'), 'rooms').map(normalizeRoom);
+  },
+  addFavorite: (roomId: string) =>
+    request<void>(`/rooms/${roomId}/favorite`, { method: 'PUT' }),
+  removeFavorite: (roomId: string) =>
+    request<void>(`/rooms/${roomId}/favorite`, { method: 'DELETE' }),
   async createRoom(payload: JsonObject) { const result = await request<JsonObject>('/rooms', { method: 'POST', body: JSON.stringify(payload) }); return normalizeRoom(result.room); },
   async updateRoom(roomId: string, payload: JsonObject) { const result = await request<JsonObject>(`/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(payload) }); return normalizeRoom(result.room); },
   deleteRoom: (roomId: string) => request<void>(`/rooms/${roomId}`, { method: 'DELETE' }),
