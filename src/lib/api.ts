@@ -40,7 +40,7 @@ function normalizeRoom(value: unknown): Room {
     googleMapsUrl: text(source, 'googleMapsUrl', 'google_maps_url', 'mapUrl'), price: numeric(source, 'price', 'monthlyPrice'), capacity: numeric(source, 'capacity') || 1,
     status: (text(source, 'status') || 'available') as Room['status'], createdAt: text(source, 'createdAt', 'created_at'), owner: source.owner ? normalizeUser(source.owner) : undefined,
     images, members: Array.isArray(rawMembers) ? rawMembers.map(normalizeMember) : undefined, memberCount: numeric(source, 'memberCount', 'member_count'),
-    availableSlots: numeric(source, 'availableSlots', 'available_slots'), isOwner: Boolean(source.isOwner ?? source.is_owner),
+    availableSlots: numeric(source, 'availableSlots', 'available_slots'), isOwner: Boolean(source.isOwner ?? source.is_owner), isFavorite: Boolean(source.isFavorite ?? source.is_favorite),
     requestStatus: (pick(source, 'requestStatus', 'request_status') ?? null) as Room['requestStatus'],
   };
 }
