@@ -44,7 +44,7 @@ export function FavoritesPage() {
   };
 
   return (
-    <div className="page">
+    <div className="page favorites-page">
       <PageHeader
         title="ห้องโปรด"
         subtitle="ห้องที่คุณบันทึกไว้"

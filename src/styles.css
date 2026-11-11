@@ -134,6 +134,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   position: relative;
 }
 
+/*favorite page*/
 .favorite-button {
   position: absolute;
   top: 12px;
@@ -159,6 +160,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   cursor: wait;
   opacity: 0.65;
 }
+
 .room-card-image::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom,transparent 65%,rgba(21,35,60,.13)); pointer-events: none; }
 .favorite { width: 44px; height: 44px; border: 1px solid rgba(29,49,84,.12); border-radius: 14px; display: grid; place-items: center; background: rgba(250,249,247,.94); color: var(--primary); box-shadow: 3px 4px 10px rgba(21,35,60,.12), inset 1px 1px 1px white; cursor: pointer; transition: 160ms ease; }.favorite:active { box-shadow: inset 2px 2px 5px rgba(21,35,60,.18); transform: scale(.97); }.favorite.active { background: var(--primary); color: white; box-shadow: var(--shadow-clay-sm); }
 .room-card-image .favorite { position: absolute; z-index: 2; top: 12px; right: 12px; }.room-card-image .status { position: absolute; z-index: 2; left: 12px; bottom: 12px; }
@@ -182,7 +184,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 
 /* Favorites and empty */
 .favorites-toolbar { margin-top: 16px; }.empty-state { min-height: 440px; margin-top: 24px; padding: 40px 24px; border: 1px dashed #c1beb8; border-radius: var(--radius-lg); display: grid; place-items: center; align-content: center; text-align: center; }.empty-icon { width: 66px; height: 66px; margin-bottom: 16px; border-radius: 20px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); box-shadow: var(--shadow-clay-sm); }.empty-icon svg { width: 29px; height: 29px; }.empty-state h2 { font-size: 1.2rem; }.empty-state p { max-width: 410px; margin: 7px 0 20px; color: var(--text-secondary); font-size: .86rem; }
-
+.favorites-page .room-grid { margin-top: 24px; }
 /* My listings */
 .listing-stack { margin-top: 26px; display: grid; gap: 12px; }.my-listing { min-height: 136px; padding: 12px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); display: grid; grid-template-columns: 174px minmax(240px,1fr) auto; align-items: center; gap: 18px; background: var(--surface); }.my-listing>img { width: 174px; height: 112px; border-radius: 12px; object-fit: cover; }.my-listing-main { display: flex; justify-content: space-between; align-items: center; gap: 18px; }.my-listing-main h2 { margin-top: 7px; font-size: 1rem; }.my-listing-main p { margin: 3px 0 0; color: var(--text-secondary); font-size: .75rem; }.listing-actions { display: flex; align-items: center; gap: 4px; }.listing-actions .button { min-height: 40px; padding: 8px 10px; font-size: .76rem; }.status-toggle { min-height: 40px; padding: 8px 10px; border: 0; background: transparent; color: var(--primary); font-size: .75rem; font-weight: 600; cursor: pointer; }.delete-action { width: 40px; height: 40px; border: 0; border-radius: 10px; display: grid; place-items: center; background: transparent; color: var(--danger); cursor: pointer; }.delete-action:hover { background: var(--danger-bg); }
 .mobile-action { display: none; }
