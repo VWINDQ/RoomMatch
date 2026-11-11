@@ -10,7 +10,14 @@ import { api } from '../lib/api';
 export function Price({ amount, compact = false }: { amount: number; compact?: boolean }) { return <p className={`price ${compact ? 'compact' : ''}`}><strong>฿{amount.toLocaleString('th-TH')}</strong><span>/ เดือน</span></p>; }
 export function RoomImage({ room, className = '' }: { room: Room; className?: string }) { return <RoomPhoto className={className} src={room.images[0]?.imageUrl} alt={`ภาพห้อง ${room.title}`}/>; }
 
-export function RoomCard({ room }: { room: Room }) {
+type FavoriteChangeHandler = (roomId: string, isFavorite: boolean) => void;
+export function RoomCard({
+  room,
+  onFavoriteChange,
+}: {
+  room: Room;
+  onFavoriteChange?: FavoriteChangeHandler;
+}) {
   const navigate = useNavigate();
   const { notify } = useApp();
   const [isFavorite, setIsFavorite] = useState(Boolean(room.isFavorite));
@@ -22,27 +29,29 @@ export function RoomCard({ room }: { room: Room }) {
 
   const open = () => navigate(`/rooms/${room.roomId}`);
 
-  const toggleFavorite = async (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    if (saving) return;
+const toggleFavorite = async (event: MouseEvent<HTMLButtonElement>) => {
+  event.stopPropagation();
+  if (saving) return;
 
-    setSaving(true);
-    try {
-      if (isFavorite) {
-        await api.removeFavorite(room.roomId);
-        setIsFavorite(false);
-        notify('เอาห้องออกจากรายการโปรดแล้ว');
-      } else {
-        await api.addFavorite(room.roomId);
-        setIsFavorite(true);
-        notify('บันทึกห้องโปรดแล้ว');
-      }
-    } catch (caught) {
-      notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ');
-    } finally {
-      setSaving(false);
+  setSaving(true);
+  try {
+    if (isFavorite) {
+      await api.removeFavorite(room.roomId);
+      setIsFavorite(false);
+      onFavoriteChange?.(room.roomId, false);
+      notify('เอาห้องออกจากรายการโปรดแล้ว');
+    } else {
+      await api.addFavorite(room.roomId);
+      setIsFavorite(true);
+      onFavoriteChange?.(room.roomId, true);
+      notify('บันทึกห้องโปรดแล้ว');
     }
-  };
+  } catch (caught) {
+    notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ');
+  } finally {
+    setSaving(false);
+  }
+};
 
   return (
     <article
@@ -90,4 +99,22 @@ export function RoomCard({ room }: { room: Room }) {
   );
 }
 
-export function RoomGrid({ rooms }: { rooms: Room[] }) { return <div className="room-grid">{rooms.map(room => <RoomCard key={room.roomId} room={room}/>)}</div>; }
+export function RoomGrid({
+  rooms,
+  onFavoriteChange,
+}: {
+  rooms: Room[];
+  onFavoriteChange?: FavoriteChangeHandler;
+}) {
+  return (
+    <div className="room-grid">
+      {rooms.map(room => (
+        <RoomCard
+          key={room.roomId}
+          room={room}
+          onFavoriteChange={onFavoriteChange}
+        />
+      ))}
+    </div>
+  );
+}

@@ -1,4 +1,4 @@
-import { Building2, Home, LogOut, Plus, Sparkles, UserRound, UsersRound, UserRoundPlus } from 'lucide-react';
+import { Building2, Home, LogOut, Plus, Sparkles, UserRound, UsersRound, UserRoundPlus, Heart } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 
@@ -6,6 +6,7 @@ const destinations = [
   { to: '/rooms', label: 'รวมประกาศห้อง', mobile: 'ห้อง', icon: Home },
   { to: '/friends', label: 'หาเพื่อนก่อนหาห้อง', mobile: 'หาเพื่อน', icon: UserRoundPlus },
   { to: '/my-listings', label: 'ประกาศของฉัน', mobile: 'ประกาศ', icon: Building2 },
+  { to: '/favorites', label: 'ห้องโปรด', mobile: 'โปรด', icon: Heart },
   { to: '/requests', label: 'คำขอเข้าพัก', mobile: 'คำขอ', icon: UsersRound },
   { to: '/matches', label: 'เพื่อนร่วมห้อง', mobile: 'แมตช์', icon: Sparkles },
   { to: '/profile', label: 'โปรไฟล์', mobile: 'โปรไฟล์', icon: UserRound },
