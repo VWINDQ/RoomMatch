@@ -103,6 +103,12 @@ See [room-request contract and verification](REQUESTS.md) for ownership rules,
 transaction behavior, error codes, and the first-feature testing checklist.
 New decision timestamps use ISO 8601 UTC (`respondedAt` ending in `Z`).
 
+Member/match read endpoints live in `server/matches.js`. Member lists are limited
+to the room owner or approved members, including the list embedded in public
+room details. Match lists expose only the authenticated participant's matches
+with current approved membership; historical database rows are retained.
+See [member/match contract and verification](MATCHES.md).
+
 - `POST /api/rooms/:roomId/requests` — send a join request.
 - `GET /api/requests/mine` — request status for the authenticated requester.
 - `GET /api/owner/requests` — requests for rooms owned by the authenticated user.
