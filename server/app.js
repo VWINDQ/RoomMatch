@@ -547,7 +547,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           }
         }
         assert(updates.length > 0, 400, 'No editable profile fields were provided');
-        const lifestyleName = Object.hasOwn(body, 'lifestyleName') ? text(body.lifestyleName, 'lifestyleName', { required: true, max: 255 }) : null;
+        const lifestyleName = Object.hasOwn(body, 'lifestyleName') ? text(body.lifestyleName, 'lifestyleName', { required: true, max: 400 }) : null;
         const preferenceValues = Object.hasOwn(body, 'preference') ? parsePreference(body.preference) : null;
         updates.push('updated_at = CURRENT_TIMESTAMP');
         db.exec('BEGIN IMMEDIATE');
@@ -575,7 +575,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (request.method === 'PUT' && pathname === '/api/lifestyle') {
         const user = authenticate(db, request);
         const body = await readJson(request);
-        const lifestyleName = text(body.lifestyleName, 'lifestyleName', { required: true, max: 255 });
+        const lifestyleName = text(body.lifestyleName, 'lifestyleName', { required: true, max: 400 });
         db.prepare(`
           INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)
           ON CONFLICT(user_id) DO UPDATE SET lifestyle_name = excluded.lifestyle_name
