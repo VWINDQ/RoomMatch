@@ -8,6 +8,7 @@ import { assert, HttpError } from './errors.js';
 import { openDatabase } from './database.js';
 import { handleFriendRoutes } from './friends.js';
 import { createRoomRequestHandler } from './requests.js';
+import { canViewRoomMembers, createRoomMatchesHandler, listRoomMembers } from './matches.js';
 
 const BODY_LIMIT_BYTES = 1_048_576;
 const ROOM_STATUSES = new Set(['available', 'full', 'inactive']);
@@ -401,6 +402,9 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
   const handleRoomRequest = createRoomRequestHandler(db, {
     authenticate, readJson, sendJson, getRoomRow, roomSummary, matchSelect, matchDto,
   });
+  const handleRoomMatches = createRoomMatchesHandler(db, {
+    authenticate, sendJson, getRoomRow, userDto, matchSelect, matchDto,
+  });
   return async function requestHandler(request, response) {
     const url = new URL(request.url, 'http://localhost');
     const { pathname } = url;
@@ -621,18 +625,9 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
             SELECT status FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? ORDER BY request_id DESC LIMIT 1
           `).get(roomId, currentUser.user_id)?.status ?? null;
         }
-        const members = db.prepare(`
-          SELECT u.user_id, u.first_name, u.last_name, u.profile_image, rm.status, rm.joined_at
-          FROM ROOM_MEMBER rm JOIN USER u ON u.user_id = rm.user_id
-          WHERE rm.room_id = ? AND rm.status = 'approved' ORDER BY rm.joined_at
-        `).all(roomId).map((member) => ({
-          userId: member.user_id,
-          firstName: member.first_name,
-          lastName: member.last_name,
-          profileImage: member.profile_image,
-          status: member.status,
-          joinedAt: member.joined_at,
-        }));
+        const members = canViewRoomMembers(db, room, currentUser?.user_id)
+          ? listRoomMembers(db, roomId, userDto).filter(member => member.status !== 'owner')
+          : [];
         sendJson(response, 200, {
           room: roomDto(room, imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, members }),
         }, request);
@@ -760,42 +755,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
 
       if (await handleRoomRequest(request, response, url)) return;
 
-      pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)\/members$/);
-      if (request.method === 'GET' && pathMatch) {
-        const user = authenticate(db, request);
-        const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = getRoomRow(db, roomId);
-        assert(room, 404, 'Room not found');
-        const isMember = db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, user.user_id);
-        assert(room.owner_id === user.user_id || isMember, 403, 'Only the room owner or a member can view members');
-        const memberRows = db.prepare(`
-          SELECT u.*, 'owner' AS membership_status, room.created_at AS joined_at
-          FROM ROOM room JOIN USER u ON u.user_id = room.owner_id WHERE room.room_id = ?
-          UNION ALL
-          SELECT u.*, rm.status AS membership_status, rm.joined_at
-          FROM ROOM_MEMBER rm JOIN USER u ON u.user_id = rm.user_id
-          WHERE rm.room_id = ? AND rm.status = 'approved'
-          ORDER BY joined_at
-        `).all(roomId, roomId);
-        const members = memberRows.map((row) => ({
-          ...userDto(row),
-          status: row.membership_status,
-          joinedAt: row.joined_at,
-        }));
-        sendJson(response, 200, { members }, request);
-        return;
-      }
-
-      if (request.method === 'GET' && pathname === '/api/matches') {
-        const user = authenticate(db, request);
-        const rows = db.prepare(`
-          ${matchSelect()}
-          WHERE m.initiator_user_id = ? OR m.completer_user_id = ?
-          ORDER BY m.matched_at DESC, m.match_id DESC
-        `).all(user.user_id, user.user_id);
-        sendJson(response, 200, { matches: rows.map((row) => matchDto(row, user.user_id)) }, request);
-        return;
-      }
+      if (await handleRoomMatches(request, response, url)) return;
 
       if (pathname === '/api/friends' || pathname.startsWith('/api/friends/')) {
         await handleFriendRoutes({ db, request, response, url, user: authenticate(db, request), readJson, sendJson });
