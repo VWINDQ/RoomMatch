@@ -97,6 +97,12 @@ Room write payload fields are `title`, `description`, `googleMapsUrl`, `price`, 
 
 ### Requests, membership, and matches
 
+The room-request endpoints are implemented in `server/requests.js`, composed
+by `server/app.js` with the existing authentication and response helpers.
+See [room-request contract and verification](REQUESTS.md) for ownership rules,
+transaction behavior, error codes, and the first-feature testing checklist.
+New decision timestamps use ISO 8601 UTC (`respondedAt` ending in `Z`).
+
 - `POST /api/rooms/:roomId/requests` — send a join request.
 - `GET /api/requests/mine` — request status for the authenticated requester.
 - `GET /api/owner/requests` — requests for rooms owned by the authenticated user.
