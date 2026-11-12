@@ -116,6 +116,14 @@ See [member/match contract and verification](MATCHES.md).
 - `GET /api/rooms/:roomId/members` — room owner or member can view members.
 - `GET /api/matches` — matches involving the authenticated user.
 
+### Friend discovery and invitations
+
+`server/friends.js` handles authenticated profile search and invitations without
+changing room requests or matches. Full-name search is supported. Invitation
+writes and response-profile reads commit atomically; only the recipient may
+decide and only accepted participants receive contact details. See
+[friend API rules and verification](FRIENDS.md) for endpoints, errors and tests.
+
 ## Frontend routes
 
 - `/login`, `/register`
