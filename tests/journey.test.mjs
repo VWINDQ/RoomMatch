@@ -110,6 +110,14 @@ test('register → list → request → approve/reject → membership and match'
   assert.equal(roomAfterApproval.body.room.status, 'full');
   assert.equal(roomAfterApproval.body.room.availableSlots, 0);
 
+  const availableRooms = await api('/api/rooms?status=available');
+  assert.equal(availableRooms.response.status, 200);
+  assert.ok(availableRooms.body.rooms.every(room => room.status === 'available' && room.availableSlots > 0));
+  assert.equal(availableRooms.body.rooms.some(room => room.roomId === roomId), false);
+  const ownerListings = await api('/api/my/rooms', { headers: owner.headers });
+  assert.equal(ownerListings.response.status, 200);
+  assert.ok(ownerListings.body.rooms.some(room => room.roomId === roomId && room.status === 'full'));
+
   const members = await api(`/api/rooms/${roomId}/members`, { headers: seeker.headers });
   assert.equal(members.response.status, 200);
   assert.deepEqual(

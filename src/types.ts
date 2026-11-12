@@ -80,7 +80,7 @@ export type Match = {
   otherUser?: Partial<User>;
 };
 
-export type RoomFilters = { minPrice: string; maxPrice: string; status: string };
+export type RoomFilters = { minPrice: string; maxPrice: string };
 
 export type FriendProfile = {
   userId: string; firstName: string; lastName: string; university: string;
