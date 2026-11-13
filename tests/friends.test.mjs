@@ -32,7 +32,7 @@ test('additive migration preserves every original table row and schema', () => {
   try {
     legacy.exec(readFileSync('database/migrations/001_initial_schema.sql', 'utf8'));
     legacy.exec(readFileSync('database/migrations/002_repair_room_description_newlines.sql', 'utf8'));
-    legacy.exec(readFileSync('database/seed.sql', 'utf8'));
+    legacy.exec(readFileSync('tests/fixtures/legacy-seed.sql', 'utf8'));
     legacy.exec('PRAGMA user_version = 2');
     const tables = ['USER', 'LIFESTYLE', 'PREFERENCE', 'ROOM', 'ROOM_IMAGE', 'ROOM_MEMBER', 'ROOM_REQUEST', 'MATCHES'];
     const snapshot = () => tables.map(table => ({
