@@ -1,0 +1,14 @@
+.friends-page .invitation-filters { margin: 0 0 20px; padding: 5px; border: 1px solid var(--border-soft); border-radius: 18px; display: flex; flex-wrap: wrap; gap: 5px; width: fit-content; background: var(--surface-muted); }
+.friends-page .invitation-filters button { min-height: 44px; padding: 9px 13px; border: 0; border-radius: 13px; display: flex; align-items: center; justify-content: center; gap: 7px; background: transparent; color: var(--text-secondary); font-size: .8rem; cursor: pointer; }
+.friends-page .invitation-filters button.selected { background: var(--surface); color: var(--primary); font-weight: 700; box-shadow: 2px 3px 6px rgba(57,49,42,.08), inset 0 1px 0 white; }
+.friends-page .invitation-filters button>span { min-width: 20px; padding: 1px 5px; border-radius: 7px; background: var(--primary-soft); font-size: .7rem; }
+.friends-page .invitation-heading h2 { margin: 0; color: var(--primary); font-size: 1rem; }
+.friends-page .invitation-heading p { max-width: 680px; margin: 6px 0 0; color: var(--text-secondary); font-size: .8rem; line-height: 1.7; }
+.friends-page .invitation-date { display: block; margin-top: 8px; color: var(--text-secondary); font-size: .7rem; }
+.friends-page .modal-card { max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
+.friends-page .modal-card>header { flex-shrink: 0; }
+.friends-page .modal-body { min-height: 0; overflow-y: auto; }
+@media (max-width: 420px) {
+  .friends-page .invitation-filters { width: 100%; display: grid; grid-template-columns: 1fr 1.25fr .85fr; }
+  .friends-page .invitation-filters button { min-width: 0; padding-inline: 5px; gap: 4px; font-size: .7rem; white-space: nowrap; }
+}
