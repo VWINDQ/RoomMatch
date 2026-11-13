@@ -1,6 +1,6 @@
 import { ArrowLeft, CalendarDays, ExternalLink, Heart, MapPin, RefreshCw, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { RoomGallery } from '../components/RoomGallery';
 import { ProfilePhoto } from '../components/ProfilePhoto';
@@ -11,6 +11,24 @@ import type { Room } from '../types';
 
 export function RoomDetailPage() {
   const { id = '' } = useParams(); const navigate = useNavigate(); const { notify } = useApp();
+  const location = useLocation();
+
+const from = (location.state as { from?: unknown } | null)?.from;
+
+const backTo =
+  typeof from === 'string' &&
+  ['/rooms', '/favorites', '/my-listings'].some(
+    path => from === path || from.startsWith(`${path}?`)
+  )
+    ? from
+    : '/rooms';
+
+const backLabel =
+  backTo.startsWith('/favorites')
+    ? 'กลับไปห้องโปรด'
+    : backTo.startsWith('/my-listings')
+      ? 'กลับไปประกาศของฉัน'
+      : 'กลับไปดูห้องทั้งหมด';
   const [room, setRoom] = useState<Room | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [sending, setSending] = useState(false); const [reload, setReload] = useState(0);
   const [requestError, setRequestError] = useState('');
   const [savingFavorite, setSavingFavorite] = useState(false);
@@ -39,7 +57,7 @@ export function RoomDetailPage() {
   if (loading) return <div className="page"><div className="detail-skeleton"><span/><span/><span/></div></div>;
   if (error || !room) return <div className="page"><EmptyState icon={<RefreshCw/>} title="เปิดประกาศนี้ไม่ได้" text={error || 'ไม่พบประกาศห้องนี้'} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
   const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอพิจารณา' : room.requestStatus === 'approved' ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
-  return <div className="page detail-page"><button className="back-link" onClick={() => navigate('/rooms')}><ArrowLeft size={18}/>กลับไปดูห้องทั้งหมด</button>
+  return <div className="page detail-page"><button type="button" className="back-link" onClick={() => navigate(backTo)}><ArrowLeft size={18} />{backLabel}</button>
     <div className="detail-title"><div><StatusBadge status={room.status}/><h1>{room.title}</h1><p><MapPin size={16}/>{room.googleMapsUrl ? 'ดูตำแหน่งจากลิงก์แผนที่' : 'ยังไม่ระบุตำแหน่ง'}</p></div></div><RoomGallery room={room}/>
     <div className="detail-layout"><div className="detail-main"><section><h2>เกี่ยวกับห้องนี้</h2><p className="description">{room.description || 'เจ้าของห้องยังไม่ได้เพิ่มรายละเอียด'}</p><div className="fact-row"><span><UsersRound/>จุ {room.capacity} คน (รวมเจ้าของ)</span><span><UserRound/>ว่าง {room.availableSlots} ที่</span><span><CalendarDays/>ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span></div></section>
       <section className="capacity-note"><ShieldCheck/><div><h2>จำนวนผู้พักคิดรวมเจ้าของห้อง</h2><p>เมื่อห้องเต็ม ระบบจะหยุดรับคำขอใหม่โดยอัตโนมัติ</p></div></section>

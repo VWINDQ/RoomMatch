@@ -1,5 +1,5 @@
 import { CalendarDays, Heart, MapPin, UsersRound } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { Room } from '../types';
 import { StatusBadge } from './UI';
 import { RoomPhoto } from './RoomPhoto';
@@ -19,6 +19,7 @@ export function RoomCard({
   onFavoriteChange?: FavoriteChangeHandler;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { notify } = useApp();
   const [isFavorite, setIsFavorite] = useState(Boolean(room.isFavorite));
   const [saving, setSaving] = useState(false);
@@ -27,7 +28,10 @@ export function RoomCard({
     setIsFavorite(Boolean(room.isFavorite));
   }, [room.isFavorite]);
 
-  const open = () => navigate(`/rooms/${room.roomId}`);
+  const open = () =>
+  navigate(`/rooms/${room.roomId}`, {
+    state: { from: location.pathname + location.search },
+  });
 
 const toggleFavorite = async (event: MouseEvent<HTMLButtonElement>) => {
   event.stopPropagation();
