@@ -1,3 +1,5 @@
+> Update 2026-11-13: this is a historical audit. The URL-only image limitation below has been replaced by file uploads; see [UPLOADS.md](UPLOADS.md) and the current [production readiness report](PRODUCTION_READINESS.md).
+
 # ROOMMATCH post-implementation audit
 
 Date: 2026-10-03. Scope: current React/TypeScript/Vite frontend, Node HTTP API,

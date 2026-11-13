@@ -82,6 +82,17 @@ All JSON endpoints live under `/api`.
 - `PUT /api/lifestyle` — create or replace the authenticated user's 1:1 lifestyle.
 - `PUT /api/preference` — create or replace the authenticated user's 1:1 preference.
 
+### Uploaded images
+
+`POST /api/uploads/images` requires an active bearer token and receives one raw image file
+with `Content-Type: image/jpeg`, `image/png`, or `image/webp` (not multipart/JSON).
+It returns `{ imageUrl: "/uploads/<userId>/<uuid>.webp" }` for the existing profile/room
+write APIs. These relative paths may only be attached by their uploader; legacy HTTP(S)
+image URLs remain supported. `GET/HEAD /uploads/...` serves the normalized image publicly.
+Files are outside the build output, under `ROOMMATCH_UPLOAD_DIR` (default `storage/uploads`).
+The database keeps the generated path in `USER.profile_image` or `ROOM_IMAGE.image_url`;
+there is no schema migration. See [UPLOADS.md](UPLOADS.md) for limits and deployment storage.
+
 ### Rooms and images
 
 - `GET /api/rooms` — browse/search/sort/filter by price and status.

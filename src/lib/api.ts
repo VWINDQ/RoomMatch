@@ -98,6 +98,15 @@ function normalizeConnection(value: unknown): FriendConnection {
 }
 
 export const api = {
+  async uploadImage(file: File) {
+    try {
+      const result = await request<JsonObject>('/uploads/images', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+      return text(result, 'imageUrl');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 500) throw new ApiError('อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', error.status);
+      throw error;
+    }
+  },
   async friends(query = '') { return list(await request(`/friends?q=${encodeURIComponent(query)}`), 'people').map(normalizeFriend); },
   async friendConnections() { return list(await request('/friends/connections'), 'connections').map(normalizeConnection); },
   async inviteFriend(recipientId: string) { const result = await request<JsonObject>('/friends/connections', { method: 'POST', body: JSON.stringify({ recipientId: Number(recipientId) }) }); return normalizeConnection(result.connection); },

@@ -9,6 +9,7 @@ import { openDatabase } from './database.js';
 import { handleFriendRoutes } from './friends.js';
 import { createRoomRequestHandler } from './requests.js';
 import { canViewRoomMembers, createRoomMatchesHandler, listRoomMembers } from './matches.js';
+import { createImageStorage } from './uploads.js';
 
 const BODY_LIMIT_BYTES = 1_048_576;
 const ROOM_STATUSES = new Set(['available', 'full', 'inactive']);
@@ -290,14 +291,14 @@ function getRoomRow(db, roomId) {
   return db.prepare(`${ROOM_SELECT} WHERE r.room_id = ?`).get(roomId);
 }
 
-function parseImages(value, { required = false } = {}) {
+function parseImages(value, { required = false, imageUrl = (value, field) => webUrl(value, field, { required: true }) } = {}) {
   if (value === undefined) {
     assert(!required, 400, 'images is required');
     return null;
   }
   assert(Array.isArray(value), 400, 'images must be an array');
   assert(value.length <= 12, 400, 'images cannot contain more than 12 items');
-  return value.map((url, index) => ({ imageUrl: webUrl(url, `images[${index}]`, { required: true }), imageOrder: index }));
+  return value.map((url, index) => ({ imageUrl: imageUrl(url, `images[${index}]`), imageOrder: index }));
 }
 
 function insertImages(db, roomId, images, startingOrder = 0) {
@@ -398,7 +399,9 @@ function matchPath(pathname, pattern) {
   return match ? match.slice(1).map((value) => decodeURIComponent(value)) : null;
 }
 
-export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY } = {}) {
+export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY, uploadDirectory } = {}) {
+  const imageStorage = createImageStorage({ directory: uploadDirectory, db });
+  const imageUrl = (value, userId, field) => imageStorage.validateUrl(value, userId, url => webUrl(url, field, { required: true }));
   const handleRoomRequest = createRoomRequestHandler(db, {
     authenticate, readJson, sendJson, getRoomRow, roomSummary, matchSelect, matchDto,
   });
@@ -425,6 +428,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
 
       if (request.method === 'GET' && pathname === '/api/health') {
         sendJson(response, 200, { ok: true }, request);
+        return;
+      }
+
+      if (request.method === 'POST' && pathname === '/api/uploads/images') {
+        const user = authenticate(db, request);
+        const imageUrl = await imageStorage.upload(request, user.user_id);
+        sendJson(response, 201, { imageUrl }, request);
         return;
       }
 
@@ -509,7 +519,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           ['gender', 'gender', (value) => text(value, 'gender', { max: 50 })],
           ['dateOfBirth', 'date_of_birth', (value) => isoDate(value, 'dateOfBirth')],
           ['university', 'university', (value) => text(value, 'university', { max: 255 })],
-          ['profileImage', 'profile_image', (value) => nullableWebUrl(value, 'profileImage')],
+          ['profileImage', 'profile_image', (value) => value === '' || value == null ? null : imageUrl(value, user.user_id, 'profileImage')],
           ['bio', 'bio', (value) => text(value, 'bio', { max: 1_000 })],
           ['instagram', 'instagram', (value) => text(value, 'instagram', { max: 100 })],
           ['lineId', 'line_id', (value) => text(value, 'lineId', { max: 100 })],
@@ -645,7 +655,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const requestedStatus = body.status ?? 'available';
         assert(ROOM_STATUSES.has(requestedStatus), 400, 'status is invalid');
         const status = requestedStatus === 'inactive' ? 'inactive' : capacity === 1 ? 'full' : 'available';
-        const images = parseImages(body.images) ?? [];
+        const images = parseImages(body.images, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) }) ?? [];
 
         db.exec('BEGIN IMMEDIATE');
         try {
@@ -682,7 +692,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         let status = Object.hasOwn(body, 'status') ? body.status : existing.status;
         assert(ROOM_STATUSES.has(status), 400, 'status is invalid');
         if (status !== 'inactive') status = capacity <= memberCount + 1 ? 'full' : 'available';
-        const images = parseImages(body.images);
+        const images = parseImages(body.images, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) });
 
         db.exec('BEGIN IMMEDIATE');
         try {
@@ -721,14 +731,14 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         assert(room, 404, 'Room not found');
         assert(room.owner_id === user.user_id, 403, 'Only the room owner can add images');
         const body = await readJson(request);
-        const imageUrl = webUrl(body.imageUrl, 'imageUrl', { required: true });
+        const storedImageUrl = imageUrl(body.imageUrl, user.user_id, 'imageUrl');
         const count = db.prepare('SELECT COUNT(*) AS count FROM ROOM_IMAGE WHERE room_id = ?').get(roomId).count;
         assert(count < 12, 409, 'A room cannot have more than 12 images');
         const imageOrder = body.imageOrder === undefined
           ? Number(db.prepare('SELECT COALESCE(MAX(image_order), -1) + 1 AS next_order FROM ROOM_IMAGE WHERE room_id = ?').get(roomId).next_order)
           : integer(body.imageOrder, 'imageOrder', { min: 0, max: 11 });
-        const result = db.prepare('INSERT INTO ROOM_IMAGE (room_id, image_url, image_order) VALUES (?, ?, ?)').run(roomId, imageUrl, imageOrder);
-        sendJson(response, 201, { image: { imageId: Number(result.lastInsertRowid), imageUrl, imageOrder } }, request);
+        const result = db.prepare('INSERT INTO ROOM_IMAGE (room_id, image_url, image_order) VALUES (?, ?, ?)').run(roomId, storedImageUrl, imageOrder);
+        sendJson(response, 201, { image: { imageId: Number(result.lastInsertRowid), imageUrl: storedImageUrl, imageOrder } }, request);
         return;
       }
 
@@ -762,6 +772,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         return;
       }
       if (pathname.startsWith('/api/')) throw new HttpError(404, 'Endpoint not found');
+      if (imageStorage.serve(request, response, pathname)) return;
       if (sendStatic(response, request, pathname, staticDirectory)) return;
       throw new HttpError(404, 'Page not found');
     } catch (error) {
