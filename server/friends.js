@@ -1,5 +1,18 @@
 import { assert, HttpError } from './errors.js';
 
+function writeConnection(db, operation) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    // Build the response before commit so a failed profile read cannot save partial consent.
+    const connection = operation();
+    db.exec('COMMIT');
+    return connection;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 function profile(db, row, includeContact = false) {
   const lifestyle = db.prepare('SELECT lifestyle_name FROM LIFESTYLE WHERE user_id = ?').get(row.user_id);
   const preference = db.prepare('SELECT budget_min, budget_max FROM PREFERENCE WHERE user_id = ?').get(row.user_id);
@@ -39,10 +52,11 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
           WHERE (f.sender_id = ? AND f.recipient_id = u.user_id)
              OR (f.recipient_id = ? AND f.sender_id = u.user_id))
         AND (u.first_name LIKE ? ESCAPE '\\' OR u.last_name LIKE ? ESCAPE '\\'
+          OR (u.first_name || ' ' || u.last_name) LIKE ? ESCAPE '\\'
           OR u.university LIKE ? ESCAPE '\\' OR u.bio LIKE ? ESCAPE '\\'
           OR l.lifestyle_name LIKE ? ESCAPE '\\')
       ORDER BY u.first_name COLLATE NOCASE, u.user_id
-    `).all(viewerId, viewerId, viewerId, pattern, pattern, pattern, pattern, pattern);
+    `).all(viewerId, viewerId, viewerId, pattern, pattern, pattern, pattern, pattern, pattern);
     sendJson(response, 200, { people: rows.map(row => profile(db, row)) }, request);
     return;
   }
@@ -60,30 +74,40 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
     const body = await readJson(request);
     assert(Number.isSafeInteger(body.recipientId) && body.recipientId > 0, 400, 'กรุณาระบุผู้รับคำชวน');
     assert(body.recipientId !== viewerId, 400, 'ส่งคำชวนหาตัวเองไม่ได้');
-    assert(db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(body.recipientId), 404, 'ไม่พบผู้ใช้นี้');
-    const existing = db.prepare(`SELECT 1 FROM FRIEND_CONNECTION
-      WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)`)
-      .get(viewerId, body.recipientId, body.recipientId, viewerId);
-    assert(!existing, 409, 'คุณกับคนนี้มีคำชวนอยู่แล้ว กรุณาดูที่แท็บคำชวนหรือเพื่อนของฉัน');
-    const result = db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?)').run(viewerId, body.recipientId);
-    const row = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(result.lastInsertRowid);
-    sendJson(response, 201, { connection: connectionDto(db, row, viewerId) }, request);
+    const connection = writeConnection(db, () => {
+      assert(db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(viewerId), 401, 'Authentication required');
+      assert(db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(body.recipientId), 404, 'ไม่พบผู้ใช้นี้');
+      const existing = db.prepare(`SELECT 1 FROM FRIEND_CONNECTION
+        WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)`)
+        .get(viewerId, body.recipientId, body.recipientId, viewerId);
+      assert(!existing, 409, 'คุณกับคนนี้มีคำชวนอยู่แล้ว กรุณาดูที่แท็บคำชวนหรือเพื่อนของฉัน');
+      const result = db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?)').run(viewerId, body.recipientId);
+      const row = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(result.lastInsertRowid);
+      return connectionDto(db, row, viewerId);
+    });
+    sendJson(response, 201, { connection }, request);
     return;
   }
 
   const match = /^\/api\/friends\/connections\/(\d+)$/.exec(url.pathname);
   if (request.method === 'PATCH' && match) {
+    const connectionId = Number(match[1]);
+    assert(Number.isSafeInteger(connectionId) && connectionId > 0, 400, 'connectionId must be a positive safe integer');
     const body = await readJson(request);
     assert(body.status === 'accepted' || body.status === 'declined', 400, 'สถานะคำชวนไม่ถูกต้อง');
-    const row = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(Number(match[1]));
-    assert(row, 404, 'ไม่พบคำชวน');
-    assert(row.recipient_id === viewerId, 403, 'เฉพาะผู้รับคำชวนเท่านั้นที่ตอบรับได้');
-    assert(db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(row.sender_id), 409, 'ผู้ส่งคำชวนไม่ได้ใช้งานแล้ว');
-    const result = db.prepare(`UPDATE FRIEND_CONNECTION SET status = ?, responded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-      WHERE connection_id = ? AND status = 'pending'`).run(body.status, row.connection_id);
-    assert(result.changes === 1, 409, 'คำชวนนี้ได้รับการตอบกลับแล้ว');
-    const updated = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(row.connection_id);
-    sendJson(response, 200, { connection: connectionDto(db, updated, viewerId) }, request);
+    const connection = writeConnection(db, () => {
+      assert(db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(viewerId), 401, 'Authentication required');
+      const row = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(connectionId);
+      assert(row, 404, 'ไม่พบคำชวน');
+      assert(row.recipient_id === viewerId, 403, 'เฉพาะผู้รับคำชวนเท่านั้นที่ตอบรับได้');
+      assert(db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(row.sender_id), 409, 'ผู้ส่งคำชวนไม่ได้ใช้งานแล้ว');
+      const result = db.prepare(`UPDATE FRIEND_CONNECTION SET status = ?, responded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        WHERE connection_id = ? AND status = 'pending'`).run(body.status, row.connection_id);
+      assert(result.changes === 1, 409, 'คำชวนนี้ได้รับการตอบกลับแล้ว');
+      const updated = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(row.connection_id);
+      return connectionDto(db, updated, viewerId);
+    });
+    sendJson(response, 200, { connection }, request);
     return;
   }
   throw new HttpError(404, 'Endpoint not found');

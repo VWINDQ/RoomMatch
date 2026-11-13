@@ -97,12 +97,32 @@ Room write payload fields are `title`, `description`, `googleMapsUrl`, `price`, 
 
 ### Requests, membership, and matches
 
+The room-request endpoints are implemented in `server/requests.js`, composed
+by `server/app.js` with the existing authentication and response helpers.
+See [room-request contract and verification](REQUESTS.md) for ownership rules,
+transaction behavior, error codes, and the first-feature testing checklist.
+New decision timestamps use ISO 8601 UTC (`respondedAt` ending in `Z`).
+
+Member/match read endpoints live in `server/matches.js`. Member lists are limited
+to the room owner or approved members, including the list embedded in public
+room details. Match lists expose only the authenticated participant's matches
+with current approved membership; historical database rows are retained.
+See [member/match contract and verification](MATCHES.md).
+
 - `POST /api/rooms/:roomId/requests` — send a join request.
 - `GET /api/requests/mine` — request status for the authenticated requester.
 - `GET /api/owner/requests` — requests for rooms owned by the authenticated user.
 - `PATCH /api/requests/:requestId` with `{ status: "approved" | "rejected" }` — owner-only decision; approval performs the atomic membership/match workflow.
 - `GET /api/rooms/:roomId/members` — room owner or member can view members.
 - `GET /api/matches` — matches involving the authenticated user.
+
+### Friend discovery and invitations
+
+`server/friends.js` handles authenticated profile search and invitations without
+changing room requests or matches. Full-name search is supported. Invitation
+writes and response-profile reads commit atomically; only the recipient may
+decide and only accepted participants receive contact details. See
+[friend API rules and verification](FRIENDS.md) for endpoints, errors and tests.
 
 ## Frontend routes
 

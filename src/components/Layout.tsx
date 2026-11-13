@@ -1,6 +1,7 @@
 import { Building2, Home, LogOut, Plus, Sparkles, UserRound, UsersRound, UserRoundPlus, Heart } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
+import { OwnerRequestsProvider, useOwnerRequests } from '../OwnerRequestsContext';
 
 const destinations = [
   { to: '/rooms', label: 'รวมประกาศห้อง', mobile: 'ห้อง', icon: Home },
@@ -30,23 +31,60 @@ function NavItems({ mobile = false }: { mobile?: boolean }) {
     ? mobileOrder.map(path => destinations.find(item => item.to === path)!)
     : destinations;
 
+  const { ownerRequests, error } = useOwnerRequests();
+
+  const pendingCount = ownerRequests.filter(
+    request => request.status === 'pending'
+  ).length;
+
   return (
     <>
-      {items.map(({ to, label, mobile: mobileLabel, icon: Icon }) => (
-        <NavLink
-          key={to}
-          to={to}
-          className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-        >
-          <Icon size={20} />
-          <span>{mobile ? mobileLabel : label}</span>
-        </NavLink>
-      ))}
+      {items.map(({ to, label, mobile: mobileLabel, icon: Icon }) => {
+        const hasPending = to === '/requests' && pendingCount > 0;
+
+        return (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              `nav-link ${isActive ? 'active' : ''}`
+            }
+            aria-label={
+              hasPending
+                ? `${label} มี ${pendingCount} คำขอรอพิจารณา`
+                : label
+            }
+            title={
+              to === '/requests' && error
+                ? 'ตรวจสอบคำขอใหม่ไม่สำเร็จ เปิดหน้าคำขอเพื่อลองอีกครั้ง'
+                : hasPending
+                  ? `${pendingCount} คำขอรอพิจารณา`
+                  : undefined
+            }
+          >
+            <span className="nav-icon">
+              <Icon size={20} />
+              {hasPending && (
+                <span
+                  className="request-notification-dot"
+                  aria-hidden="true"
+                />
+              )}
+            </span>
+            <span>{mobile ? mobileLabel : label}</span>
+          </NavLink>
+        );
+      })}
     </>
   );
 }
 
 export function AppShell() {
+  const { user } = useApp();
+  return <OwnerRequestsProvider key={user?.userId}><ShellContent/></OwnerRequestsProvider>;
+}
+
+function ShellContent() {
   const navigate = useNavigate(); const location = useLocation(); const { user, logout } = useApp();
   const hideCreate = location.pathname.includes('/new') || location.pathname.includes('/edit');
   const initial = user?.firstName.trim().charAt(0) || 'ผ';
