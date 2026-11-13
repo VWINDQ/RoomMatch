@@ -114,6 +114,7 @@ export const api = {
   async createJoinRequest(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}/requests`, { method: 'POST' }); return normalizeRequest(result.request); },
   async mineRequests() { return list(await request('/requests/mine'), 'requests').map(normalizeRequest); },
   async ownerRequests() { return list(await request('/owner/requests'), 'requests').map(normalizeRequest); },
+  async requesterProfile(requestId: string) { const result = await request<JsonObject>(`/requests/${encodeURIComponent(requestId)}/profile`); return normalizeFriend(result.profile); },
   async decideRequest(requestId: string, status: 'approved' | 'rejected') { const result = await request<JsonObject>(`/requests/${requestId}`, { method: 'PATCH', body: JSON.stringify({ status }) }); return normalizeRequest(result.request); },
   async roomMembers(roomId: string) { return list(await request(`/rooms/${roomId}/members`), 'members').map(normalizeMember); },
   async matches() { return list(await request('/matches'), 'matches').map(item => { const source = object(item); return { matchId: text(source, 'matchId', 'match_id'), matchedAt: text(source, 'matchedAt', 'matched_at'), room: source.room ? normalizeRoom(source.room) : undefined, otherUser: source.otherUser ? normalizeUser(source.otherUser) : undefined } satisfies Match; }); },

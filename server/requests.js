@@ -45,6 +45,34 @@ export function createRoomRequestHandler(db, {
 
   return async function handleRoomRequest(request, response, url) {
     const { pathname } = url;
+    const profilePath = /^\/api\/requests\/(\d+)\/profile$/.exec(pathname);
+    if (request.method === 'GET' && profilePath) {
+      const owner = authenticate(db, request);
+      const requestId = positiveId(profilePath[1], 'requestId');
+      const row = db.prepare(`
+        SELECT room.owner_id, requester.user_id, requester.first_name, requester.last_name,
+          requester.profile_image, requester.university, requester.bio, requester.is_active,
+          lifestyle.lifestyle_name, preference.budget_min, preference.budget_max
+        FROM ROOM_REQUEST rr
+        JOIN ROOM room ON room.room_id = rr.room_id
+        JOIN USER requester ON requester.user_id = rr.user_id
+        LEFT JOIN LIFESTYLE lifestyle ON lifestyle.user_id = requester.user_id
+        LEFT JOIN PREFERENCE preference ON preference.user_id = requester.user_id
+        WHERE rr.request_id = ?
+      `).get(requestId);
+      assert(row, 404, 'Request not found');
+      assert(row.owner_id === owner.user_id, 403, 'Only the room owner can view the requester profile');
+      assert(row.is_active === 1, 404, 'Requester profile is unavailable');
+      // This stays a public profile even if the request has already been approved.
+      sendJson(response, 200, { profile: {
+        userId: row.user_id, firstName: row.first_name, lastName: row.last_name,
+        profileImage: row.profile_image, university: row.university, bio: row.bio,
+        lifestyle: row.lifestyle_name ?? null,
+        budgetMin: row.budget_min ?? null, budgetMax: row.budget_max ?? null,
+      } }, request);
+      return true;
+    }
+
     let pathMatch = /^\/api\/rooms\/(\d+)\/requests$/.exec(pathname)?.slice(1);
     if (request.method === 'POST' && pathMatch) {
       const user = authenticate(db, request);

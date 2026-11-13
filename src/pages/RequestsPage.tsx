@@ -1,10 +1,11 @@
 import { ProfilePhoto } from '../components/ProfilePhoto';
-import { ArrowUpRight, Inbox, RefreshCw, Send, UserCheck, UserX } from 'lucide-react';
+import { ArrowUpRight, Inbox, RefreshCw, Send, UserCheck, UserRound, UserX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { useOwnerRequests } from '../OwnerRequestsContext';
 import { PageHeader } from '../components/Layout';
+import { RequesterProfileModal } from '../components/RequesterProfileModal';
 import { Button, EmptyState, Modal, StatusBadge } from '../components/UI';
 import { api, ApiError } from '../lib/api';
 import type { JoinRequest, Room } from '../types';
@@ -22,6 +23,7 @@ export function RequestsPage() {
   const { ownerRequests: owner, loading: ownerLoading, error: ownerError, refreshOwnerRequests, updateOwnerRequest } = useOwnerRequests();
   const [view, setView] = useState<RequestView | null>(null);
   const [decision, setDecision] = useState<Decision | null>(null);
+  const [selectedRequester, setSelectedRequester] = useState<JoinRequest | null>(null);
   const [actionError, setActionError] = useState('');
   const [room, setRoom] = useState<Room | null>(null);
   const [roomLoading, setRoomLoading] = useState(false);
@@ -85,7 +87,7 @@ export function RequestsPage() {
 
   const ownerCard = (request: JoinRequest) => <article className="request-card owner-request-card" key={request.requestId}>
     <div className="request-person"><ProfilePhoto src={request.requester?.profileImage || ''} fallback={request.requester?.firstName?.charAt(0) || 'R'}/></div>
-    <div className="request-copy"><StatusBadge status={request.status}/><h3>{request.requester?.firstName} {request.requester?.lastName}</h3><p>ขอเข้าพักที่ {request.room?.title || 'ห้องของคุณ'} · {formatDate(request.requestedAt)}</p></div>
+    <div className="request-copy"><StatusBadge status={request.status}/><h3>{request.requester?.firstName} {request.requester?.lastName}</h3><p>ขอเข้าพักที่ {request.room?.title || 'ห้องของคุณ'} · {formatDate(request.requestedAt)}</p><button type="button" className="request-profile-link" disabled={Boolean(busyId)} onClick={() => setSelectedRequester(request)}><UserRound size={16}/>ดูโปรไฟล์</button></div>
     {request.status === 'pending' ? <div className="request-actions">
       <Button variant="secondary" disabled={Boolean(busyId)} onClick={() => openDecision(request, 'approved')}><UserCheck/>อนุมัติ</Button>
       <Button variant="quiet" disabled={Boolean(busyId)} onClick={() => openDecision(request, 'rejected')}><UserX/>ปฏิเสธ</Button>
@@ -110,6 +112,7 @@ export function RequestsPage() {
           {mine.length ? mine.map(request => <article className="request-card" key={request.requestId}><div className="request-person room-request-icon"><Send/></div><div className="request-copy"><StatusBadge status={request.status}/><h3>{request.room?.title || 'ประกาศห้อง'}</h3><p>ส่งเมื่อ {formatDate(request.requestedAt)}</p></div><Link className="icon-button" to={`/rooms/${request.room?.roomId}`} aria-label="ดูห้อง"><ArrowUpRight/></Link></article>)
             : <MiniEmpty icon={<Inbox/>} title="ยังไม่ได้ส่งคำขอ" text="เมื่อเจอห้องที่สนใจ คุณส่งคำขอได้จากหน้ารายละเอียดห้อง"/>}
         </RequestSection>}</div>}
+    {selectedRequester && <RequesterProfileModal key={selectedRequester.requestId} request={selectedRequester} onClose={() => setSelectedRequester(null)}/>}
     {decision && <Modal title={decision.status === 'approved' ? 'ยืนยันอนุมัติเข้าพัก' : 'ยืนยันปฏิเสธคำขอ'} onClose={closeDecision} actions={<>
       <Button variant="quiet" disabled={Boolean(busyId)} onClick={closeDecision}>ยกเลิก</Button>
       <Button variant={decision.status === 'approved' ? 'primary' : 'danger'} loading={Boolean(busyId)} disabled={!stillPending || (decision.status === 'approved' && (roomLoading || Boolean(roomError) || !canApprove))} onClick={decide}>{decision.status === 'approved' ? 'ยืนยันอนุมัติ' : 'ยืนยันปฏิเสธ'}</Button>
