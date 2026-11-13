@@ -5,12 +5,13 @@ This directory contains the eight original ER entities, the separately requested
 
 ## Files and order
 
-1. Run every file in `migrations/` in lexical order. Migration `001` creates the
+1. Use the application's `runMigrations` runner (called automatically by `npm run dev` / `npm start`), which applies files in numeric order and records filenames. Do not repeatedly execute raw migration SQL: `ALTER TABLE` migrations are intentionally one-time changes. Migration `001` creates the
    schema; migration `002` repairs literal `\\n` title separators created by an
    early development seed without changing descriptions that already contain
    real line feeds.
    Migration `003` only adds friend invitations and their constraints/indexes;
    it does not update or rebuild any existing table.
+   Migration `005` adds nullable listing metadata and the cancelled-request state while preserving rows. The internal `_roommatch_migrations` ledger also applies an earlier-numbered file arriving later, such as Favorites `004`, instead of skipping it because `user_version` is already 5. See [UX changes](../docs/UX_FIXES.md).
 2. Run `seed.sql` when demo data is wanted. The seed uses stable IDs,
    conflict-safe inserts, and existence guards, so it can be applied repeatedly
    without duplicating rows or overwriting data changed during a local session.
@@ -41,6 +42,12 @@ Deleting a user or room cascades to dependent rows. Frequently queried foreign
 keys, statuses, price, image order, and match roles are indexed. A partial unique
 index allows historical rejected/approved requests while permitting only one
 pending request for a user-room pair.
+
+`ROOM.price_basis` is `per_room`, `per_person`, or NULL for unknown legacy data;
+`locality` and `cost_notes` hold owner-provided location/cost information.
+`ROOM_REQUEST.cancelled` records withdrawal with `responded_at`, preserving history.
+`ROOM_MEMBER.left` releases capacity and revokes member/match visibility; reapproval
+reactivates the existing member/match rows with fresh joining timestamps.
 
 ## ER conflict and consequence
 

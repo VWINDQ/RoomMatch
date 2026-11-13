@@ -4,6 +4,7 @@ import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { test } from 'node:test';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { runMigrations } from '../server/database.js';
 
 const migrationDirectory = resolve('database/migrations');
 const migrationSql = readdirSync(migrationDirectory)
@@ -15,9 +16,9 @@ const seedSql = readFileSync(resolve('database/seed.sql'), 'utf8');
 function createSeededDatabase({ repeat = false } = {}) {
   const db = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
   db.exec('PRAGMA foreign_keys = ON');
-  for (const sql of migrationSql) db.exec(sql);
+  runMigrations(db);
   if (repeat) {
-    for (const sql of migrationSql) db.exec(sql);
+    runMigrations(db);
   }
   db.exec(seedSql);
   if (repeat) db.exec(seedSql);
@@ -29,7 +30,7 @@ test('migration preserves eight ER tables and adds isolated friend connections',
   try {
     const tables = db.prepare(`
       SELECT name FROM sqlite_schema
-      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT GLOB '_roommatch_*'
       ORDER BY name
     `).all().map(({ name }) => name);
 

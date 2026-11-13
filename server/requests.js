@@ -15,7 +15,8 @@ function requestSelect(whereClause) {
       requester.user_id AS requester_user_id,
       requester.first_name AS requester_first_name,
       requester.last_name AS requester_last_name,
-      requester.profile_image AS requester_profile_image
+      requester.profile_image AS requester_profile_image,
+      EXISTS(SELECT 1 FROM ROOM_MEMBER member WHERE member.room_id = rr.room_id AND member.user_id = rr.user_id AND member.status = 'approved') AS membership_active
     FROM ROOM_REQUEST rr
     JOIN ROOM room ON room.room_id = rr.room_id
     JOIN USER requester ON requester.user_id = rr.user_id
@@ -33,6 +34,7 @@ export function createRoomRequestHandler(db, {
       status: row.status,
       requestedAt: row.requested_at,
       respondedAt: row.responded_at,
+      membershipActive: Boolean(row.membership_active),
       room: roomSummary(row),
       requester: {
         userId: row.requester_user_id,
@@ -45,6 +47,24 @@ export function createRoomRequestHandler(db, {
 
   return async function handleRoomRequest(request, response, url) {
     const { pathname } = url;
+    const cancelPath = /^\/api\/requests\/(\d+)\/cancel$/.exec(pathname);
+    if (request.method === 'POST' && cancelPath) {
+      const user = authenticate(db, request);
+      const requestId = positiveId(cancelPath[1], 'requestId');
+      let updated;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const row = db.prepare(requestSelect('WHERE rr.request_id = ?')).get(requestId);
+        assert(row, 404, 'Request not found');
+        assert(row.user_id === user.user_id, 403, 'Only the requester can withdraw this request');
+        assert(['pending', 'cancelled'].includes(row.status), 409, 'Only a pending request can be withdrawn');
+        if (row.status === 'pending') db.prepare("UPDATE ROOM_REQUEST SET status = 'cancelled', responded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE request_id = ? AND status = 'pending'").run(requestId);
+        updated = requestDto(db.prepare(requestSelect('WHERE rr.request_id = ?')).get(requestId));
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+      sendJson(response, 200, { request: updated }, request);
+      return true;
+    }
     const profilePath = /^\/api\/requests\/(\d+)\/profile$/.exec(pathname);
     if (request.method === 'GET' && profilePath) {
       const owner = authenticate(db, request);
@@ -118,6 +138,7 @@ export function createRoomRequestHandler(db, {
       const body = await readJson(request);
       assert(REQUEST_DECISIONS.has(body.status), 400, 'status must be approved or rejected');
       let createdMatch = null;
+      let updatedRequest;
 
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -137,29 +158,29 @@ export function createRoomRequestHandler(db, {
           assert(joinRequest.room_status !== 'inactive', 409, 'Inactive rooms cannot accept requests');
           assert(Number(joinRequest.member_count) + 1 < joinRequest.capacity, 409, 'This room has reached capacity');
           assert(!db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(joinRequest.room_id, joinRequest.user_id), 409, 'The requester is already a room member');
-          assert(!db.prepare('SELECT 1 FROM MATCHES WHERE room_id = ? AND ((initiator_user_id = ? AND completer_user_id = ?) OR (initiator_user_id = ? AND completer_user_id = ?))').get(
-            joinRequest.room_id, joinRequest.user_id, owner.user_id, owner.user_id, joinRequest.user_id,
-          ), 409, 'A match already exists for these users and room');
 
           const changed = db.prepare("UPDATE ROOM_REQUEST SET status = 'approved', responded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE request_id = ? AND status = 'pending'").run(requestId);
           assert(changed.changes === 1, 409, 'This request has already been handled');
-          db.prepare("INSERT INTO ROOM_MEMBER (user_id, room_id, status) VALUES (?, ?, 'approved')").run(joinRequest.user_id, joinRequest.room_id);
-          const matchResult = db.prepare('INSERT INTO MATCHES (initiator_user_id, completer_user_id, room_id) VALUES (?, ?, ?)').run(owner.user_id, joinRequest.user_id, joinRequest.room_id);
+          db.prepare(`INSERT INTO ROOM_MEMBER (user_id, room_id, status) VALUES (?, ?, 'approved')
+            ON CONFLICT(user_id, room_id) DO UPDATE SET status = 'approved', joined_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).run(joinRequest.user_id, joinRequest.room_id);
+          db.prepare(`INSERT INTO MATCHES (initiator_user_id, completer_user_id, room_id) VALUES (?, ?, ?)
+            ON CONFLICT(room_id, completer_user_id) DO UPDATE SET matched_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).run(owner.user_id, joinRequest.user_id, joinRequest.room_id);
+          const matchId = db.prepare('SELECT match_id FROM MATCHES WHERE room_id = ? AND completer_user_id = ?').get(joinRequest.room_id, joinRequest.user_id).match_id;
           const occupancy = Number(joinRequest.member_count) + 2;
           if (occupancy >= joinRequest.capacity) {
             db.prepare("UPDATE ROOM SET status = 'full' WHERE room_id = ?").run(joinRequest.room_id);
           }
-          createdMatch = db.prepare(`${matchSelect()} WHERE m.match_id = ?`).get(Number(matchResult.lastInsertRowid));
+          createdMatch = db.prepare(`${matchSelect()} WHERE m.match_id = ?`).get(matchId);
         }
+        updatedRequest = requestDto(db.prepare(requestSelect('WHERE rr.request_id = ?')).get(requestId));
         db.exec('COMMIT');
       } catch (error) {
         db.exec('ROLLBACK');
         throw error;
       }
 
-      const updatedRequest = db.prepare(requestSelect('WHERE rr.request_id = ?')).get(requestId);
       sendJson(response, 200, {
-        request: requestDto(updatedRequest),
+        request: updatedRequest,
         ...(createdMatch ? { match: matchDto(createdMatch, owner.user_id) } : {}),
       }, request);
       return true;

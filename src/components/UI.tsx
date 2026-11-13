@@ -30,7 +30,7 @@ export function Chip({ children, selected = false, onClick }: { children: ReactN
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const labels: Record<string,string> = { available: 'ว่าง', full: 'เต็มแล้ว', inactive: 'ปิดประกาศ', pending: 'รอพิจารณา', approved: 'อนุมัติแล้ว', rejected: 'ไม่อนุมัติ' };
+  const labels: Record<string,string> = { available: 'ว่าง', full: 'เต็มแล้ว', inactive: 'พักประกาศ', pending: 'รอเจ้าของพิจารณา', approved: 'อนุมัติแล้ว', rejected: 'ไม่อนุมัติ', cancelled: 'ถอนคำขอแล้ว' };
   return <span className={`status ${status === 'available' || status === 'approved' ? 'available' : status === 'pending' ? 'pending' : 'unavailable'}`}><i />{labels[status] || status}</span>;
 }
 

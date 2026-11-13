@@ -23,6 +23,11 @@ The later user-requested people-first workflow adds `FRIEND_CONNECTION` as a
 separate ninth entity, without changing the original eight schemas or rows.
 Its contract and rationale are documented in [FRIENDS.md](FRIENDS.md).
 
+The later UX migration `005` extends `ROOM` with nullable `price_basis`, `locality`,
+and `cost_notes`, and adds `cancelled` to `ROOM_REQUEST` without losing existing rows.
+The filename ledger `_roommatch_migrations` is internal migration bookkeeping,
+not another business entity. Lifecycle/API details are in [UX_FIXES.md](UX_FIXES.md).
+
 Relationship foreign keys are added to those entities:
 
 - `LIFESTYLE.user_id -> USER.user_id`, unique and not null.
@@ -45,10 +50,10 @@ The approval transaction must:
 
 - verify the authenticated user owns the room;
 - reject self-requests and self-matches;
-- reject a duplicate membership or match;
+- reject an active duplicate membership; allow a former member to apply again;
 - reject duplicate pending requests;
 - reject approval when no place remains;
-- update the request, insert `ROOM_MEMBER`, and insert `MATCHES` atomically;
+- update the request and insert/reactivate `ROOM_MEMBER` and `MATCHES` atomically;
 - mark the room full when the capacity is reached.
 
 The owner is represented by `ROOM.owner_id`; the owner is not duplicated in `ROOM_MEMBER`.

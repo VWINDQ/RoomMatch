@@ -3,8 +3,8 @@
 ## ขอบเขตและไฟล์
 
 ต่อยอดจากการอนุมัติคำขอเข้าพักเดิม โดยแยก API อ่านสมาชิก/แมตช์มาไว้ใน
-`server/matches.js` คง URL และชื่อฟิลด์เดิม ไม่เพิ่มตารางหรือ endpoint ออกจากห้อง
-และไม่แก้ frontend ของเพื่อน
+`server/matches.js` คง URL และชื่อฟิลด์เดิม ส่วนการปรับ UX ล่าสุดเพิ่ม endpoint
+ออกจากห้องพร้อม UI ยืนยัน ดูรายละเอียด [UX_FIXES.md](UX_FIXES.md)
 
 ไฟล์ในงานนี้:
 
@@ -42,6 +42,7 @@ Errors: `400` สำหรับ roomId ไม่เป็นจำนวนเ�
 แต่ละรายการคงรูปแบบเดิม:
 
 - `matchId`, `matchedAt`
+- `otherRole`: `owner` หรือ `member` สำหรับผู้ใช้ฝั่งตรงข้าม
 - `room: { roomId, title }`
 - `otherUser: { userId, firstName, lastName, profileImage, bio, lineId, instagram }`
 
@@ -81,7 +82,8 @@ Tests เปิด HTTP server จริงบนพอร์ตสุ่มแ�
 ตรวจ auth/ID, empty state, pending/rejected/outsider, ช่องทางข้อมูลผ่านรายละเอียดห้อง,
 field whitelist, ลำดับเจ้าของและ timezone เก่า, การแยกแมตช์รายบัญชี,
 สมาชิกออก, พัก/ลบห้อง, ฐานข้อมูลล้มเหลว, บัญชี inactive และ persistence หลัง restart
-กรณีสมาชิกออกจำลองโดยแก้สถานะในฐานข้อมูลทดสอบ ไม่ได้เพิ่มปุ่มหรือ API ออกจากห้อง
+เคสเดิมจำลองสมาชิกออกผ่านฐานข้อมูล ส่วน `tests/ux-lifecycle.test.mjs` ตรวจ
+`DELETE /api/rooms/:roomId/members/me` จริง รวมสิทธิ์/idempotency/failure/rejoin/persistence
 การอ่านต้องไม่เปลี่ยนข้อมูล ตรวจ snapshot และทดสอบได้แม้ SQLite อยู่ใน query-only mode
 
 ก่อน commit ให้ลองผ่านเว็บด้วยบัญชีเจ้าของ สมาชิก และคนนอก:
@@ -92,5 +94,5 @@ field whitelist, ลำดับเจ้าของและ timezone เก�
 4. บัญชีที่ไม่ได้รับอนุมัติต้องไม่มีแมตช์นั้น และไม่ได้รายชื่อสมาชิกผ่าน API รายละเอียดห้อง
 5. ตรวจหน้า empty/error และ desktop/mobile ของ frontend ที่มีอยู่
 
-รอบนี้ตรวจ API ผ่าน HTTP และ build ไม่มีเครื่องมือควบคุม browser ใน session นี้
-จึงยังไม่อ้างว่าตรวจการกด UI ตาม checklist แล้ว ไม่มีการ stage, commit หรือ push ให้
+การตรวจ browser และ API ล่าสุด รวมออกจากห้อง/สมัครใหม่/อนุมัติซ้ำ อยู่ใน
+[UX_FIXES.md](UX_FIXES.md) ไม่มีการ stage, commit หรือ push ให้

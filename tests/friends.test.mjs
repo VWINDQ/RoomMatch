@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { startRoomMatchServer } from '../server/app.js';
 import { openDatabase, runMigrations } from '../server/database.js';
 
@@ -28,6 +30,8 @@ async function account(name) {
 }
 
 test('additive migration preserves every original table row and schema', () => {
+  const migrations = mkdtempSync(join(tmpdir(), 'roommatch-friend-migration-'));
+  for (const file of ['001_initial_schema.sql', '002_repair_room_description_newlines.sql', '003_friend_connections.sql']) copyFileSync(`database/migrations/${file}`, join(migrations, file));
   const legacy = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
   try {
     legacy.exec(readFileSync('database/migrations/001_initial_schema.sql', 'utf8'));
@@ -40,13 +44,13 @@ test('additive migration preserves every original table row and schema', () => {
       rows: legacy.prepare(`SELECT * FROM ${table}`).all(),
     }));
     const original = snapshot();
-    runMigrations(legacy);
+    runMigrations(legacy, migrations);
     assert.deepEqual(snapshot(), original);
     assert.equal(legacy.prepare('SELECT COUNT(*) AS count FROM FRIEND_CONNECTION').get().count, 0);
-    runMigrations(legacy);
+    runMigrations(legacy, migrations);
     assert.deepEqual(snapshot(), original);
     assert.deepEqual(legacy.prepare('PRAGMA foreign_key_check').all(), []);
-  } finally { legacy.close(); }
+  } finally { legacy.close(); rmSync(migrations, { recursive: true, force: true }); }
 });
 
 test('friend invitation → consent → shared contacts without changing room matches', async () => {

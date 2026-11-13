@@ -1,6 +1,6 @@
 import { Check, HeartHandshake, RefreshCw, Search, Send, UserRoundPlus, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
 import { ContactActions } from '../components/ContactActions';
@@ -41,16 +41,21 @@ function PersonCard({ person, badge, actions, onView, contact = false }: {
     <p className="friend-bio">{person.bio || 'ยังไม่ได้เขียนแนะนำตัว ลองทำความรู้จักกันก่อนตัดสินใจแชร์ห้อง'}</p>
     <dl className="friend-facts"><div><dt>ไลฟ์สไตล์</dt><dd>{person.lifestyle || 'ยังไม่ได้ระบุ'}</dd></div><div><dt>งบค่าห้องที่ตั้งไว้</dt><dd>{budgetLabel(person)}</dd></div></dl>
     {contact && <ContactActions {...person}/>}
-    <button className="friend-profile-link" onClick={onView}>ดูโปรไฟล์เต็ม</button>
+    <button className="friend-profile-link" onClick={onView}>ดูโปรไฟล์</button>
     <footer>{actions}</footer>
   </article>;
 }
 
 export function FriendsPage() {
   const { notify } = useApp();
-  const [view, setView] = useState<View>('discover');
-  const [invitationView, setInvitationView] = useState<InvitationView>('incoming');
-  const [query, setQuery] = useState('');
+  const [params, setParams] = useSearchParams();
+  const view = (['discover', 'invitations', 'friends'].includes(params.get('view') || '') ? params.get('view') : 'discover') as View;
+  const invitationView = (['incoming', 'outgoing', 'history'].includes(params.get('invitations') || '') ? params.get('invitations') : 'incoming') as InvitationView;
+  const query = params.get('q') || '';
+  const updateParams = (changes: Record<string,string>) => setParams(current => { const next = new URLSearchParams(current); for (const [key, value] of Object.entries(changes)) { if (value) next.set(key, value); else next.delete(key); } return next; }, { replace: true });
+  const setView = (value: View) => updateParams({ view: value });
+  const setInvitationView = (value: InvitationView) => updateParams({ invitations: value });
+  const setQuery = (value: string) => updateParams({ q: value });
   const [people, setPeople] = useState<FriendProfile[]>([]);
   const [connections, setConnections] = useState<FriendConnection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,8 +102,7 @@ export function FriendsPage() {
   };
   const activeInvitation = invitationGroups[invitationView];
   const openInvitations = (preferred?: InvitationView) => {
-    setInvitationView(preferred ?? (incoming.length ? 'incoming' : outgoing.length ? 'outgoing' : history.length ? 'history' : 'incoming'));
-    setView('invitations'); setActionError('');
+    updateParams({ view: 'invitations', invitations: preferred ?? (incoming.length ? 'incoming' : outgoing.length ? 'outgoing' : history.length ? 'history' : 'incoming') }); setActionError('');
   };
   const tabs: { value: View; label: string; count?: number }[] = [
     { value: 'discover', label: 'ทำความรู้จัก' }, { value: 'invitations', label: 'คำชวน', count: incomingCount },

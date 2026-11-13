@@ -1,34 +1,42 @@
 import { ArrowLeft, CalendarDays, ExternalLink, MapPin, RefreshCw, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { RoomGallery } from '../components/RoomGallery';
 import { ProfilePhoto } from '../components/ProfilePhoto';
 import { Price } from '../components/RoomCard';
-import { Button, EmptyState, StatusBadge } from '../components/UI';
+import { Button, EmptyState, Modal, StatusBadge } from '../components/UI';
 import { api } from '../lib/api';
+import { roomReturn } from '../lib/roomNavigation';
 import type { Room } from '../types';
 
 export function RoomDetailPage() {
   const { id = '' } = useParams(); const navigate = useNavigate(); const { notify } = useApp();
   const [room, setRoom] = useState<Room | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [sending, setSending] = useState(false); const [reload, setReload] = useState(0);
   const [requestError, setRequestError] = useState('');
+  const location = useLocation(); const back = roomReturn(location.state);
+  const [leaveOpen, setLeaveOpen] = useState(false); const [leaving, setLeaving] = useState(false); const [leaveError, setLeaveError] = useState('');
+  const leave = async () => { if (!room || leaving) return; setLeaving(true); setLeaveError(''); try { await api.leaveRoom(room.roomId); setLeaveOpen(false); notify('ออกจากห้องแล้ว ประวัติคำขอเดิมยังอยู่'); setReload(value => value + 1); } catch (caught) { setLeaveError(caught instanceof Error ? caught.message : 'ออกจากห้องไม่สำเร็จ'); } finally { setLeaving(false); } };
   useEffect(() => { let active = true; setLoading(true); setError(''); api.room(id).then(value => active && setRoom(value)).catch(caught => active && setError(caught instanceof Error ? caught.message : 'โหลดห้องไม่สำเร็จ')).finally(() => active && setLoading(false)); return () => { active = false; }; }, [id, reload]);
   const requestRoom = async () => { if (!room || sending) return; setRequestError(''); setSending(true); try { const request = await api.createJoinRequest(room.roomId); setRoom(current => current ? { ...current, requestStatus: request.status } : current); notify('ส่งคำขอเข้าพักแล้ว'); } catch (caught) { setRequestError(caught instanceof Error ? caught.message : 'ส่งคำขอไม่สำเร็จ'); } finally { setSending(false); } };
   if (loading) return <div className="page"><div className="detail-skeleton"><span/><span/><span/></div></div>;
   if (error || !room) return <div className="page"><EmptyState icon={<RefreshCw/>} title="เปิดประกาศนี้ไม่ได้" text={error || 'ไม่พบประกาศห้องนี้'} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
-  const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอพิจารณา' : room.requestStatus === 'approved' ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
-  return <div className="page detail-page"><button className="back-link" onClick={() => navigate('/rooms')}><ArrowLeft size={18}/>กลับไปดูห้องทั้งหมด</button>
-    <div className="detail-title"><div><StatusBadge status={room.status}/><h1>{room.title}</h1><p><MapPin size={16}/>{room.googleMapsUrl ? 'ดูตำแหน่งจากลิงก์แผนที่' : 'ยังไม่ระบุตำแหน่ง'}</p></div></div><RoomGallery room={room}/>
+  const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอพิจารณา' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
+  return <div className="page detail-page"><button className="back-link" onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}><ArrowLeft size={18}/>{back.label}</button>
+    <div className="detail-title"><div><StatusBadge status={room.status}/><h1>{room.title}</h1><p><MapPin size={16}/>{room.locality || 'เจ้าของยังไม่ระบุย่าน · ดูแผนที่ด้านล่าง'}</p></div></div><RoomGallery room={room}/>
     <div className="detail-layout"><div className="detail-main"><section><h2>เกี่ยวกับห้องนี้</h2><p className="description">{room.description || 'เจ้าของห้องยังไม่ได้เพิ่มรายละเอียด'}</p><div className="fact-row"><span><UsersRound/>จุ {room.capacity} คน (รวมเจ้าของ)</span><span><UserRound/>ว่าง {room.availableSlots} ที่</span><span><CalendarDays/>ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span></div></section>
+      <section><h2>ค่าใช้จ่ายที่ควรทราบ</h2><p className="description">{room.costNotes || 'เจ้าของยังไม่ระบุค่าน้ำ ค่าไฟ เงินประกัน หรือค่าแรกเข้า กรุณาสอบถามก่อนตกลงเข้าพัก'}</p>{!room.priceBasis && <p className="inline-note">ประกาศเดิมยังไม่ระบุว่าราคาต่อคนหรือทั้งห้อง กรุณายืนยันกับเจ้าของก่อนเทียบงบ</p>}</section>
       <section className="capacity-note"><ShieldCheck/><div><h2>จำนวนผู้พักคิดรวมเจ้าของห้อง</h2><p>เมื่อห้องเต็ม ระบบจะหยุดรับคำขอใหม่โดยอัตโนมัติ</p></div></section>
-      <section><h2>สมาชิกห้อง</h2><div className="detail-member-list"><Member person={room.owner} label="เจ้าของห้อง"/>{room.members?.map(member => <Member key={member.userId} person={member.user} label="สมาชิก"/>)}</div></section>
+      <section><h2>สมาชิกห้อง</h2><div className="detail-member-list"><Member person={room.owner} label="เจ้าของห้อง"/>{room.members?.map(member => <Member key={member.userId} person={member.user} label="สมาชิก"/>)}</div>{!room.isOwner && !room.isMember && <p className="field-hint">รายชื่อสมาชิกคนอื่นจะแสดงเมื่อเจ้าของอนุมัติให้คุณเข้าพักแล้ว</p>}</section>
       {room.googleMapsUrl && <section className="map-preview"><div><MapPin/><span><strong>ตำแหน่งห้อง</strong><small>เปิด Google Maps ในแท็บใหม่</small></span></div><a className="button button-secondary" href={room.googleMapsUrl} target="_blank" rel="noreferrer">ดูบนแผนที่ <ExternalLink size={16}/></a></section>}
-    </div><aside className="detail-sidebar"><Price amount={room.price}/><StatusBadge status={room.status}/><hr/><h2>เจ้าของประกาศ</h2><div className="owner-mini"><span><ProfilePhoto src={room.owner?.profileImage || ''} fallback={room.owner?.firstName?.charAt(0) || 'R'}/></span><div><strong>{room.owner ? `${room.owner.firstName} ${room.owner.lastName}` : 'สมาชิก RoomMatch'}</strong><small>{room.owner?.university || 'ผู้ลงประกาศ'}</small></div></div>
-      {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`)}>แก้ไขประกาศของฉัน</Button> : <Button className="w-full" loading={sending} disabled={room.requestStatus === 'pending' || room.requestStatus === 'approved' || room.status !== 'available' || room.availableSlots < 1} onClick={requestRoom}>{requestLabel}</Button>}
+    </div><aside className="detail-sidebar"><Price amount={room.price} basis={room.priceBasis}/><StatusBadge status={room.status}/><hr/><h2>เจ้าของประกาศ</h2><div className="owner-mini"><span><ProfilePhoto src={room.owner?.profileImage || ''} fallback={room.owner?.firstName?.charAt(0) || 'R'}/></span><div><strong>{room.owner ? `${room.owner.firstName} ${room.owner.lastName}` : 'สมาชิก RoomMatch'}</strong><small>{room.owner?.university || 'ผู้ลงประกาศ'}</small></div></div>
+      {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`)}>แก้ไขประกาศของฉัน</Button> : <Button className="w-full" loading={sending} disabled={room.requestStatus === 'pending' || room.isMember || room.status !== 'available' || room.availableSlots < 1} onClick={requestRoom}>{requestLabel}</Button>}
+      {room.isMember && !room.isOwner && <Button variant="quiet" className="w-full" onClick={() => { setLeaveError(''); setLeaveOpen(true); }}>ออกจากห้องนี้</Button>}
+      {room.requestStatus === 'approved' && !room.isMember && !room.isOwner && <p className="inline-note">คำขอเดิมได้รับอนุมัติ แต่ขณะนี้คุณไม่ได้เป็นสมาชิกห้องนี้ หากต้องการกลับเข้าพักให้ส่งคำขอใหม่</p>}
       {requestError && <p className="form-alert" role="alert">{requestError}</p>}
-      {room.requestStatus === 'rejected' && <p className="inline-note">คำขอก่อนหน้าไม่ได้รับการอนุมัติ</p>}<Link className="detail-text-link" to="/requests">ดูสถานะคำขอทั้งหมด</Link>
+      {room.requestStatus === 'rejected' && <p className="inline-note">คำขอก่อนหน้าไม่ได้รับการอนุมัติ</p>}<Link className="detail-text-link" to="/requests?view=sent">ดูสถานะคำขอทั้งหมด</Link>
     </aside></div>
+    {leaveOpen && <Modal title="ออกจากห้องนี้?" onClose={() => { if (!leaving) setLeaveOpen(false); }} actions={<><Button variant="quiet" disabled={leaving} onClick={() => setLeaveOpen(false)}>อยู่ในห้องต่อ</Button><Button variant="danger" loading={leaving} onClick={leave}>ยืนยันออกจากห้อง</Button></>}><p>คุณจะคืนที่ว่างและไม่เห็นสมาชิกหรือช่องทางติดต่อผ่านห้องนี้อีก ประวัติคำขอจะยังอยู่ หากกลับเข้าพักต้องให้เจ้าของอนุมัติใหม่</p><p className="inline-note">ควรคุยกับเจ้าของเรื่องการย้ายออกและค่าใช้จ่ายที่ตกลงกันก่อน</p>{leaveError && <p className="form-alert" role="alert">{leaveError}</p>}</Modal>}
   </div>;
 }
 

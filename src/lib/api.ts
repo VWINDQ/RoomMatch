@@ -1,4 +1,5 @@
 import type { FriendConnection, FriendProfile, JoinRequest, Lifestyle, Match, Preference, ProfileBundle, Room, RoomMember, User } from '../types';
+import { friendlyApiError } from './apiErrors';
 
 const TOKEN_KEY = 'roommatch:token';
 type JsonObject = Record<string, unknown>;
@@ -38,6 +39,7 @@ function normalizeRoom(value: unknown): Room {
   return {
     roomId: text(source, 'roomId', 'room_id', 'id'), ownerId: text(source, 'ownerId', 'owner_id'), title: text(source, 'title'), description: text(source, 'description'),
     googleMapsUrl: text(source, 'googleMapsUrl', 'google_maps_url', 'mapUrl'), price: numeric(source, 'price', 'monthlyPrice'), capacity: numeric(source, 'capacity') || 1,
+    priceBasis: (pick(source, 'priceBasis', 'price_basis') ?? null) as Room['priceBasis'], locality: text(source, 'locality'), costNotes: text(source, 'costNotes', 'cost_notes'), isMember: Boolean(source.isMember),
     status: (text(source, 'status') || 'available') as Room['status'], createdAt: text(source, 'createdAt', 'created_at'), owner: source.owner ? normalizeUser(source.owner) : undefined,
     images, members: Array.isArray(rawMembers) ? rawMembers.map(normalizeMember) : undefined, memberCount: numeric(source, 'memberCount', 'member_count'),
     availableSlots: numeric(source, 'availableSlots', 'available_slots'), isOwner: Boolean(source.isOwner ?? source.is_owner),
@@ -53,7 +55,7 @@ function normalizeMember(value: unknown): RoomMember {
 function normalizeRequest(value: unknown): JoinRequest {
   const source = object(value); const room = source.room ? normalizeRoom(source.room) : undefined;
   return { requestId: text(source, 'requestId', 'request_id', 'id'), roomId: text(source, 'roomId', 'room_id') || room?.roomId, userId: text(source, 'userId', 'user_id'),
-    status: (text(source, 'status') || 'pending') as JoinRequest['status'], requestedAt: text(source, 'requestedAt', 'requested_at'), respondedAt: text(source, 'respondedAt', 'responded_at'),
+    status: (text(source, 'status') || 'pending') as JoinRequest['status'], membershipActive: typeof source.membershipActive === 'boolean' ? source.membershipActive : undefined, requestedAt: text(source, 'requestedAt', 'requested_at'), respondedAt: text(source, 'respondedAt', 'responded_at'),
     room, requester: source.requester ? normalizeUser(source.requester) : undefined };
 }
 
@@ -76,7 +78,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try { response = await fetch(`/api${path}`, { ...options, headers }); }
   catch { throw new ApiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง', 0); }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
-  if (!response.ok) throw new ApiError(text(object(payload), 'error', 'message') || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', response.status);
+  if (!response.ok) throw new ApiError(friendlyApiError(text(object(payload), 'error', 'message'), response.status), response.status);
   return payload as T;
 }
 
@@ -121,12 +123,14 @@ export const api = {
   async updateRoom(roomId: string, payload: JsonObject) { const result = await request<JsonObject>(`/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(payload) }); return normalizeRoom(result.room); },
   deleteRoom: (roomId: string) => request<void>(`/rooms/${roomId}`, { method: 'DELETE' }),
   async createJoinRequest(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}/requests`, { method: 'POST' }); return normalizeRequest(result.request); },
+  async cancelRequest(requestId: string) { const result = await request<JsonObject>(`/requests/${requestId}/cancel`, { method: 'POST' }); return normalizeRequest(result.request); },
+  leaveRoom: (roomId: string) => request<void>(`/rooms/${roomId}/members/me`, { method: 'DELETE' }),
   async mineRequests() { return list(await request('/requests/mine'), 'requests').map(normalizeRequest); },
   async ownerRequests() { return list(await request('/owner/requests'), 'requests').map(normalizeRequest); },
   async requesterProfile(requestId: string) { const result = await request<JsonObject>(`/requests/${encodeURIComponent(requestId)}/profile`); return normalizeFriend(result.profile); },
   async decideRequest(requestId: string, status: 'approved' | 'rejected') { const result = await request<JsonObject>(`/requests/${requestId}`, { method: 'PATCH', body: JSON.stringify({ status }) }); return normalizeRequest(result.request); },
   async roomMembers(roomId: string) { return list(await request(`/rooms/${roomId}/members`), 'members').map(normalizeMember); },
-  async matches() { return list(await request('/matches'), 'matches').map(item => { const source = object(item); return { matchId: text(source, 'matchId', 'match_id'), matchedAt: text(source, 'matchedAt', 'matched_at'), room: source.room ? normalizeRoom(source.room) : undefined, otherUser: source.otherUser ? normalizeUser(source.otherUser) : undefined } satisfies Match; }); },
+  async matches() { return list(await request('/matches'), 'matches').map(item => { const source = object(item); return { matchId: text(source, 'matchId', 'match_id'), matchedAt: text(source, 'matchedAt', 'matched_at'), otherRole: text(source, 'otherRole') as Match['otherRole'], room: source.room ? normalizeRoom(source.room) : undefined, otherUser: source.otherUser ? normalizeUser(source.otherUser) : undefined } satisfies Match; }); },
   async profile() { return normalizeProfile(await request('/profile')); },
   async updateProfile(payload: JsonObject) { return normalizeProfile(await request('/profile', { method: 'PATCH', body: JSON.stringify(payload) })); },
   updateLifestyle: (payload: Lifestyle) => request('/lifestyle', { method: 'PUT', body: JSON.stringify(payload) }),

@@ -332,9 +332,14 @@ limitations. Friend invitations are not a Like/Pass or mutual-like system.
 - On approval, create membership and match records atomically.
 - View room members and matches involving the authenticated user.
 
+Latest usability improvements: withdraw a pending request, leave a joined room
+with capacity/privacy updates, specify room price units/location/additional costs,
+and preserve search/filter/tab context. See [UX changes and verification](docs/UX_FIXES.md)
+for migration `005`, API additions, teammate integration notes, and browser QA.
+
 ## ER model
 
-The original room workflow retains its eight ER tables unchanged:
+The original room workflow uses these eight ER tables:
 
 1. `USER`
 2. `LIFESTYLE`
