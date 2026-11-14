@@ -12,8 +12,23 @@ import { RequestsPage } from './pages/RequestsPage';
 import { RoomDetailPage } from './pages/RoomDetailPage';
 import { RoomsPage } from './pages/RoomsPage';
 import { FriendsPage } from './pages/FriendsPage';
+import { FavoritesPage } from './pages/FavoritesPage';
 
-function ScrollToTop() { const { pathname } = useLocation(); useEffect(() => { window.scrollTo(0, 0); }, [pathname]); return null; }
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    const workspace = document.querySelector<HTMLElement>('.workspace');
+
+    if (workspace) {
+      workspace.scrollTop = 0;
+    } else {
+      window.scrollTo(0, 0);
+    }
+  }, [pathname]);
+
+  return null;
+}
 
 function ProtectedRoutes() {
   const { user, authLoading, authError, retryAuth } = useApp(); const location = useLocation();
@@ -34,6 +49,7 @@ function RoutedApp() {
     <Route path="/login" element={<GuestOnly><LoginPage/></GuestOnly>}/>
     <Route path="/register" element={<GuestOnly><RegisterPage/></GuestOnly>}/>
     <Route element={<ProtectedRoutes/>}><Route element={<AppShell/>}>
+      <Route path="/favorites" element={<FavoritesPage/>}/>
       <Route path="/rooms" element={<RoomsPage/>}/><Route path="/rooms/:id" element={<RoomDetailPage/>}/>
       <Route path="/my-listings" element={<MyListingsPage/>}/><Route path="/my-listings/new" element={<ListingFormPage/>}/><Route path="/my-listings/:id/edit" element={<ListingFormPage/>}/>
       <Route path="/requests" element={<RequestsPage/>}/><Route path="/matches" element={<MatchesPage/>}/><Route path="/profile" element={<ProfilePage/>}/>

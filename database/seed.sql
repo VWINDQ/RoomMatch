@@ -102,3 +102,8 @@ WHERE NOT EXISTS (SELECT 1 FROM MATCHES WHERE match_id = 1);
 INSERT INTO MATCHES (match_id, initiator_user_id, completer_user_id, room_id, matched_at)
 SELECT 2, 2, 5, 2, '2026-02-06T20:00:00.000Z'
 WHERE NOT EXISTS (SELECT 1 FROM MATCHES WHERE match_id = 2);
+
+-- ตัวอย่างห้องโปรดของผู้ใช้ตัวอย่างหลัก (user_id 1)
+INSERT OR IGNORE INTO ROOM_FAVORITE (user_id, room_id) VALUES
+    (1, 2),
+    (1, 4);

@@ -1,4 +1,4 @@
-import { Building2, Home, LogOut, Plus, Sparkles, UserRound, UsersRound, UserRoundPlus } from 'lucide-react';
+import { Building2, Home, LogOut, Plus, Sparkles, UserRound, UsersRound, UserRoundPlus, Heart } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { OwnerRequestsProvider, useOwnerRequests } from '../OwnerRequestsContext';
@@ -7,6 +7,7 @@ const destinations = [
   { to: '/rooms', label: 'รวมประกาศห้อง', mobile: 'ห้อง', icon: Home },
   { to: '/friends', label: 'หาเพื่อนก่อนหาห้อง', mobile: 'หาเพื่อน', icon: UserRoundPlus },
   { to: '/my-listings', label: 'ประกาศของฉัน', mobile: 'ประกาศ', icon: Building2 },
+  { to: '/favorites', label: 'ห้องโปรด', mobile: 'โปรด', icon: Heart },
   { to: '/requests', label: 'คำขอเข้าพัก', mobile: 'คำขอ', icon: UsersRound },
   { to: '/matches', label: 'เพื่อนร่วมห้อง', mobile: 'แมตช์', icon: Sparkles },
   { to: '/profile', label: 'โปรไฟล์', mobile: 'โปรไฟล์', icon: UserRound },
@@ -16,17 +17,66 @@ export function Logo({ compact = false }: { compact?: boolean }) {
   return <NavLink to="/rooms" className="logo" aria-label="ROOMMATCH หน้าแรก"><span className="logo-mark"><Building2 size={20}/></span>{!compact && <span>ROOMMATCH</span>}</NavLink>;
 }
 
+const mobileOrder = [
+  '/rooms',
+  '/friends',
+  '/my-listings',
+  '/favorites',
+  '/requests',
+  '/matches',
+];
+
 function NavItems({ mobile = false }: { mobile?: boolean }) {
+  const items = mobile
+    ? mobileOrder.map(path => destinations.find(item => item.to === path)!)
+    : destinations;
+
   const { ownerRequests, error } = useOwnerRequests();
-  const pendingCount = ownerRequests.filter(request => request.status === 'pending').length;
-  return <>{destinations.map(({ to, label, mobile: mobileLabel, icon: Icon }) => {
-    const hasPending = to === '/requests' && pendingCount > 0;
-    return <NavLink key={to} to={to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
-      aria-label={hasPending ? `${label} มี ${pendingCount} คำขอรอพิจารณา` : label}
-      title={to === '/requests' && error ? 'ตรวจสอบคำขอใหม่ไม่สำเร็จ เปิดหน้าคำขอเพื่อลองอีกครั้ง' : hasPending ? `${pendingCount} คำขอรอพิจารณา` : undefined}>
-      <span className="nav-icon"><Icon size={20}/>{hasPending && <span className="request-notification-dot" aria-hidden="true"/>}</span><span>{mobile ? mobileLabel : label}</span>
-    </NavLink>;
-  })}</>;
+
+  const pendingCount = ownerRequests.filter(
+    request => request.status === 'pending'
+  ).length;
+
+  return (
+    <>
+      {items.map(({ to, label, mobile: mobileLabel, icon: Icon }) => {
+        const hasPending = to === '/requests' && pendingCount > 0;
+
+        return (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) =>
+              `nav-link ${isActive ? 'active' : ''}`
+            }
+            aria-label={
+              hasPending
+                ? `${label} มี ${pendingCount} คำขอรอพิจารณา`
+                : label
+            }
+            title={
+              to === '/requests' && error
+                ? 'ตรวจสอบคำขอใหม่ไม่สำเร็จ เปิดหน้าคำขอเพื่อลองอีกครั้ง'
+                : hasPending
+                  ? `${pendingCount} คำขอรอพิจารณา`
+                  : undefined
+            }
+          >
+            <span className="nav-icon">
+              <Icon size={20} />
+              {hasPending && (
+                <span
+                  className="request-notification-dot"
+                  aria-hidden="true"
+                />
+              )}
+            </span>
+            <span>{mobile ? mobileLabel : label}</span>
+          </NavLink>
+        );
+      })}
+    </>
+  );
 }
 
 export function AppShell() {
