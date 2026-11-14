@@ -206,6 +206,7 @@ function roomDto(row, images = [], options = {}) {
     ...(options.currentUserId ? { isOwner: row.owner_id === options.currentUserId } : {}),
     ...(options.isMember !== undefined ? { isMember: options.isMember } : {}),
     ...(options.requestStatus !== undefined ? { requestStatus: options.requestStatus } : {}),
+    ...(options.pendingRequestId !== undefined ? { pendingRequestId: options.pendingRequestId } : {}),
     ...(options.members ? { members: options.members } : {}),
   };
 }
@@ -664,17 +665,20 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         assert(room, 404, 'Room not found');
         const currentUser = authenticate(db, request, { optional: true });
         let requestStatus;
+        let pendingRequestId;
         if (currentUser) {
-          requestStatus = db.prepare(`
-            SELECT status FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? ORDER BY request_id DESC LIMIT 1
-          `).get(roomId, currentUser.user_id)?.status ?? null;
+          const ownRequest = db.prepare(`
+            SELECT request_id, status FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? ORDER BY request_id DESC LIMIT 1
+          `).get(roomId, currentUser.user_id);
+          requestStatus = ownRequest?.status ?? null;
+          pendingRequestId = ownRequest?.status === 'pending' ? ownRequest.request_id : null;
         }
         const isMember = Boolean(currentUser && db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, currentUser.user_id));
         const members = canViewRoomMembers(db, room, currentUser?.user_id)
           ? listRoomMembers(db, roomId, userDto).filter(member => member.status !== 'owner')
           : [];
         sendJson(response, 200, {
-          room: roomDto(room, imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, members, isMember }),
+          room: roomDto(room, imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, pendingRequestId, members, isMember }),
         }, request);
         return;
       }

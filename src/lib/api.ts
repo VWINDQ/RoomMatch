@@ -44,6 +44,7 @@ function normalizeRoom(value: unknown): Room {
     images, members: Array.isArray(rawMembers) ? rawMembers.map(normalizeMember) : undefined, memberCount: numeric(source, 'memberCount', 'member_count'),
     availableSlots: numeric(source, 'availableSlots', 'available_slots'), isOwner: Boolean(source.isOwner ?? source.is_owner),
     requestStatus: (pick(source, 'requestStatus', 'request_status') ?? null) as Room['requestStatus'],
+    pendingRequestId: text(source, 'pendingRequestId', 'pending_request_id') || null,
   };
 }
 

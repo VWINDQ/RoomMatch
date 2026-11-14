@@ -41,6 +41,7 @@ export type Room = {
   isOwner?: boolean;
   isMember?: boolean;
   requestStatus?: RequestStatus | null;
+  pendingRequestId?: string | null;
 };
 
 export type RoomMember = {
