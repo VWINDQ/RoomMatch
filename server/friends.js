@@ -89,6 +89,29 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
     return;
   }
 
+  const cancelMatch = /^\/api\/friends\/connections\/(\d+)\/cancel$/.exec(url.pathname);
+  if (request.method === 'POST' && cancelMatch) {
+    const connectionId = Number(cancelMatch[1]);
+    assert(Number.isSafeInteger(connectionId) && connectionId > 0, 400, 'connectionId must be a positive safe integer');
+    const connection = writeConnection(db, () => {
+      assert(db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(viewerId), 401, 'Authentication required');
+      const row = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(connectionId);
+      assert(row, 404, 'ไม่พบคำชวน');
+      assert(row.sender_id === viewerId, 403, 'เฉพาะผู้ส่งเท่านั้นที่ถอนคำชวนได้');
+      // A retry after a lost response returns the original outcome and timestamp.
+      if (row.status === 'cancelled') return connectionDto(db, row, viewerId);
+      assert(row.status === 'pending', 409, 'คำชวนนี้ได้รับการตอบกลับแล้ว ถอนคำชวนไม่ได้ กรุณาอัปเดตคำชวน');
+      const result = db.prepare(`UPDATE FRIEND_CONNECTION
+        SET status = 'cancelled', responded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        WHERE connection_id = ? AND status = 'pending'`).run(connectionId);
+      assert(result.changes === 1, 409, 'คำชวนนี้เปลี่ยนสถานะแล้ว กรุณาอัปเดตคำชวน');
+      const updated = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(connectionId);
+      return connectionDto(db, updated, viewerId);
+    });
+    sendJson(response, 200, { connection }, request);
+    return;
+  }
+
   const match = /^\/api\/friends\/connections\/(\d+)$/.exec(url.pathname);
   if (request.method === 'PATCH' && match) {
     const connectionId = Number(match[1]);

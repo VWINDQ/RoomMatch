@@ -11,8 +11,10 @@ unchanged. The extended ER therefore has nine entities, not eight.
 `USER 1:N FRIEND_CONNECTION` has two roles: sender and recipient. No room is required.
 An unordered user pair has one invitation; self-invitations and duplicate reversed
 invitations are forbidden. Status starts `pending`; only the recipient can move it
-to `accepted` or `declined`. Final decisions cannot be reversed or re-sent in this
-version. Several accepted connections are allowed; acceptance is not exclusive.
+to `accepted` or `declined`. Migration `006` also permits the sender to withdraw a
+pending invitation as `cancelled`. All three final states remain in history and
+cannot be reversed or re-sent in this version. Several accepted connections are
+allowed; acceptance is not exclusive.
 
 ## API
 
@@ -22,6 +24,11 @@ version. Several accepted connections are allowed; acceptance is not exclusive.
 - `GET /api/friends/connections`: only the viewer's connections, with incoming/outgoing direction.
 - `POST /api/friends/connections` with numeric `recipientId`: sends a pending invitation.
 - `PATCH /api/friends/connections/:id` with `status: accepted | declined`: recipient-only decision.
+- `POST /api/friends/connections/:id/cancel`: sender-only withdrawal of a pending
+  invitation, with no request body required. Returns `{ connection }` with status
+  `cancelled` and its withdrawal time in `respondedAt`. Retrying an already
+  cancelled invitation returns the same result/time. An accepted or declined
+  invitation returns `409`; withdrawal never ends an accepted friendship.
 
 Discovery exposes name, university, bio, profile image, lifestyle, and stated budget.
 It does not expose exact birth dates, passwords, email, phone, LINE, or Instagram.
@@ -35,6 +42,15 @@ includes full-profile viewing, search, loading/empty/error states, and responsiv
 navigation. A matched friend can open `/rooms?withFriend=<userId>`; room browsing
 then shows the validated accepted partner as context. Normal room search remains
 unchanged when this query parameter is absent.
+
+Pending outgoing cards and their profile dialogs offer **ถอนคำชวน**. Confirmation
+explains that history is retained and this pair cannot be invited again under the
+existing uniqueness rule. Closing confirmation from a profile returns to that
+profile. Success opens invitation history with focus on its selected filter;
+sender/recipient history labels distinguish who withdrew and show the withdrawal
+time. Cancelled invitations do not show contact controls or recipient decisions.
+Failed requests keep confirmation open for retry. A `409` reloads connection state
+and disables withdrawal if the recipient has already decided, preserving consent.
 
 This handoff is not a group reservation or a new room membership. Both people still
 discuss budget and available places, then follow the existing individual join-request
@@ -78,8 +94,9 @@ URL/ชื่อฟิลด์ API หรือ frontend ของเพื่�
   คนที่สามค้นโปรไฟล์เดียวกันก็ยังไม่เห็นข้อมูลติดต่อ
 - คู่ที่มีบัญชี inactive จะไม่แสดงในรายการ connections รวมถึงคู่ที่เคยตอบรับ
   ข้อมูลประวัติยังคงเก็บไว้ และบัญชี inactive ใช้ API เหล่านี้ไม่ได้
-- ยังไม่รองรับส่งคำชวนซ้ำหลังปฏิเสธ เปลี่ยนคำตอบ ถอนคำชวน หรือเลิกเป็นเพื่อน
-  ซึ่งต้องตกลง flow/constraints ก่อนเพิ่มในอนาคต
+- ถอนคำชวนได้ผ่าน `POST /api/friends/connections/:id/cancel` เฉพาะผู้ส่งและสถานะ
+  `pending` ประวัติและเวลาถอนเก็บในแถวเดิม ไม่มีการแชร์ช่องทางติดต่อจากคำชวนที่ถอน
+- ยังไม่รองรับส่งคำชวนซ้ำหลังปฏิเสธ/ถอน เปลี่ยนคำตอบ หรือเลิกเป็นเพื่อน
 - เป็นเพื่อนกับหลายคนได้ การตอบรับไม่เพิ่มข้อมูลใน ROOM/ROOM_MEMBER/MATCHES
 
 ### Error contract
@@ -89,10 +106,27 @@ URL/ชื่อฟิลด์ API หรือ frontend ของเพื่�
 - `400`: คำค้นเกิน 100 ตัวอักษร, recipientId/connectionId ไม่ถูกต้อง, ส่งหาตัวเอง,
   JSON ไม่ถูกต้อง หรือ status ไม่ใช่ accepted/declined
 - `401`: token/บัญชีใช้เข้าสู่ระบบไม่ได้
-- `403`: ผู้ตอบไม่ใช่ผู้รับคำชวน
+- `403`: ผู้ตอบไม่ใช่ผู้รับคำชวน หรือผู้ถอนคำชวนไม่ใช่ผู้ส่ง
 - `404`: ไม่พบผู้รับที่ยังใช้งาน หรือไม่พบคำชวน
 - `409`: คู่ซ้ำ/กลับด้าน คู่ถูกตอบไปแล้ว หรือผู้ส่งคำชวน inactive
 - `500`: ข้อผิดพลาดฐานข้อมูลที่ไม่คาดคิด ไม่ส่ง stack trace/SQL กลับ client
+
+## Withdrawal verification
+
+`tests/friend-cancellation-api.test.mjs` exercises the running HTTP server for
+sender authorization, invalid IDs, missing/empty records, privacy, idempotent
+retries, accepted/declined conflicts, competing decisions, database/read failures
+with rollback, and persistence after restarting with the same SQLite database.
+Existing room records and Favorites are not changed by withdrawal.
+
+UI verification used an isolated QA database at desktop 1440×900, tablet
+820×1000 and mobile 320×740 / 390×844. Tested profile → confirmation → keep
+invitation, successful withdrawal and history after nested-route refresh, sender
+and recipient history labels, hidden contacts, keyboard Tab/Escape and restored
+focus, database failure with retry, disabled buttons during a delayed request,
+and acceptance from a second account while confirmation was open. The accepted
+friendship remained intact. Final checks: `npm test` (106 passed),
+`npm run build`, and `git diff --check`.
 
 ### วิธีตรวจงาน
 

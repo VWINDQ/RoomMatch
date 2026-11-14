@@ -70,12 +70,13 @@ test('listing metadata remains unknown for legacy rooms and is validated, search
 test('a failed migration rolls back schema and ledger changes and can be retried', () => {
   const directory = mkdtempSync(join(tmpdir(), 'roommatch-migration-retry-'));
   const db = openDatabase({ filename: ':memory:' });
+  const originalVersion = db.prepare('PRAGMA user_version').get().user_version;
   try {
     writeFileSync(join(directory, '006_failure.sql'), 'ALTER TABLE ROOM ADD COLUMN retry_probe TEXT; INSERT INTO missing_table VALUES(1);');
     assert.throws(() => runMigrations(db, directory), /Migration 006_failure.sql failed/);
     assert.equal(db.prepare('PRAGMA table_info(ROOM)').all().some(row => row.name === 'retry_probe'), false);
     assert.equal(db.prepare("SELECT 1 FROM _roommatch_migrations WHERE filename = '006_failure.sql'").get(), undefined);
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version, 5);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, originalVersion);
     writeFileSync(join(directory, '006_failure.sql'), 'ALTER TABLE ROOM ADD COLUMN retry_probe TEXT;');
     runMigrations(db, directory);
     assert.ok(db.prepare('PRAGMA table_info(ROOM)').all().some(row => row.name === 'retry_probe'));
