@@ -145,6 +145,9 @@ Tests ใช้ HTTP server จริงบนพอร์ตสุ่มแล�
 
 ## Checklist ให้เจ้าของฟีเจอร์ลองผ่านเว็บก่อน commit
 
+ผลตรวจรับด้วยเจ้าของห้องและผู้ขอ 2 คน พร้อม empty/invalid/failure/persistence
+และวิธีเปิดฐาน QA แยกสำหรับทีม: [RM-16 acceptance](RM16_ACCEPTANCE.md)
+
 1. เปิดเว็บด้วย `npm run dev` ตาม README ใช้บัญชีเจ้าของห้อง A และผู้ขอ B
    ใน browser profile แยกกันหรือ private window
 2. B เปิดห้องที่มีที่ว่าง แล้วกดขอเข้าพัก ปุ่มต้องกลายเป็นรอพิจารณา
