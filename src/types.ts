@@ -99,6 +99,6 @@ export type FriendProfile = {
 };
 export type FriendConnection = {
   connectionId: string; direction: 'incoming' | 'outgoing';
-  status: 'pending' | 'accepted' | 'declined'; createdAt: string; respondedAt: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled'; createdAt: string; respondedAt: string;
   person: FriendProfile;
 };

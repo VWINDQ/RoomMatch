@@ -43,6 +43,15 @@ navigation. A matched friend can open `/rooms?withFriend=<userId>`; room browsin
 then shows the validated accepted partner as context. Normal room search remains
 unchanged when this query parameter is absent.
 
+Pending outgoing cards and their profile dialogs offer **ถอนคำชวน**. Confirmation
+explains that history is retained and this pair cannot be invited again under the
+existing uniqueness rule. Closing confirmation from a profile returns to that
+profile. Success opens invitation history with focus on its selected filter;
+sender/recipient history labels distinguish who withdrew and show the withdrawal
+time. Cancelled invitations do not show contact controls or recipient decisions.
+Failed requests keep confirmation open for retry. A `409` reloads connection state
+and disables withdrawal if the recipient has already decided, preserving consent.
+
 This handoff is not a group reservation or a new room membership. Both people still
 discuss budget and available places, then follow the existing individual join-request
 and owner-approval workflow. No invitation inserts into `ROOM_MEMBER` or `MATCHES`.
@@ -109,6 +118,15 @@ sender authorization, invalid IDs, missing/empty records, privacy, idempotent
 retries, accepted/declined conflicts, competing decisions, database/read failures
 with rollback, and persistence after restarting with the same SQLite database.
 Existing room records and Favorites are not changed by withdrawal.
+
+UI verification used an isolated QA database at desktop 1440×900, tablet
+820×1000 and mobile 320×740 / 390×844. Tested profile → confirmation → keep
+invitation, successful withdrawal and history after nested-route refresh, sender
+and recipient history labels, hidden contacts, keyboard Tab/Escape and restored
+focus, database failure with retry, disabled buttons during a delayed request,
+and acceptance from a second account while confirmation was open. The accepted
+friendship remained intact. Final checks: `npm test` (106 passed),
+`npm run build`, and `git diff --check`.
 
 ### วิธีตรวจงาน
 
