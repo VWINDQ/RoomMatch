@@ -11,7 +11,7 @@ import { api, ApiError } from '../lib/api';
 import type { JoinRequest, Room } from '../types';
 
 type RequestView = 'incoming' | 'sent';
-type Decision = { request: JoinRequest; status: 'approved' | 'rejected' };
+type Decision = { request: JoinRequest; status: 'approved' | 'rejected'; fromProfile: boolean };
 
 export function RequestsPage() {
   const { notify } = useApp();
@@ -67,11 +67,12 @@ export function RequestsPage() {
     return () => { active = false; };
   }, [decision, roomReload]);
 
-  const openDecision = (request: JoinRequest, status: Decision['status']) => {
+  const openDecision = (request: JoinRequest, status: Decision['status'], fromProfile = false) => {
     setActionError(''); setRoom(null); setRoomError(''); setRoomLoading(status === 'approved');
-    setDecision({ request, status });
+    setSelectedRequester(null);
+    setDecision({ request, status, fromProfile });
   };
-  const closeDecision = () => { if (!busyId) { setDecision(null); setActionError(''); } };
+  const closeDecision = () => { if (!busyId) { if (decision?.fromProfile) setSelectedRequester(owner.find(request => request.requestId === decision.request.requestId) || decision.request); setDecision(null); setActionError(''); } };
   const stillPending = decision && owner.some(request => request.requestId === decision.request.requestId && request.status === 'pending');
   const canApprove = room && room.status === 'available' && room.availableSlots > 0;
   const decide = async () => {
@@ -135,7 +136,7 @@ export function RequestsPage() {
 
         </RequestSection>}</div>}
     {withdrawing && <Modal title="ถอนคำขอเข้าพัก?" onClose={() => { if (!busyId) setWithdrawing(null); }} actions={<><Button variant="quiet" disabled={Boolean(busyId)} onClick={() => setWithdrawing(null)}>เก็บคำขอไว้</Button><Button variant="danger" loading={Boolean(busyId)} onClick={withdraw}>ยืนยันถอนคำขอ</Button></>}><p>ถอนคำขอสำหรับ “{withdrawing.room?.title}” เจ้าของห้องจะเห็นว่าคุณถอนแล้ว ประวัติจะยังอยู่และส่งคำขอใหม่ได้หากห้องยังว่าง</p>{cancelError && <p className="form-alert" role="alert">{cancelError}</p>}</Modal>}
-    {selectedRequester && <RequesterProfileModal key={selectedRequester.requestId} request={selectedRequester} onClose={() => setSelectedRequester(null)}/>}
+    {selectedRequester && <RequesterProfileModal key={selectedRequester.requestId} request={owner.find(request => request.requestId === selectedRequester.requestId) || selectedRequester} onClose={() => setSelectedRequester(null)} onDecide={status => openDecision(selectedRequester, status, true)}/>}
     {decision && <Modal title={decision.status === 'approved' ? 'ยืนยันอนุมัติเข้าพัก' : 'ยืนยันปฏิเสธคำขอ'} onClose={closeDecision} actions={<>
       <Button variant="quiet" disabled={Boolean(busyId)} onClick={closeDecision}>ยกเลิก</Button>
       <Button variant={decision.status === 'approved' ? 'primary' : 'danger'} loading={Boolean(busyId)} disabled={!stillPending || (decision.status === 'approved' && (roomLoading || Boolean(roomError) || !canApprove))} onClick={decide}>{decision.status === 'approved' ? 'ยืนยันอนุมัติ' : 'ยืนยันปฏิเสธ'}</Button>

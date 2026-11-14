@@ -6,8 +6,12 @@
 .friends-page .invitation-heading p { max-width: 680px; margin: 6px 0 0; color: var(--text-secondary); font-size: .8rem; line-height: 1.7; }
 .friends-page .invitation-date { display: block; margin-top: 8px; color: var(--text-secondary); font-size: .7rem; }
 .friends-page .modal-card { max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
-.friends-page .modal-card>header { flex-shrink: 0; }
+.friends-page .modal-card>header,.friends-page .modal-card>footer { flex-shrink: 0; }
+.friends-page .modal-card>footer { display: flex; flex-wrap: wrap; gap: 8px; }
+.friends-page .modal-card>footer>.button { flex: 1; min-width: 0; padding-inline: 12px; font-size: .85rem; white-space: nowrap; }
+.friends-page .modal-card>footer>.form-alert { flex-basis: 100%; margin: 0; }
 .friends-page .modal-body { min-height: 0; overflow-y: auto; }
+.friends-page .friend-full-profile { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 420px) {
   .friends-page .invitation-filters { width: 100%; display: grid; grid-template-columns: 1fr 1.25fr .85fr; }
   .friends-page .invitation-filters button { min-width: 0; padding-inline: 5px; gap: 4px; font-size: .7rem; white-space: nowrap; }

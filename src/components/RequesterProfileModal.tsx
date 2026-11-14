@@ -14,7 +14,7 @@ function budgetText(profile: FriendProfile) {
   return `${amount(profile.budgetMin)}–${amount(profile.budgetMax)} / เดือน`;
 }
 
-export function RequesterProfileModal({ request, onClose }: { request: JoinRequest; onClose: () => void }) {
+export function RequesterProfileModal({ request, onClose, onDecide }: { request: JoinRequest; onClose: () => void; onDecide?: (status: 'approved' | 'rejected') => void }) {
   const [profile, setProfile] = useState<FriendProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,7 +39,11 @@ export function RequesterProfileModal({ request, onClose }: { request: JoinReque
     return () => { active = false; };
   }, [request.requestId, reload]);
 
-  return <div ref={container} className="requester-profile-dialog"><Modal title="โปรไฟล์ผู้ขอเข้าพัก" onClose={onClose} actions={<Button variant="secondary" onClick={onClose}>กลับไปดูคำขอ</Button>}>
+  const canDecide = request.status === 'pending' && !loading && !error && profile && onDecide;
+  return <div ref={container} className="requester-profile-dialog"><Modal title="โปรไฟล์ผู้ขอเข้าพัก" onClose={onClose} actions={<>
+    {canDecide && <><Button variant="quiet" onClick={() => onDecide('rejected')}>ปฏิเสธคำขอ</Button><Button onClick={() => onDecide('approved')}>อนุมัติเข้าพัก</Button></>}
+    <Button className="profile-return" variant="quiet" onClick={onClose}>กลับไปดูคำขอ</Button>
+  </>}>
     {loading ? <div className="requester-profile-loading" role="status"><span className="clay-loader"/><p>กำลังโหลดโปรไฟล์…</p></div>
       : error || !profile ? <div className="requester-profile-error"><p role="alert">{error || 'ไม่พบโปรไฟล์ผู้ขอเข้าพัก'}</p><Button variant="secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={17}/>ลองอีกครั้ง</Button></div>
         : <div className="requester-profile">
@@ -48,7 +52,7 @@ export function RequesterProfileModal({ request, onClose }: { request: JoinReque
           <section><h3>เกี่ยวกับฉัน</h3><p>{profile.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</p></section>
           <section><h3>ไลฟ์สไตล์</h3><p>{profile.lifestyle || 'ยังไม่ได้ระบุไลฟ์สไตล์'}</p></section>
           <section className="requester-profile-budget"><h3>งบค่าห้องที่ตั้งไว้</h3><p>{budgetText(profile)}</p></section>
-          <p className="requester-profile-note">ดูช่องทางติดต่อหลังอนุมัติได้ที่หน้าเพื่อนร่วมห้อง</p>
+          <p className="requester-profile-note">ดูช่องทางติดต่อหลังอนุมัติได้ที่หน้าสมาชิกห้อง</p>
         </div>}
   </Modal></div>;
 }
