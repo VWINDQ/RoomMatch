@@ -90,7 +90,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try { response = await fetch(`/api${path}`, { ...options, headers }); }
   catch { throw new ApiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง', 0); }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
-feature/userAccount
+
   if (!response.ok) {
     // A late failure must not invalidate a newer login, even if its token is identical.
     if (response.status === 401 && token && token === tokenStorage.get() && revision === tokenRevision) {
@@ -99,7 +99,7 @@ feature/userAccount
     throw new ApiError(text(object(payload), 'error', 'message') || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', response.status);
   }
   if (!response.ok) throw new ApiError(friendlyApiError(text(object(payload), 'error', 'message'), response.status), response.status);
-main
+
   return payload as T;
 }
 
