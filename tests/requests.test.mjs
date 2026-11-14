@@ -159,6 +159,31 @@ test('own-room, duplicate, missing, inactive and full-room submissions do not cr
   assert.equal(db.prepare('SELECT count(*) AS count FROM ROOM_REQUEST').get().count, 1);
 });
 
+test('request conflicts distinguish duplicate, membership, paused and full states without inserting rows', async () => {
+  const roomId = await createRoom(1, { capacity: 3 });
+  const pending = await sendRequest(roomId, 2);
+  const expectConflict = async (userId, message) => {
+    const before = snapshot();
+    assert.deepEqual(await api(`/rooms/${roomId}/requests`, userId, 'POST'), {
+      status: 409, body: { error: message },
+    });
+    assert.deepEqual(snapshot(), before);
+  };
+  await expectConflict(1, 'You cannot request to join your own room');
+  await expectConflict(2, 'A pending request already exists');
+  assert.equal((await api(`/rooms/${roomId}`, 1, 'PATCH', { status: 'inactive' })).status, 200);
+  // Keep explaining an existing application even if availability changed later.
+  await expectConflict(2, 'A pending request already exists');
+  await expectConflict(3, 'Inactive rooms cannot accept requests');
+  assert.equal((await api(`/rooms/${roomId}`, 1, 'PATCH', { status: 'available' })).status, 200);
+  assert.equal((await api(`/requests/${pending.requestId}`, 1, 'PATCH', { status: 'approved' })).status, 200);
+  await expectConflict(2, 'You are already a member of this room');
+  const lastPlace = await sendRequest(roomId, 3);
+  assert.equal((await api(`/requests/${lastPlace.requestId}`, 1, 'PATCH', { status: 'approved' })).status, 200);
+  await expectConflict(4, 'This room has no available place');
+  await expectConflict(2, 'You are already a member of this room');
+});
+
 test('only the room owner can decide and invalid decisions leave the pending request untouched', async () => {
   const request = await sendRequest(await createRoom());
   const initial = snapshot();

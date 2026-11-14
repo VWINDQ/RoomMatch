@@ -103,9 +103,10 @@ export function createRoomRequestHandler(db, {
         const room = getRoomRow(db, roomId);
         assert(room, 404, 'Room not found');
         assert(room.owner_id !== user.user_id, 409, 'You cannot request to join your own room');
-        assert(room.status === 'available' && room.capacity > Number(room.member_count) + 1, 409, 'This room has no available place');
         assert(!db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, user.user_id), 409, 'You are already a member of this room');
         assert(!db.prepare("SELECT 1 FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? AND status = 'pending'").get(roomId, user.user_id), 409, 'A pending request already exists');
+        assert(room.status !== 'inactive', 409, 'Inactive rooms cannot accept requests');
+        assert(room.status === 'available' && room.capacity > Number(room.member_count) + 1, 409, 'This room has no available place');
         const result = db.prepare("INSERT INTO ROOM_REQUEST (user_id, room_id, status) VALUES (?, ?, 'pending')").run(user.user_id, roomId);
         row = db.prepare(requestSelect('WHERE rr.request_id = ?')).get(Number(result.lastInsertRowid));
         db.exec('COMMIT');

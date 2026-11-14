@@ -6,7 +6,7 @@ let tokenRevision = 0;
 type JsonObject = Record<string, unknown>;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message); this.name = 'ApiError'; }
+  constructor(message: string, public status: number) { super(friendlyApiError(message, status)); this.name = 'ApiError'; }
 }
 
 const object = (value: unknown): JsonObject => value && typeof value === 'object' ? value as JsonObject : {};
