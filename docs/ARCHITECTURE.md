@@ -72,6 +72,8 @@ The ER has no room-title attribute. To preserve the useful existing title field 
 - Authentication uses a short stateless HMAC-signed bearer token. No session table is introduced.
 - The signing secret comes from `ROOMMATCH_TOKEN_SECRET`; a random process-local secret is used only for local development when the variable is absent.
 - Protected routes return `401`; owner-only routes return `403`; validation and conflicts use `400`/`409` with `{ "error": "..." }`.
+- The client ends the current session when an authenticated API request returns `401`, clears account errors, and redirects to login while preserving the full destination URL. Sign-in errors, network failures, and `403`/`5xx` responses retain their normal error handling. Responses from an earlier session cannot clear or overwrite a newer login.
+- Successful login and registration clear previous account-check errors. Client auth regression tests mount the React app in jsdom and run with `npm test`.
 
 ## API contract
 

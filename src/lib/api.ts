@@ -2,6 +2,7 @@ import type { FriendConnection, FriendProfile, JoinRequest, Lifestyle, Match, Pr
 import { friendlyApiError } from './apiErrors';
 
 const TOKEN_KEY = 'roommatch:token';
+let tokenRevision = 0;
 type JsonObject = Record<string, unknown>;
 
 export class ApiError extends Error {
@@ -71,19 +72,48 @@ function normalizeProfile(value: unknown): ProfileBundle {
   return { user: normalizeUser(source.user), lifestyle: source.lifestyle ? { lifestyleId: text(lifestyle, 'lifestyleId', 'lifestyle_id'), lifestyleName: text(lifestyle, 'lifestyleName', 'lifestyle_name') } : null, preference: source.preference ? normalizePreference(source.preference) : null };
 }
 
+const unauthorizedListeners = new Set<(token: string) => void>();
+
+export function subscribeUnauthorized(listener: (token: string) => void) {
+  unauthorizedListeners.add(listener);
+  return () => { unauthorizedListeners.delete(listener); };
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers); const token = tokenStorage.get();
+  const headers = new Headers(options.headers);
+  const isSignInRequest = path === '/auth/login' || path === '/auth/register';
+  const token = isSignInRequest ? null : tokenStorage.get();
+  const revision = tokenRevision;
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
   try { response = await fetch(`/api${path}`, { ...options, headers }); }
   catch { throw new ApiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง', 0); }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
+feature/userAccount
+  if (!response.ok) {
+    // A late failure must not invalidate a newer login, even if its token is identical.
+    if (response.status === 401 && token && token === tokenStorage.get() && revision === tokenRevision) {
+      for (const listener of unauthorizedListeners) listener(token);
+    }
+    throw new ApiError(text(object(payload), 'error', 'message') || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', response.status);
+  }
   if (!response.ok) throw new ApiError(friendlyApiError(text(object(payload), 'error', 'message'), response.status), response.status);
+main
   return payload as T;
 }
 
-export const tokenStorage = { get: () => localStorage.getItem(TOKEN_KEY), set: (token: string) => localStorage.setItem(TOKEN_KEY, token), clear: () => localStorage.removeItem(TOKEN_KEY) };
+export const tokenStorage = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (token: string) => {
+    localStorage.setItem(TOKEN_KEY, token);
+    tokenRevision += 1;
+  },
+  clear: () => {
+    localStorage.removeItem(TOKEN_KEY);
+    tokenRevision += 1;
+  },
+};
 
 function normalizeFriend(value: unknown): FriendProfile {
   const source = object(value);
