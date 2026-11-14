@@ -171,6 +171,93 @@ test('match lists are scoped to the authenticated user and return the other part
   assert.deepEqual(snapshot(), initial);
 });
 
+test('matched owner and member receive each others phone only when social contacts are absent', async () => {
+  db.exec("UPDATE USER SET line_id=NULL,instagram=NULL,phone='0811111111' WHERE user_id=1");
+  db.exec("UPDATE USER SET line_id='',instagram='',phone='0822222222' WHERE user_id=2");
+  const roomId = await room();
+  assert.deepEqual((await api('/matches', 2)).body.matches, []);
+  const approved = await approve(roomId);
+  assert.equal(approved.otherUser.phone, '0822222222');
+  const initial = snapshot();
+  db.exec('PRAGMA query_only=ON');
+  try {
+    for (const [viewer, expectedUser, expectedPhone] of [[1, 2, '0822222222'], [2, 1, '0811111111']]) {
+      const result = await api('/matches', viewer);
+      assert.equal(result.status, 200);
+      const other = result.body.matches[0].otherUser;
+      assert.equal(other.userId, expectedUser);
+      assert.equal(other.phone, expectedPhone);
+      for (const field of ['email', 'dateOfBirth', 'passwordHash', 'password_hash']) assert.equal(field in other, false);
+    }
+  } finally { db.exec('PRAGMA query_only=OFF'); }
+  assert.deepEqual(snapshot(), initial);
+});
+
+test('existing LINE or Instagram suppresses phone exposure; whitespace-only contacts count as absent', async () => {
+  await approve(await room());
+  const update = db.prepare('UPDATE USER SET line_id=?,instagram=?,phone=? WHERE user_id=1');
+  for (const [lineId, instagram, expectedPhone] of [
+    ['line-1', null, false], [null, 'instagram-1', false], ['line-1', 'instagram-1', false],
+    [null, null, true], ['', '', true], ['  ', ' \n ', true],
+  ]) {
+    update.run(lineId, instagram, ' 0811111111 ');
+    const other = (await api('/matches', 2)).body.matches[0].otherUser;
+    assert.equal('phone' in other, expectedPhone);
+    if (expectedPhone) assert.equal(other.phone, '0811111111');
+    assert.equal(other.lineId, lineId);
+    assert.equal(other.instagram, instagram);
+  }
+});
+
+test('profiles without any contact do not fabricate a fallback phone', async () => {
+  await approve(await room());
+  for (const phone of [null, '', '   ']) {
+    db.prepare('UPDATE USER SET line_id=NULL,instagram=NULL,phone=? WHERE user_id=1').run(phone);
+    const other = (await api('/matches', 2)).body.matches[0].otherUser;
+    assert.equal('phone' in other, false);
+    assert.equal(other.lineId, null);
+    assert.equal(other.instagram, null);
+  }
+});
+
+test('fallback phones remain private from pending, rejected, unrelated and other-room users', async () => {
+  db.exec("UPDATE USER SET line_id=NULL,instagram=NULL WHERE user_id IN (1,2)");
+  const roomId = await room(1, 4);
+  await approve(roomId, 2);
+  await request(roomId, 3);
+  const rejected = await request(roomId, 4);
+  await api(`/requests/${rejected}`, 1, 'PATCH', { status: 'rejected' });
+  await approve(await room(6, 2), 5, 6);
+  assert.equal((await api('/matches')).status, 401);
+  for (const viewer of [3, 4, 5]) {
+    const matches = (await api('/matches?userId=1', viewer)).body.matches;
+    assert.equal(matches.some(match => match.room.roomId === roomId), false);
+    assert.equal((await api(`/rooms/${roomId}/members`, viewer)).status, 403);
+  }
+  for (const viewer of [null, 1, 2, 3, 4, 5]) {
+    const detail = (await api(`/rooms/${roomId}`, viewer)).body.room;
+    assert.equal('phone' in detail.owner, false);
+    for (const member of detail.members) assert.equal('phone' in member, false);
+  }
+  for (const viewer of [1, 2]) {
+    for (const member of (await api(`/rooms/${roomId}/members`, viewer)).body.members) assert.equal('phone' in member, false);
+  }
+});
+
+test('leaving revokes fallback phone access; reapproval returns current profile data', async () => {
+  db.exec("UPDATE USER SET line_id=NULL,instagram=NULL WHERE user_id IN (1,2)");
+  const roomId = await room();
+  await approve(roomId, 2);
+  assert.equal((await api('/matches', 1)).body.matches[0].otherUser.phone, '0890000000');
+  assert.equal((await api(`/rooms/${roomId}/members/me`, 2, 'DELETE')).status, 200);
+  assert.deepEqual((await api('/matches', 1)).body.matches, []);
+  assert.deepEqual((await api('/matches', 2)).body.matches, []);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM MATCHES').get().n, 1);
+  assert.equal((await api('/profile', 2, 'PATCH', { phone: '0833333333' })).status, 200);
+  await approve(roomId, 2);
+  assert.equal((await api('/matches', 1)).body.matches[0].otherUser.phone, '0833333333');
+});
+
 test('leaving a room revokes member access and hides stale match contacts without deleting history', async () => {
   const roomId = await room();
   await approve(roomId, 2);
@@ -206,7 +293,9 @@ test('deleting a room removes its matches and member rows instead of leaving bro
 
 test('unavailable database tables return generic errors without SQL or contact details', async () => {
   const roomId = await room();
+  db.exec('UPDATE USER SET line_id=NULL,instagram=NULL WHERE user_id=1');
   await approve(roomId);
+  assert.equal((await api('/matches', 2)).body.matches[0].otherUser.phone, '0890000000');
   db.exec('DROP TABLE MATCHES');
   assert.deepEqual(await api('/matches', 2), { status: 500, body: { error: 'Internal server error' } });
   db.exec('DROP TABLE ROOM_MEMBER');
@@ -223,6 +312,7 @@ test('inactive accounts cannot access members or match contacts', async () => {
 
 test('member and match reads survive a database restart without modifying persisted records', async () => {
   const roomId = await room();
+  db.exec('UPDATE USER SET line_id=NULL,instagram=NULL WHERE user_id=1');
   await approve(roomId);
   const filename = join(mkdtempSync(join(tmpdir(), 'roommatch-matches-')), 'matches.sqlite');
   db.exec(`VACUUM INTO '${filename.replaceAll("'", "''")}'`);
@@ -233,6 +323,7 @@ test('member and match reads survive a database restart without modifying persis
   await start();
   assert.equal((await api(`/rooms/${roomId}/members`, 2)).body.members.length, 2);
   assert.equal((await api('/matches', 2)).body.matches.length, 1);
+  assert.equal((await api('/matches', 2)).body.matches[0].otherUser.phone, '0890000000');
   assert.deepEqual(snapshot(), initial);
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
 });
