@@ -19,15 +19,33 @@ export function runMigrations(db, migrationsDirectory = resolve(projectRoot, 'da
   const migrations = readdirSync(migrationsDirectory)
     .filter((filename) => filename.endsWith('.sql') && migrationNumber(filename) !== null)
     .map((filename) => ({ filename, version: migrationNumber(filename) }))
-    .filter(({ version }) => version > currentVersion)
-    .sort((left, right) => left.version - right.version);
+    .sort((left, right) => left.version - right.version || left.filename.localeCompare(right.filename));
+
+  // A filename ledger permits a teammate's earlier-numbered migration to arrive
+  // after this branch has advanced user_version (e.g. Favorites 004 after UX 005).
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const hasLedger = db.prepare("SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = '_roommatch_migrations'").get();
+    db.exec(`CREATE TABLE IF NOT EXISTS _roommatch_migrations (
+      filename TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) STRICT`);
+    if (!hasLedger) {
+      const remember = db.prepare('INSERT OR IGNORE INTO _roommatch_migrations(filename) VALUES (?)');
+      for (const migration of migrations) if (migration.version <= currentVersion) remember.run(migration.filename);
+    }
+    db.exec('COMMIT');
+  } catch (error) { db.exec('ROLLBACK'); throw error; }
 
   for (const migration of migrations) {
     const sql = readFileSync(resolve(migrationsDirectory, migration.filename), 'utf8');
     db.exec('BEGIN IMMEDIATE');
     try {
-      db.exec(sql);
-      db.exec(`PRAGMA user_version = ${migration.version}`);
+      if (!db.prepare('SELECT 1 FROM _roommatch_migrations WHERE filename = ?').get(migration.filename)) {
+        db.exec(sql);
+        db.prepare('INSERT INTO _roommatch_migrations(filename) VALUES (?)').run(migration.filename);
+        const version = db.prepare('PRAGMA user_version').get().user_version;
+        db.exec(`PRAGMA user_version = ${Math.max(version, migration.version)}`);
+      }
       db.exec('COMMIT');
     } catch (error) {
       db.exec('ROLLBACK');

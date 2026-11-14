@@ -87,6 +87,64 @@ test('sending a request uses the authenticated identity and exposes only safe pr
   assert.equal((await api(`/rooms/${roomId}`, 2)).body.room.requestStatus, 'pending');
 });
 
+test('requester profiles are limited to the owner of the specific request room', async () => {
+  const request = await sendRequest(await createRoom());
+  await createRoom(3);
+  const path = `/requests/${request.requestId}/profile`;
+  assert.equal((await api(path, null)).status, 401);
+  for (const userId of [2, 3, 4]) assert.equal((await api(path, userId)).status, 403);
+  for (const id of ['0', '9007199254740993']) assert.equal((await api(`/requests/${id}/profile`, 1)).status, 400);
+  assert.equal((await api('/requests/999999/profile', 1)).status, 404);
+  db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(1);
+  assert.equal((await api(path, 1)).status, 401);
+});
+
+test('requester profiles expose current public fields without contacts or room mutations', async () => {
+  const request = await sendRequest(await createRoom());
+  db.prepare('UPDATE USER SET university = ?, bio = ?, phone = ?, line_id = ?, instagram = ?, date_of_birth = ?, gender = ? WHERE user_id = 2')
+    .run('KMUTT', 'ชอบอ่านหนังสือ', '0800000000', 'private-line', 'private.instagram', '2003-04-12', 'female');
+  db.prepare('INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)').run(2, 'ตื่นเช้า ไม่สูบบุหรี่');
+  db.prepare('INSERT INTO PREFERENCE (user_id, budget_min, budget_max) VALUES (?, ?, ?)').run(2, 0, 5000);
+  const before = snapshot();
+  const result = await api(`/requests/${request.requestId}/profile?userId=3`, 1);
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, { profile: {
+    userId: 2, firstName: 'Student 2', lastName: 'Request test', profileImage: null,
+    university: 'KMUTT', bio: 'ชอบอ่านหนังสือ', lifestyle: 'ตื่นเช้า ไม่สูบบุหรี่', budgetMin: 0, budgetMax: 5000,
+  } });
+  for (const field of ['email', 'phone', 'lineId', 'instagram', 'passwordHash', 'password_hash', 'dateOfBirth', 'gender', 'owner_id', 'is_active']) {
+    assert.equal(field in result.body.profile, false, field);
+  }
+  db.prepare('UPDATE USER SET bio = ? WHERE user_id = 2').run('ข้อมูลใหม่หลังส่งคำขอ');
+  assert.equal((await api(`/requests/${request.requestId}/profile`, 1)).body.profile.bio, 'ข้อมูลใหม่หลังส่งคำขอ');
+  assert.deepEqual(snapshot(), before);
+});
+
+test('requester profiles support unfilled public fields and decided request history', async () => {
+  const request = await sendRequest(await createRoom());
+  const path = `/requests/${request.requestId}/profile`;
+  const initial = await api(path, 1);
+  assert.equal(initial.status, 200);
+  for (const field of ['university', 'bio', 'profileImage', 'lifestyle', 'budgetMin', 'budgetMax']) assert.equal(initial.body.profile[field], null, field);
+  assert.equal((await api(`/requests/${request.requestId}`, 1, 'PATCH', { status: 'rejected' })).status, 200);
+  assert.deepEqual(await api(path, 1), initial);
+  const approved = await sendRequest(await createRoom());
+  assert.equal((await api(`/requests/${approved.requestId}`, 1, 'PATCH', { status: 'approved' })).status, 200);
+  assert.deepEqual(await api(`/requests/${approved.requestId}/profile`, 1), initial);
+});
+
+test('unavailable requester profiles and database failures fail without exposing internals', async () => {
+  const request = await sendRequest(await createRoom());
+  const path = `/requests/${request.requestId}/profile`;
+  db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = 2').run();
+  assert.equal((await api(path, 1)).status, 404);
+  db.prepare('UPDATE USER SET is_active = 1 WHERE user_id = 2').run();
+  const before = snapshot();
+  db.exec('DROP TABLE PREFERENCE');
+  assert.deepEqual(await api(path, 1), { status: 500, body: { error: 'Internal server error' } });
+  assert.deepEqual(snapshot(), before);
+});
+
 test('own-room, duplicate, missing, inactive and full-room submissions do not create records', async () => {
   const roomId = await createRoom();
   assert.equal((await api(`/rooms/${roomId}/requests`, 1, 'POST')).status, 409);

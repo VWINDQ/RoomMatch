@@ -8,8 +8,8 @@
 - `server/requests.js`: routes, validation, การอ่านคำขอ และ transaction ของคำขอ
 - `server/app.js`: เชื่อมโมดูลเข้ากับ HTTP server และใช้ authentication/error handling เดิม
 - `tests/requests.test.mjs`: เรียก HTTP API จริงกับฐานข้อมูลทดสอบแยก
-- UI เดิมใช้ `src/pages/RequestsPage.tsx`, ปุ่มใน `RoomDetailPage.tsx` และ `src/lib/api.ts`
-  โดยรอบนี้ไม่ได้แก้ไฟล์ frontend หรือ schema
+- UI ใช้ `src/pages/RequestsPage.tsx`, ปุ่มใน `RoomDetailPage.tsx` และ `src/lib/api.ts`
+  ส่วนดูโปรไฟล์ผู้ขอใช้ `src/components/RequesterProfileModal.tsx` โดยไม่เปลี่ยน schema
 
 ระบบมี API เบื้องต้นอยู่ก่อนแล้ว รอบนี้แยกเฉพาะฟีเจอร์ออกจาก `app.js`
 เพื่อให้เพื่อนที่ทำบัญชีและห้องไม่ต้องแก้ logic คำขอในไฟล์เดียวกัน
@@ -26,11 +26,13 @@
 | `POST /api/rooms/:roomId/requests` | ผู้ขอเข้าพัก | ไม่ต้องมี body | `201 { request }` |
 | `GET /api/requests/mine` | เจ้าของบัญชี | ไม่มี | `200 { requests: [...] }` |
 | `GET /api/owner/requests` | เจ้าของประกาศ | ไม่มี | `200 { requests: [...] }` |
+| `POST /api/requests/:requestId/cancel` | ผู้ส่งคำขอ | ไม่มี | `200 { request }` |
+| `GET /api/requests/:requestId/profile` | เจ้าของห้องของคำขอนั้น | ไม่มี | `200 { profile }` |
 | `PATCH /api/requests/:requestId` | เจ้าของห้องของคำขอนั้น | `{ "status": "approved" }` หรือ `{ "status": "rejected" }` | `200 { request, match? }` |
 
 `request` ประกอบด้วย:
 
-- `requestId`, `status`, `requestedAt`, `respondedAt`
+- `requestId`, `status`, `requestedAt`, `respondedAt`, `membershipActive`
 - `room: { roomId, title }`
 - `requester: { userId, firstName, lastName, profileImage }`
 
@@ -39,6 +41,11 @@
 ตัวอย่างเวลา: `2026-11-12T03:00:00.000Z` ให้ frontend แปลง timezone ตอนแสดงผล
 การอนุมัติส่ง `match` กลับตาม contract เดิม การปฏิเสธไม่มี key `match`
 ไม่มีคำขอให้ส่ง `{ "requests": [] }` ไม่ใช่ error
+
+ถอน pending ได้ด้วย endpoint cancel: สถานะเป็น `cancelled` พร้อม `respondedAt`
+เก็บประวัติ ส่งใหม่ได้ และเรียกถอนซ้ำได้โดยไม่เปลี่ยนเวลาเดิม final อื่นตอบ 409
+`membershipActive` บอกสมาชิกปัจจุบัน แยกจากคำขออนุมัติในประวัติหลังออกจากห้อง
+รายละเอียด migration และ UI อยู่ [UX_FIXES.md](UX_FIXES.md)
 
 ### Error contract
 
@@ -49,11 +56,38 @@
 - `403`: ผู้ตอบไม่ใช่เจ้าของห้อง แม้เป็นผู้ส่งคำขอเองก็ตอบแทนไม่ได้
 - `404`: ไม่พบห้องหรือคำขอ
 - `409`: ห้องตนเอง, มีคำขอ pending ซ้ำ, ห้องเต็ม/พักประกาศ, เป็นสมาชิกแล้ว,
-  มีแมตช์เดิม หรือคำขอถูกตัดสินไปแล้ว
+  เป็นสมาชิกอยู่ หรือคำขอถูกตัดสิน/ถอนไปแล้ว
 - `500`: ข้อผิดพลาดที่ไม่คาดคิด เช่น เขียนฐานข้อมูลไม่ได้ client ไม่ได้รับ stack trace/SQL
 
 รายการ `mine` ต้องมีเฉพาะคำขอของบัญชีที่ล็อกอิน รายการ `owner` ต้องมีเฉพาะห้อง
 ที่บัญชีนั้นเป็นเจ้าของ ไม่ส่ง email, phone, password hash หรือช่องทางติดต่อใน requester
+
+### ดูโปรไฟล์ผู้ขอเข้าพัก
+
+ปุ่ม **ดูโปรไฟล์** ในแท็บคำขอถึงฉัน เปิดหน้าต่างย่อยผ่าน
+`GET /api/requests/:requestId/profile` โดยตรวจสิทธิ์เจ้าของห้องจากคำขอจริง
+ผู้ส่งคำขอเอง ผู้ใช้ทั่วไป และเจ้าของห้องอื่นใช้ endpoint นี้ไม่ได้ (`403`)
+
+`profile` มีเฉพาะ `userId`, `firstName`, `lastName`, `profileImage`, `university`,
+`bio`, `lifestyle`, `budgetMin`, `budgetMax` ข้อมูลเป็นค่าปัจจุบัน ณ เวลาเปิดดู
+ใช้ข้อมูลชุดเดียวกับโปรไฟล์สาธารณะของหน้าหาเพื่อน ไม่มีช่องทางติดต่อ วันเกิด หรือเพศ
+ช่องที่ยังไม่กรอกคืน `null` และ frontend แสดงข้อความว่าไม่ได้ระบุ
+
+อ่านได้ทั้งคำขอ pending/approved/rejected ของห้องตนเอง หากผู้ขอ inactive
+หรือไม่พบคำขอคืน `404` ไม่มี token/บัญชีเจ้าของ inactive คืน `401`
+ID ตัวเลขที่ไม่เป็น positive safe integer คืน `400` ข้อผิดพลาดฐานข้อมูลคืน
+`500 { "error": "Internal server error" }` โดยไม่มีรายละเอียด SQL
+
+การเปิดโปรไฟล์ไม่อนุมัติคำขอ ไม่สร้างสมาชิกหรือแมตช์ และไม่เปิดเผยข้อมูลติดต่อ
+แม้คำขอนั้นได้รับอนุมัติแล้ว ช่องทางติดต่อยังใช้หน้าสมาชิก/แมตช์ตาม flow เดิม
+ไม่เปลี่ยน schema และไม่เปลี่ยน response ของรายการคำขอเดิม
+
+ไฟล์ส่วนนี้: `server/requests.js`, `src/lib/api.ts`, `src/pages/RequestsPage.tsx`,
+`src/components/RequesterProfileModal.tsx`, `src/components/RequesterProfileModal.css`,
+`tests/requests.test.mjs` และเอกสารนี้
+
+ก่อนส่งงานให้ลองเปิดโปรไฟล์จากหลายคน ยกเลิกด้วยปุ่มกลับ/Escape และลองใหม่เมื่อ
+โหลดล้มเหลว ตรวจบน desktop/mobile ว่าเนื้อหายาวเลื่อนได้ และการอนุมัติยังต้องยืนยันตามเดิม
 
 ## กฎและความถูกต้องของข้อมูล
 
@@ -63,8 +97,8 @@
 - การส่งคำขอตรวจห้อง/สมาชิก/คำขอซ้ำและ INSERT ภายใน `BEGIN IMMEDIATE`
 - การอนุมัติตรวจสิทธิ์ สถานะ และความจุอีกครั้งใน transaction เดียว แล้วจึง:
   1. เปลี่ยนคำขอเป็น approved และกำหนดเวลาตอบ
-  2. เพิ่ม `ROOM_MEMBER`
-  3. เพิ่ม `MATCHES` ระหว่างเจ้าของกับผู้ขอสำหรับห้องนั้น
+  2. เพิ่ม/เปิดใช้งาน `ROOM_MEMBER` เดิมกรณีเคยออกจากห้อง
+  3. เพิ่ม/ปรับเวลา `MATCHES` ระหว่างเจ้าของกับผู้ขอสำหรับห้องนั้นโดยไม่สร้างคู่ซ้ำ
   4. เปลี่ยนห้องเป็น full เมื่อครบความจุ (รวมถึง triggers เดิมของฐานข้อมูล)
 - ถ้าขั้นตอนใดล้มเหลวต้อง rollback ทั้งหมด รวมถึงสถานะ full ที่เปลี่ยนจาก trigger
 - การปฏิเสธไม่สร้างสมาชิกหรือแมตช์ และทำได้แม้ห้องเต็ม/พักประกาศแล้ว
@@ -72,7 +106,7 @@
   โดยเก็บประวัติเดิมและใช้ `requestId` ใหม่
 - ถ้าสองคำขอแย่งที่ว่างสุดท้าย อนุมัติได้เพียงคนเดียว อีกคำขอยังคง pending
   เจ้าของสามารถปฏิเสธคำขอที่เหลือได้ ระบบยังไม่ปฏิเสธให้อัตโนมัติ
-- ไม่มีการยกเลิกคำขอ/คำขอแบบกลุ่มหรือ real-time polling ในฟีเจอร์นี้
+- ถอนคำขอ pending ได้; ยังไม่มีคำขอแบบกลุ่มหรือการหมดอายุอัตโนมัติ
 
 ## ทดสอบอัตโนมัติ
 
@@ -99,8 +133,9 @@ Tests ใช้ HTTP server จริงบนพอร์ตสุ่มแล�
 6. B ลองส่งใหม่หลังถูกปฏิเสธ ต้องมีรายการใหม่โดยประวัติเดิมยังอยู่
 7. ทดสอบหน้าจอ desktop/mobile และลองคำขอมากกว่าที่ว่างของห้อง
 
-การตรวจรอบนี้รัน API tests และ build; ไม่มีเครื่องมือควบคุม browser ให้ใช้ใน session นี้
-จึงไม่อ้างว่ากด UI ตาม checklist ข้างต้นแล้ว ต้องตรวจหน้าจอจริงก่อนส่งงาน
+ส่วนโปรไฟล์ผู้ขอตรวจด้วย API tests/build และ browser จริงบน desktop/mobile
+รวมข้อมูลว่าง รูปโหลดไม่ได้ ข้อความยาว การปิดระหว่างโหลด การลองใหม่ และโปรไฟล์ inactive
 
-ไม่มีการ commit, push, เปลี่ยน branch, แก้ migrations หรือย้ายงานของเพื่อนเข้ามาในรอบนี้
+การเพิ่มถอนคำขอและ migration ในรอบ UX ล่าสุดอยู่ใน [UX_FIXES.md](UX_FIXES.md)
+ไม่มีการ commit, push, เปลี่ยน branch หรือย้ายงานของเพื่อนเข้ามา
 เจ้าของฟีเจอร์ตรวจ diff และเป็นผู้ commit เองเมื่อพร้อม

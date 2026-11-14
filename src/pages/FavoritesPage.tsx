@@ -1,5 +1,5 @@
 import { Heart, RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/Layout';
 import { RoomGrid } from '../components/RoomCard';
@@ -13,6 +13,7 @@ export function FavoritesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reload, setReload] = useState(0);
+  const page = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -40,11 +41,15 @@ export function FavoritesPage() {
   const handleFavoriteChange = (roomId: string, isFavorite: boolean) => {
     if (!isFavorite) {
       setRooms(current => current.filter(room => room.roomId !== roomId));
+      requestAnimationFrame(() => {
+        const target = page.current?.querySelector<HTMLElement>('.favorite-button') || page.current?.querySelector<HTMLElement>('h1');
+        if (target) { if (target.tagName === 'H1') target.tabIndex = -1; target.focus(); }
+      });
     }
   };
 
   return (
-    <div className="page favorites-page">
+    <div ref={page} className="page favorites-page">
       <PageHeader
         title="ห้องโปรด"
         subtitle="ห้องที่คุณบันทึกไว้"

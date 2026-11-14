@@ -33,6 +33,24 @@ export function createRoomMatchesHandler(db, {
   authenticate, sendJson, getRoomRow, userDto, matchSelect, matchDto,
 }) {
   return async function handleRoomMatches(request, response, url) {
+    const leavePath = /^\/api\/rooms\/(\d+)\/members\/me$/.exec(url.pathname);
+    if (request.method === 'DELETE' && leavePath) {
+      const user = authenticate(db, request);
+      const roomId = Number(leavePath[1]);
+      assert(Number.isSafeInteger(roomId) && roomId > 0, 400, 'roomId must be a positive safe integer');
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const room = getRoomRow(db, roomId);
+        assert(room, 404, 'Room not found');
+        assert(room.owner_id !== user.user_id, 403, 'Owners must manage their listing instead of leaving it');
+        const member = db.prepare('SELECT status FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ?').get(roomId, user.user_id);
+        assert(member && ['approved', 'left'].includes(member.status), 403, 'Only a current or former member can leave this room');
+        db.prepare("UPDATE ROOM_MEMBER SET status = 'left' WHERE room_id = ? AND user_id = ? AND status = 'approved'").run(roomId, user.user_id);
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+      sendJson(response, 200, { success: true }, request);
+      return true;
+    }
     const pathMatch = /^\/api\/rooms\/(\d+)\/members$/.exec(url.pathname);
     if (request.method === 'GET' && pathMatch) {
       const user = authenticate(db, request);

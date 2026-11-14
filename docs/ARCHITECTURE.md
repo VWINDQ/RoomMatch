@@ -23,6 +23,11 @@ The later user-requested people-first workflow adds `FRIEND_CONNECTION` as a
 separate ninth entity, without changing the original eight schemas or rows.
 Its contract and rationale are documented in [FRIENDS.md](FRIENDS.md).
 
+The later UX migration `005` extends `ROOM` with nullable `price_basis`, `locality`,
+and `cost_notes`, and adds `cancelled` to `ROOM_REQUEST` without losing existing rows.
+The filename ledger `_roommatch_migrations` is internal migration bookkeeping,
+not another business entity. Lifecycle/API details are in [UX_FIXES.md](UX_FIXES.md).
+
 Relationship foreign keys are added to those entities:
 
 - `LIFESTYLE.user_id -> USER.user_id`, unique and not null.
@@ -45,17 +50,17 @@ The approval transaction must:
 
 - verify the authenticated user owns the room;
 - reject self-requests and self-matches;
-- reject a duplicate membership or match;
+- reject an active duplicate membership; allow a former member to apply again;
 - reject duplicate pending requests;
 - reject approval when no place remains;
-- update the request, insert `ROOM_MEMBER`, and insert `MATCHES` atomically;
+- update the request and insert/reactivate `ROOM_MEMBER` and `MATCHES` atomically;
 - mark the room full when the capacity is reached.
 
 The owner is represented by `ROOM.owner_id`; the owner is not duplicated in `ROOM_MEMBER`.
 
-### ER-only feature policy
+### Feature extensions
 
-Favorites, amenities, and tags are not database-backed features because they are absent from the source ER diagram. The old mock Favorites and Amenities controls must not be presented as working persisted features. No tables for them are added.
+Favorites are persisted through `ROOM_FAVORITE` (migration 004), with composite primary key `(user_id, room_id)`, creation time, and cascading user/room foreign keys. Both authenticated participants and public listing reads retain the existing privacy rules; favorite status is scoped to the viewer. Amenities and tags have no persisted implementation.
 
 ### Presentation convention
 
@@ -81,6 +86,17 @@ All JSON endpoints live under `/api`.
 - `PATCH /api/profile` — edit allowed profile fields.
 - `PUT /api/lifestyle` — create or replace the authenticated user's 1:1 lifestyle.
 - `PUT /api/preference` — create or replace the authenticated user's 1:1 preference.
+
+### Uploaded images
+
+`POST /api/uploads/images` requires an active bearer token and receives one raw image file
+with `Content-Type: image/jpeg`, `image/png`, or `image/webp` (not multipart/JSON).
+It returns `{ imageUrl: "/uploads/<userId>/<uuid>.webp" }` for the existing profile/room
+write APIs. These relative paths may only be attached by their uploader; legacy HTTP(S)
+image URLs remain supported. `GET/HEAD /uploads/...` serves the normalized image publicly.
+Files are outside the build output, under `ROOMMATCH_UPLOAD_DIR` (default `storage/uploads`).
+The database keeps the generated path in `USER.profile_image` or `ROOM_IMAGE.image_url`;
+there is no schema migration. See [UPLOADS.md](UPLOADS.md) for limits and deployment storage.
 
 ### Rooms and images
 
