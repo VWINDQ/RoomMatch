@@ -11,6 +11,10 @@ This directory contains the eight original ER entities, the separately requested
    real line feeds.
    Migration `003` only adds friend invitations and their constraints/indexes;
    it does not update or rebuild any existing table.
+   Migration `006` extends friend invitation status with `cancelled`. It rebuilds
+   only `FRIEND_CONNECTION`, preserving IDs, rows, timestamps, foreign keys and
+   indexes. Existing accepted/declined decisions remain final. Run migrations
+   through the application runner; do not re-run this SQL manually.
    Migration `005` adds nullable listing metadata and the cancelled-request state while preserving rows. The internal `_roommatch_migrations` ledger also applies an earlier-numbered file arriving later, such as Favorites `004`, instead of skipping it because `user_version` is already 5. See [UX changes](../docs/UX_FIXES.md).
 2. Run `seed.sql` when demo data is wanted. The seed uses stable IDs,
    conflict-safe inserts, and existence guards, so it can be applied repeatedly
@@ -38,7 +42,9 @@ runtime. The project targets Node.js 26 and its built-in `node:sqlite` module.
   `completer_user_id`, and the room that brought them together.
 - `FRIEND_CONNECTION.sender_id` and `recipient_id` reference `USER`. An unordered
   pair is unique; self-invitations are forbidden. Only a pending invitation can
-  transition to accepted/declined, with a response timestamp.
+  transition to accepted/declined/cancelled, with a response timestamp. Cancelled
+  invitations remain in history and do not grant contact access. The existing
+  one-invitation-per-pair rule is unchanged; this migration does not enable re-sending.
 
 Deleting a user or room cascades to dependent rows. Frequently queried foreign
 keys, statuses, price, image order, and match roles are indexed. A partial unique
