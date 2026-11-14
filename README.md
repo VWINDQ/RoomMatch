@@ -11,7 +11,7 @@ Repository: <https://github.com/VWINDQ/RoomMatch>
 | ส่วนของระบบ | สิ่งที่ผู้ใช้ทำได้ |
 | --- | --- |
 | บัญชี | สมัครสมาชิก เข้าสู่ระบบ และออกจากระบบ |
-| โปรไฟล์ | แก้ไขข้อมูลส่วนตัว รูปแบบ URL คำแนะนำตัว และช่องทางติดต่อ |
+| โปรไฟล์ | แก้ไขข้อมูลส่วนตัว อัปโหลดรูปโปรไฟล์ คำแนะนำตัว และช่องทางติดต่อ |
 | ไลฟ์สไตล์/ความต้องการ | ระบุไลฟ์สไตล์ งบ เพศและช่วงอายุที่ต้องการแชร์ห้อง |
 | ค้นหาห้อง | ค้นหาชื่อ/รายละเอียด กรองราคาและสถานะ เรียงราคาหรือล่าสุด |
 | รายละเอียดห้อง | ดูรูปภาพ ราคา แผนที่ ความจุ และจำนวนที่ว่าง |
@@ -22,6 +22,34 @@ Repository: <https://github.com/VWINDQ/RoomMatch>
 
 หน้าจอเป็น Claymorphism โทน navy/pastel ใช้ Fredoka และ Prompt
 รองรับ desktop, tablet และ mobile
+
+เมนู **คำขอเข้าพัก** มีจุดสีแดงเมื่อมีคำขอ `pending` สำหรับห้องของตัวเอง
+ทั้ง desktop และ mobile จุดจะหายเมื่ออนุมัติ/ปฏิเสธครบ ไม่หายเพียงเพราะเปิดอ่าน
+ระบบตรวจใหม่ทุก 30 วินาทีขณะเปิดแท็บ รวมถึงเมื่อกลับมาที่แท็บหรือเปลี่ยนหน้า
+ใช้ API และข้อมูลคำขอเดิม ไม่ต้องเพิ่มตารางแจ้งเตือน
+
+หน้าคำขอแยก **คำขอถึงฉัน / คำขอที่ฉันส่ง** หากมีคำขอรอพิจารณาจะเปิดแท็บคำขอถึงฉันก่อน
+รายการรอพิจารณาอยู่เหนือประวัติ และต้องยืนยันก่อนอนุมัติ/ปฏิเสธ โดยการอนุมัติจะแสดงที่ว่างล่าสุด
+หน้าหาเพื่อนเก็บการ์ดคำชวนที่ส่งแล้วพร้อมสถานะรอตอบรับและปุ่มดูคำชวนไว้ แม้ค้นชื่อเดิมหรือ refresh
+
+แท็บคำชวนแยก **รอฉันตอบ / รอเพื่อนตอบ / ประวัติ** พร้อมจำนวนและวันที่
+หน้าหาเพื่อนและเพื่อนร่วมห้องมีปุ่มคัดลอก LINE และเปิด Instagram ในแท็บใหม่
+หาก browser ไม่อนุญาตให้คัดลอก จะมีช่องข้อความให้เลือกคัดลอกเอง โดยใช้ข้อมูลติดต่อที่ API อนุญาตเดิม
+
+### อัปโหลดรูปจากเครื่อง
+
+- หน้าโปรไฟล์ → แก้ไขโปรไฟล์ → เลือก/เปลี่ยนรูปจากเครื่อง → บันทึก
+- หน้าลงประกาศ/แก้ไขประกาศ → เลือกรูปห้องได้สูงสุด 12 รูป จัดลำดับและลบได้ รูปแรกเป็นรูปปก
+- รองรับภาพนิ่ง JPG, PNG และ WebP ไม่เกิน 5 MB และ 25 ล้านพิกเซลต่อรูป
+- API ตรวจเนื้อหารูป ย่อด้านยาวไม่เกิน 1600px และแปลงเป็น WebP โดยไม่เก็บ EXIF/GPS
+- รูปเดิมที่เป็น URL ยังแสดงและบันทึกต่อได้ ไม่มีการเปลี่ยน schema ฐานข้อมูล
+- รูปใหม่เก็บใน `storage/uploads/` หรือ `ROOMMATCH_UPLOAD_DIR` และไม่เข้า Git
+- เพื่อนต้องรัน `npm ci` หลังดึงงานนี้ และเริ่ม `npm run dev` ใหม่ทั้ง API/Vite
+- เมื่อนำขึ้นเซิร์ฟเวอร์ ต้องมี persistent disk และสำรองทั้ง SQLite กับโฟลเดอร์รูป
+
+รายละเอียด API ข้อจำกัด และวิธีทดสอบ: [คู่มืออัปโหลดรูป](docs/UPLOADS.md)
+
+รายงานสิ่งที่ยังขาดก่อนเปิดใช้งานจริง: [Production readiness](docs/PRODUCTION_READINESS.md)
 
 ### เส้นทางการใช้งาน
 
@@ -34,6 +62,10 @@ Repository: <https://github.com/VWINDQ/RoomMatch>
 
 ผู้ใช้คนเดียวเป็นได้ทั้งผู้หาห้องและเจ้าของประกาศ ไม่ต้องแยกบัญชี
 ความจุห้อง **นับรวมเจ้าของ** เช่น ห้องจุ 3 คน รับเพื่อนเพิ่มได้ 2 คน
+
+หน้า **รวมประกาศห้อง** แสดงเฉพาะห้องสถานะ `available` ทั้งการค้นหา กรองราคา และเรียงลำดับ
+เมื่อห้องเต็มจะไม่แสดงในรายการนี้เมื่อโหลดใหม่ แต่ข้อมูลประกาศยังอยู่ในประกาศของเจ้าของ
+หน้ารายละเอียด และสมาชิก/แมตช์ตามสิทธิ์เดิม หากเปิดรับและมีที่ว่างอีกจะกลับมาแสดงได้
 
 ## ติดตั้งและเปิดเว็บสำหรับเพื่อนร่วมทีม
 
@@ -99,6 +131,15 @@ API อยู่ที่ **http://127.0.0.1:3001** และ Vite ส่งค�
 แท็บปกติใน browser profile เดียวกันใช้ token ใน localStorage ร่วมกัน
 
 ### ลองใช้งานตั้งแต่ต้นจนจบ
+
+รายละเอียด API และ checklist งานขอเข้าพักของคนที่ 3:
+[คู่มือฟีเจอร์ขอเข้าพัก](docs/REQUESTS.md)
+
+รายละเอียด API และ checklist งานสมาชิกห้อง/แมตช์ของคนที่ 3:
+[คู่มือสมาชิกห้องและแมตช์](docs/MATCHES.md)
+
+รายละเอียด API และ checklist งานหาเพื่อนก่อนหาห้องของคนที่ 3:
+[คู่มือหาเพื่อนและคำชวน](docs/FRIENDS.md)
 
 1. บัญชี A เติมโปรไฟล์และลงประกาศห้องที่มีที่ว่าง
 2. บัญชี B เปิดประกาศของ A แล้วกดขอเข้าพัก
@@ -192,9 +233,10 @@ docs/                  architecture, friend workflow และ audit
 ## สิ่งที่ยังไม่มี / ก่อนเปิดใช้งานจริง
 
 - ยังไม่มี Like/Pass หรือ mutual-like matching ปัจจุบันใช้คำชวนแล้วตอบรับ
-- ยังไม่มีแชต การจองห้องเป็นกลุ่ม หรืออัปโหลดไฟล์รูปโดยตรง รูปใช้ URL
-- Favorites, tags และ amenities ยังไม่ใช่ฟีเจอร์ที่บันทึกได้ใน ER ปัจจุบัน
-- ยังไม่มี rate limiting, server-side token revocation และ pagination
+- ยังไม่มีแชตหรือการจองห้องเป็นกลุ่ม รูปโปรไฟล์และรูปห้องอัปโหลดจากเครื่องได้
+- Favorites บันทึกได้ผ่าน ROOM_FAVORITE (migration 004); tags และ amenities ยังไม่ใช่ฟีเจอร์ที่บันทึกได้
+- Rate limiting มีเฉพาะอัปโหลดรูป ยังไม่มีสำหรับ login/register หรือ write APIs อื่น ๆ
+- ยังไม่มี server-side token revocation และ pagination UI (rooms API มี limit/offset แล้ว)
 - Logout ล้าง session ฝั่ง browser แต่ token ที่คัดลอกไปยังใช้ได้จนหมดอายุ
 - ก่อน public deployment ต้องตั้ง `NODE_ENV=production`, secret ที่ปลอดภัย,
   HTTPS และฐานข้อมูลใหม่ที่ไม่มีเดโม พร้อมจัดการข้อจำกัดใน [Audit](docs/AUDIT.md)
@@ -290,9 +332,14 @@ limitations. Friend invitations are not a Like/Pass or mutual-like system.
 - On approval, create membership and match records atomically.
 - View room members and matches involving the authenticated user.
 
+Latest usability improvements: withdraw a pending request, leave a joined room
+with capacity/privacy updates, specify room price units/location/additional costs,
+and preserve search/filter/tab context. See [UX changes and verification](docs/UX_FIXES.md)
+for migration `005`, API additions, teammate integration notes, and browser QA.
+
 ## ER model
 
-The original room workflow retains its eight ER tables unchanged:
+The original room workflow uses these eight ER tables:
 
 1. `USER`
 2. `LIFESTYLE`
@@ -324,7 +371,7 @@ The implemented relationships are:
 The source ER diagram defines lifestyle as 1:1. Consequently, each lifestyle
 row belongs to only one user; it is not a reusable category. A reusable
 lifestyle catalogue would require an explicit ER change and a junction table.
-Amenities and favorites are not persisted because they are absent from this ER.
+Favorites are persisted through the ROOM_FAVORITE extension (migration 004). Amenities and tags remain outside the implemented schema.
 
 The diagram has no room-title attribute. ROOMMATCH stores the display title as
 the first line of `ROOM.description` and the description body on following

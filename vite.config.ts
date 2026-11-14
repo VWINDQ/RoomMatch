@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     proxy: {
       '/api': `http://127.0.0.1:${loadEnv(mode, '.', 'ROOMMATCH_').ROOMMATCH_PORT || '3001'}`,
+      '/uploads': `http://127.0.0.1:${loadEnv(mode, '.', 'ROOMMATCH_').ROOMMATCH_PORT || '3001'}`,
     },
   },
 }));

@@ -4,6 +4,7 @@ Database.pdf
 *.sitepkg
 node_modules/
 dist/
+storage/uploads/
 .env
 .env.*
 !.env.example

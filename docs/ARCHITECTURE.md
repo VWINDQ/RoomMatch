@@ -23,6 +23,11 @@ The later user-requested people-first workflow adds `FRIEND_CONNECTION` as a
 separate ninth entity, without changing the original eight schemas or rows.
 Its contract and rationale are documented in [FRIENDS.md](FRIENDS.md).
 
+The later UX migration `005` extends `ROOM` with nullable `price_basis`, `locality`,
+and `cost_notes`, and adds `cancelled` to `ROOM_REQUEST` without losing existing rows.
+The filename ledger `_roommatch_migrations` is internal migration bookkeeping,
+not another business entity. Lifecycle/API details are in [UX_FIXES.md](UX_FIXES.md).
+
 Relationship foreign keys are added to those entities:
 
 - `LIFESTYLE.user_id -> USER.user_id`, unique and not null.
@@ -45,17 +50,17 @@ The approval transaction must:
 
 - verify the authenticated user owns the room;
 - reject self-requests and self-matches;
-- reject a duplicate membership or match;
+- reject an active duplicate membership; allow a former member to apply again;
 - reject duplicate pending requests;
 - reject approval when no place remains;
-- update the request, insert `ROOM_MEMBER`, and insert `MATCHES` atomically;
+- update the request and insert/reactivate `ROOM_MEMBER` and `MATCHES` atomically;
 - mark the room full when the capacity is reached.
 
 The owner is represented by `ROOM.owner_id`; the owner is not duplicated in `ROOM_MEMBER`.
 
-### ER-only feature policy
+### Feature extensions
 
-Favorites, amenities, and tags are not database-backed features because they are absent from the source ER diagram. The old mock Favorites and Amenities controls must not be presented as working persisted features. No tables for them are added.
+Favorites are persisted through `ROOM_FAVORITE` (migration 004), with composite primary key `(user_id, room_id)`, creation time, and cascading user/room foreign keys. Both authenticated participants and public listing reads retain the existing privacy rules; favorite status is scoped to the viewer. Amenities and tags have no persisted implementation.
 
 ### Presentation convention
 
@@ -84,6 +89,17 @@ All JSON endpoints live under `/api`.
 - `PUT /api/lifestyle` — create or replace the authenticated user's 1:1 lifestyle.
 - `PUT /api/preference` — create or replace the authenticated user's 1:1 preference.
 
+### Uploaded images
+
+`POST /api/uploads/images` requires an active bearer token and receives one raw image file
+with `Content-Type: image/jpeg`, `image/png`, or `image/webp` (not multipart/JSON).
+It returns `{ imageUrl: "/uploads/<userId>/<uuid>.webp" }` for the existing profile/room
+write APIs. These relative paths may only be attached by their uploader; legacy HTTP(S)
+image URLs remain supported. `GET/HEAD /uploads/...` serves the normalized image publicly.
+Files are outside the build output, under `ROOMMATCH_UPLOAD_DIR` (default `storage/uploads`).
+The database keeps the generated path in `USER.profile_image` or `ROOM_IMAGE.image_url`;
+there is no schema migration. See [UPLOADS.md](UPLOADS.md) for limits and deployment storage.
+
 ### Rooms and images
 
 - `GET /api/rooms` — browse/search/sort/filter by price and status.
@@ -99,12 +115,32 @@ Room write payload fields are `title`, `description`, `googleMapsUrl`, `price`, 
 
 ### Requests, membership, and matches
 
+The room-request endpoints are implemented in `server/requests.js`, composed
+by `server/app.js` with the existing authentication and response helpers.
+See [room-request contract and verification](REQUESTS.md) for ownership rules,
+transaction behavior, error codes, and the first-feature testing checklist.
+New decision timestamps use ISO 8601 UTC (`respondedAt` ending in `Z`).
+
+Member/match read endpoints live in `server/matches.js`. Member lists are limited
+to the room owner or approved members, including the list embedded in public
+room details. Match lists expose only the authenticated participant's matches
+with current approved membership; historical database rows are retained.
+See [member/match contract and verification](MATCHES.md).
+
 - `POST /api/rooms/:roomId/requests` — send a join request.
 - `GET /api/requests/mine` — request status for the authenticated requester.
 - `GET /api/owner/requests` — requests for rooms owned by the authenticated user.
 - `PATCH /api/requests/:requestId` with `{ status: "approved" | "rejected" }` — owner-only decision; approval performs the atomic membership/match workflow.
 - `GET /api/rooms/:roomId/members` — room owner or member can view members.
 - `GET /api/matches` — matches involving the authenticated user.
+
+### Friend discovery and invitations
+
+`server/friends.js` handles authenticated profile search and invitations without
+changing room requests or matches. Full-name search is supported. Invitation
+writes and response-profile reads commit atomically; only the recipient may
+decide and only accepted participants receive contact details. See
+[friend API rules and verification](FRIENDS.md) for endpoints, errors and tests.
 
 ## Frontend routes
 

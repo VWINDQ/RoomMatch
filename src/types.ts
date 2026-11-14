@@ -1,5 +1,6 @@
 export type RoomStatus = 'available' | 'full' | 'inactive';
-export type RequestStatus = 'pending' | 'approved' | 'rejected';
+export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type PriceBasis = 'per_room' | 'per_person';
 
 export type User = {
   userId: string;
@@ -26,6 +27,9 @@ export type Room = {
   description: string;
   googleMapsUrl: string;
   price: number;
+  priceBasis?: PriceBasis | null;
+  locality?: string;
+  costNotes?: string;
   capacity: number;
   status: RoomStatus;
   createdAt: string;
@@ -35,7 +39,10 @@ export type Room = {
   memberCount: number;
   availableSlots: number;
   isOwner?: boolean;
+  isMember?: boolean;
+  isFavorite?: boolean;
   requestStatus?: RequestStatus | null;
+  pendingRequestId?: string | null;
 };
 
 export type RoomMember = {
@@ -47,6 +54,7 @@ export type RoomMember = {
 };
 
 export type JoinRequest = {
+  membershipActive?: boolean;
   requestId: string;
   roomId?: string;
   userId?: string;
@@ -78,9 +86,10 @@ export type Match = {
   matchedAt: string;
   room?: Pick<Room, 'roomId' | 'title'> & Partial<Room>;
   otherUser?: Partial<User>;
+  otherRole?: 'owner' | 'member';
 };
 
-export type RoomFilters = { minPrice: string; maxPrice: string; status: string };
+export type RoomFilters = { minPrice: string; maxPrice: string; minSlots: string; priceBasis: string };
 
 export type FriendProfile = {
   userId: string; firstName: string; lastName: string; university: string;
@@ -90,6 +99,6 @@ export type FriendProfile = {
 };
 export type FriendConnection = {
   connectionId: string; direction: 'incoming' | 'outgoing';
-  status: 'pending' | 'accepted' | 'declined'; createdAt: string; respondedAt: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled'; createdAt: string; respondedAt: string;
   person: FriendProfile;
 };
