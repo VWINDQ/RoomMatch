@@ -19,13 +19,15 @@ function ProtectedRoutes() {
   const { user, authLoading, authError, retryAuth } = useApp(); const location = useLocation();
   if (authLoading) return <main className="route-loading"><span className="clay-loader"/><p>กำลังเตรียมห้องให้คุณ...</p></main>;
   if (authError) return <main className="route-loading"><p>{authError}</p><button className="button button-primary" onClick={retryAuth}>ลองเชื่อมต่ออีกครั้ง</button></main>;
-  return user ? <Outlet/> : <Navigate to="/login" replace state={{ from: location.pathname }}/>;
+  return user ? <Outlet/> : <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }}/>;
 }
 
 function GuestOnly({ children }: { children: ReactNode }) {
   const { user, authLoading } = useApp();
+  const location = useLocation();
+  const destination = (location.state as { from?: string } | null)?.from || '/rooms';
   if (authLoading) return null;
-  return user ? <Navigate to="/rooms" replace/> : children;
+  return user ? <Navigate to={destination} replace/> : children;
 }
 
 function RoutedApp() {

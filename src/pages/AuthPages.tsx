@@ -25,7 +25,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
       </Link>
       <div>
         <p>พื้นที่สำหรับนักศึกษา</p>
-        <h1>{mode === 'login' ? 'หาห้อง และเจอเพื่อนร่วมห้องที่เข้ากันได้' : 'เริ่มต้นสร้าง RoomMatch Account ของคุณ'}</h1>
+        <h1>{mode === 'login' ? 'หาห้องพัก และ Roommate ที่เข้ากันได้' : 'เริ่มต้นสร้าง RoomMatch Account ของคุณ'}</h1>
         <p className="auth-note">ค้นหาห้อง ส่งคำขอ และจัดการสมาชิก</p>
       </div>
       <small>University housing, made friendlier.</small>
@@ -39,7 +39,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
         <Input label="อีเมล" name="email" type="email" autoComplete="email" placeholder="name@mail.kmutt.ac.th" required/>
         <label className="field"><span className="field-label">รหัสผ่าน</span><span className="password-field"><input name="password" type={showPassword ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={8} required/><button type="button" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}>{showPassword ? <EyeOff size={19}/> : <Eye size={19}/>}</button></span></label>
         {error && <p className="form-alert" role="alert">{error}</p>}<Button className="w-full" loading={loading}>{mode === 'login' ? 'เข้าสู่ระบบ' : 'สร้างบัญชี'}</Button>
-      </form><p className="auth-switch">{mode === 'login' ? 'ยังไม่มีบัญชี?' : 'มีบัญชีแล้ว?'} <Link to={mode === 'login' ? '/register' : '/login'}>{mode === 'login' ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ'}</Link></p>
+      </form><p className="auth-switch">{mode === 'login' ? 'ยังไม่มีบัญชี?' : 'มีบัญชีแล้ว?'} <Link to={mode === 'login' ? '/register' : '/login'} state={location.state}>{mode === 'login' ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ'}</Link></p>
     </div></section>
   </main>;
 }
