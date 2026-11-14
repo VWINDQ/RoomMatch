@@ -227,6 +227,9 @@ function roomSummary(row) {
 
 function matchDto(row, authenticatedUserId) {
   const userIsInitiator = row.initiator_user_id === authenticatedUserId;
+  const lineId = userIsInitiator ? row.completer_line_id : row.initiator_line_id;
+  const instagram = userIsInitiator ? row.completer_instagram : row.initiator_instagram;
+  const phone = userIsInitiator ? row.completer_phone : row.initiator_phone;
   return {
     matchId: row.match_id,
     matchedAt: row.matched_at,
@@ -238,8 +241,10 @@ function matchDto(row, authenticatedUserId) {
       lastName: userIsInitiator ? row.completer_last_name : row.initiator_last_name,
       profileImage: userIsInitiator ? row.completer_profile_image : row.initiator_profile_image,
       bio: userIsInitiator ? row.completer_bio : row.initiator_bio,
-      lineId: userIsInitiator ? row.completer_line_id : row.initiator_line_id,
-      instagram: userIsInitiator ? row.completer_instagram : row.initiator_instagram,
+      lineId,
+      instagram,
+      // Minimize contact exposure: phone is a fallback for matched participants only.
+      ...(!lineId?.trim() && !instagram?.trim() && phone?.trim() ? { phone: phone.trim() } : {}),
     },
   };
 }
@@ -330,12 +335,14 @@ function matchSelect() {
       initiator.bio AS initiator_bio,
       initiator.line_id AS initiator_line_id,
       initiator.instagram AS initiator_instagram,
+      initiator.phone AS initiator_phone,
       completer.first_name AS completer_first_name,
       completer.last_name AS completer_last_name,
       completer.profile_image AS completer_profile_image,
       completer.bio AS completer_bio,
       completer.line_id AS completer_line_id,
-      completer.instagram AS completer_instagram
+      completer.instagram AS completer_instagram,
+      completer.phone AS completer_phone
     FROM MATCHES m
     JOIN ROOM room ON room.room_id = m.room_id
     JOIN USER initiator ON initiator.user_id = m.initiator_user_id
