@@ -28,7 +28,7 @@ test('UX migration preserves legacy rows and permits a lower-numbered teammate m
       copyFileSync(`database/migrations/${name}`, join(directory, name));
       db.exec(readFileSync(join(directory, name), 'utf8'));
     }
-    db.exec(readFileSync('database/seed.sql', 'utf8'));
+    db.exec(readFileSync('tests/fixtures/legacy-seed.sql', 'utf8'));
     db.exec('PRAGMA user_version = 3');
     const requests = db.prepare('SELECT * FROM ROOM_REQUEST ORDER BY request_id').all();
     const rooms = db.prepare('SELECT * FROM ROOM ORDER BY room_id').all().map(row => ({ ...row }));

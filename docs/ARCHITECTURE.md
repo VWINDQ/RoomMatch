@@ -58,9 +58,9 @@ The approval transaction must:
 
 The owner is represented by `ROOM.owner_id`; the owner is not duplicated in `ROOM_MEMBER`.
 
-### ER-only feature policy
+### Feature extensions
 
-Favorites, amenities, and tags are not database-backed features because they are absent from the source ER diagram. The old mock Favorites and Amenities controls must not be presented as working persisted features. No tables for them are added.
+Favorites are persisted through `ROOM_FAVORITE` (migration 004), with composite primary key `(user_id, room_id)`, creation time, and cascading user/room foreign keys. Both authenticated participants and public listing reads retain the existing privacy rules; favorite status is scoped to the viewer. Amenities and tags have no persisted implementation.
 
 ### Presentation convention
 

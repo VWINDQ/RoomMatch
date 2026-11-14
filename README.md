@@ -234,7 +234,7 @@ docs/                  architecture, friend workflow และ audit
 
 - ยังไม่มี Like/Pass หรือ mutual-like matching ปัจจุบันใช้คำชวนแล้วตอบรับ
 - ยังไม่มีแชตหรือการจองห้องเป็นกลุ่ม รูปโปรไฟล์และรูปห้องอัปโหลดจากเครื่องได้
-- Favorites, tags และ amenities ยังไม่ใช่ฟีเจอร์ที่บันทึกได้ใน ER ปัจจุบัน
+- Favorites บันทึกได้ผ่าน ROOM_FAVORITE (migration 004); tags และ amenities ยังไม่ใช่ฟีเจอร์ที่บันทึกได้
 - Rate limiting มีเฉพาะอัปโหลดรูป ยังไม่มีสำหรับ login/register หรือ write APIs อื่น ๆ
 - ยังไม่มี server-side token revocation และ pagination UI (rooms API มี limit/offset แล้ว)
 - Logout ล้าง session ฝั่ง browser แต่ token ที่คัดลอกไปยังใช้ได้จนหมดอายุ
@@ -371,7 +371,7 @@ The implemented relationships are:
 The source ER diagram defines lifestyle as 1:1. Consequently, each lifestyle
 row belongs to only one user; it is not a reusable category. A reusable
 lifestyle catalogue would require an explicit ER change and a junction table.
-Amenities and favorites are not persisted because they are absent from this ER.
+Favorites are persisted through the ROOM_FAVORITE extension (migration 004). Amenities and tags remain outside the implemented schema.
 
 The diagram has no room-title attribute. ROOMMATCH stores the display title as
 the first line of `ROOM.description` and the description body on following

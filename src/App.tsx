@@ -12,12 +12,14 @@ import { RequestsPage } from './pages/RequestsPage';
 import { RoomDetailPage } from './pages/RoomDetailPage';
 import { RoomsPage } from './pages/RoomsPage';
 import { FriendsPage } from './pages/FriendsPage';
+import { FavoritesPage } from './pages/FavoritesPage';
 
 function ScrollToTop() {
   const location = useLocation();
   const navigationType = useNavigationType();
   useEffect(() => {
     window.scrollTo(0, 0);
+    document.querySelector<HTMLElement>('.workspace')?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     const state = location.state as { focusTarget?: string } | null;
     const restoreId = state?.focusTarget || (navigationType === 'POP' ? sessionStorage.getItem(`roommatch:focus:${location.pathname}${location.search}`) : null);
     let finished = false;
@@ -57,6 +59,7 @@ function RoutedApp() {
     <Route path="/login" element={<GuestOnly><LoginPage/></GuestOnly>}/>
     <Route path="/register" element={<GuestOnly><RegisterPage/></GuestOnly>}/>
     <Route element={<ProtectedRoutes/>}><Route element={<AppShell/>}>
+      <Route path="/favorites" element={<FavoritesPage/>}/>
       <Route path="/rooms" element={<RoomsPage/>}/><Route path="/rooms/:id" element={<RoomDetailPage/>}/>
       <Route path="/my-listings" element={<MyListingsPage/>}/><Route path="/my-listings/new" element={<ListingFormPage/>}/><Route path="/my-listings/:id/edit" element={<ListingFormPage/>}/>
       <Route path="/requests" element={<RequestsPage/>}/><Route path="/matches" element={<MatchesPage/>}/><Route path="/profile" element={<ProfilePage/>}/>

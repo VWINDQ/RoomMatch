@@ -40,6 +40,7 @@ export type Room = {
   availableSlots: number;
   isOwner?: boolean;
   isMember?: boolean;
+  isFavorite?: boolean;
   requestStatus?: RequestStatus | null;
   pendingRequestId?: string | null;
 };

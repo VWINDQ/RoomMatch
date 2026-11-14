@@ -1,7 +1,7 @@
 # RoomMatch database
 
 This directory contains the eight original ER entities, the separately requested
-`FRIEND_CONNECTION` extension, and realistic local-development seed data.
+`FRIEND_CONNECTION` and `ROOM_FAVORITE` extensions, and realistic local-development seed data.
 
 ## Files and order
 
@@ -31,6 +31,8 @@ runtime. The project targets Node.js 26 and its built-in `node:sqlite` module.
 - `ROOM_IMAGE.room_id` owns ordered images; `(room_id, image_order)` is unique.
 - `ROOM_MEMBER` is the user-room junction and has the composite primary key
   `(user_id, room_id)`.
+- `ROOM_FAVORITE` stores saved rooms with the composite primary key
+  `(user_id, room_id)` and cascades when either parent is deleted.
 - `ROOM_REQUEST` stores pending and final join decisions.
 - `MATCHES` records the owner as `initiator_user_id`, the approved member as
   `completer_user_id`, and the room that brought them together.
@@ -59,8 +61,9 @@ lifestyle description rather than a reusable catalogue item.
 
 If product requirements later need reusable lifestyle categories, the ER model
 must change to a category-style `LIFESTYLE` table plus a `USER_LIFESTYLE`
-junction table. That category entity is deliberately not added here. Amenities and
-favorites are likewise absent because they are not present in the current ER.
+junction table. That category entity is deliberately not added here. Amenities
+are not implemented in this schema. Favorites use the separately added
+`ROOM_FAVORITE` junction table (migration 004).
 
 ## Data invariants
 
