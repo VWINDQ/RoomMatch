@@ -1,13 +1,16 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Building2, Eye, EyeOff } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { Button, Input } from '../components/UI';
+import { SessionChangedError } from '../lib/api';
 
 function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate(); const location = useLocation(); const { login, register, notify } = useApp();
   const [showPassword, setShowPassword] = useState(false); const [loading, setLoading] = useState(false); const [error, setError] = useState('');
+  const submissionVersion = useRef(0);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
+    const version = ++submissionVersion.current;
     event.preventDefault(); setError(''); setLoading(true); const data = new FormData(event.currentTarget);
     try {
       const email = String(data.get('email')).trim(); const password = String(data.get('password'));
@@ -15,8 +18,11 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
       else await register({ firstName: String(data.get('firstName')).trim(), lastName: String(data.get('lastName')).trim(), email, password, phone: String(data.get('phone')).trim(), gender: String(data.get('gender')), dateOfBirth: String(data.get('dateOfBirth')), university: String(data.get('university')).trim() });
       notify(mode === 'login' ? 'เข้าสู่ระบบแล้ว' : 'สร้างบัญชีเรียบร้อยแล้ว');
       const destination = (location.state as { from?: string } | null)?.from || '/rooms'; navigate(destination, { replace: true });
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ'); }
-    finally { setLoading(false); }
+    } catch (caught) {
+      if (caught instanceof SessionChangedError) return;
+      setError(caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ');
+    }
+    finally { if (version === submissionVersion.current) setLoading(false); }
   };
   return <main className="auth-page">
     <section className="auth-aside">

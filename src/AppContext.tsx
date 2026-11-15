@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { api, ApiError, subscribeUnauthorized, tokenStorage } from './lib/api';
+import { api, ApiError, SessionChangedError, subscribeUnauthorized, tokenStorage } from './lib/api';
 import type { User } from './types';
 
 type RegisterPayload = { firstName: string; lastName: string; email: string; password: string; phone: string; gender?: string; dateOfBirth?: string; university?: string };
@@ -19,8 +19,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState('');
   // A newer auth operation takes precedence over any pending account check.
   const authVersion = useRef(0);
+  // Login and registration share a sequence independent of account refreshes.
+  const signInVersion = useRef(0);
   const notify = useCallback((message: string) => setToast(message), []);
   const clearSession = useCallback(() => {
+    signInVersion.current += 1;
     authVersion.current += 1;
     tokenStorage.clear();
     setUser(null);
@@ -69,18 +72,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuthLoading(false);
   }, []);
 
+  const signIn = useCallback(async (request: () => Promise<{ token: string; user: User }>) => {
+    const version = ++signInVersion.current;
+    try {
+      const result = await request();
+      if (version !== signInVersion.current) throw new SessionChangedError();
+      acceptSession(result);
+    } catch (caught) {
+      if (version !== signInVersion.current) throw new SessionChangedError();
+      throw caught;
+    }
+  }, [acceptSession]);
+
   useEffect(() => {
-    if (!tokenStorage.get()) return;
-    retryAuth();
+    const unsubscribe = tokenStorage.subscribe(() => {
+      signInVersion.current += 1;
+      authVersion.current += 1;
+      setUser(null);
+      setAuthError('');
+      setToast('');
+      // Storage already changed in the other tab; do not write it back from here.
+      if (tokenStorage.get()) void retryAuth();
+      else setAuthLoading(false);
+    });
+    if (tokenStorage.get()) void retryAuth();
+    return () => {
+      signInVersion.current += 1;
+      unsubscribe();
+    };
   }, [retryAuth]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 2600); return () => window.clearTimeout(timer); }, [toast]);
 
   const value = useMemo<AppState>(() => ({
     user, authLoading, authError, toast, notify, refreshUser, retryAuth,
-    login: async (email, password) => { acceptSession(await api.login({ email, password })); },
-    register: async payload => { acceptSession(await api.register(payload)); },
+    login: (email, password) => signIn(() => api.login({ email, password })),
+    register: payload => signIn(() => api.register(payload)),
     logout: clearSession,
-  }), [acceptSession, authError, authLoading, clearSession, notify, refreshUser, retryAuth, toast, user]);
+  }), [authError, authLoading, clearSession, notify, refreshUser, retryAuth, signIn, toast, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 
