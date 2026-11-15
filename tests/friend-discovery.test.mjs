@@ -141,6 +141,40 @@ test('pending invitations have correct directions, hide contacts and reject dupl
   assert.equal((await api('/friends/connections', 2, 'POST', { recipientId: 1 })).status, 409);
 });
 
+test('RM-17: forged sender, account query and consent fields cannot bypass authenticated invitation ownership', async () => {
+  const before = originalTables();
+  const forgedTime = '2000-01-01T00:00:00.000Z';
+  const result = await api('/friends/connections?userId=3', 1, 'POST', {
+    recipientId: 2, senderId: 3, sender_id: 3, userId: 3,
+    status: 'accepted', createdAt: forgedTime, respondedAt: forgedTime,
+  });
+  assert.equal(result.status, 201);
+  const invitation = result.body.connection;
+  assert.equal(invitation.status, 'pending');
+  assert.equal(invitation.direction, 'outgoing');
+  assert.equal(invitation.respondedAt, null);
+  assert.notEqual(invitation.createdAt, forgedTime);
+  assert.equal(invitation.person.userId, 2);
+  assert.deepEqual(Object.keys(invitation.person).sort(), profileKeys);
+  const stored = db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(invitation.connectionId);
+  assert.deepEqual([stored.sender_id, stored.recipient_id, stored.status, stored.responded_at], [1, 2, 'pending', null]);
+
+  const incoming = await api('/friends/connections?userId=3', 2);
+  assert.equal(incoming.status, 200);
+  assert.equal(incoming.body.connections.length, 1);
+  assert.equal(incoming.body.connections[0].direction, 'incoming');
+  assert.equal(incoming.body.connections[0].person.userId, 1);
+  assert.deepEqual(Object.keys(incoming.body.connections[0].person).sort(), profileKeys);
+  assert.deepEqual(await api('/friends/connections?userId=1', 3), { status: 200, body: { connections: [] } });
+
+  const impersonation = await api(`/friends/connections/${invitation.connectionId}?userId=2`, 1, 'PATCH', {
+    status: 'accepted', userId: 2, recipientId: 1,
+  });
+  assert.equal(impersonation.status, 403);
+  assert.deepEqual(db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(invitation.connectionId), stored);
+  assert.deepEqual(originalTables(), before);
+});
+
 test('only the recipient may decide and invalid decisions leave the invitation pending', async () => {
   const invitation = await invite();
   for (const userId of [1, 3]) {
