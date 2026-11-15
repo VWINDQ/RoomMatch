@@ -153,7 +153,7 @@ test('room writes enforce ownership and title convention', async () => {
     body: JSON.stringify({
       title: 'Test room',
       description: 'Persisted in the description body.',
-      googleMapsUrl: 'https://maps.google.com/?q=13.7,100.5',
+      priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.7,100.5',
       price: 5000,
       capacity: 2,
       images: ['https://images.example.test/room.jpg'],

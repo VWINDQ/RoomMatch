@@ -16,7 +16,7 @@ export function Button({ variant = 'primary', loading, className = '', children,
 type FieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; hint?: string };
 export function Input({ label, error, hint, className = '', ...props }: FieldProps) {
   const descriptionId = useId();
-  return <label className={`field ${className}`}><span className="field-label">{label}</span><input className={error ? 'has-error' : ''} aria-invalid={error ? true : undefined} aria-describedby={error || hint ? descriptionId : undefined} {...props} />{error ? <span id={descriptionId} className="field-error">{error}</span> : hint ? <span id={descriptionId} className="field-hint">{hint}</span> : null}</label>;
+  return <label className={`field ${className}`}><span className="field-label">{label.endsWith(" *") ? <>{label.slice(0, -1)}<span className="required-marker" aria-hidden="true">*</span></> : label}</span><input className={error ? 'has-error' : ''} aria-invalid={error ? true : undefined} aria-describedby={error || hint ? descriptionId : undefined} {...props} />{error ? <span id={descriptionId} className="field-error">{error}</span> : hint ? <span id={descriptionId} className="field-hint">{hint}</span> : null}</label>;
 }
 
 type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; error?: string };

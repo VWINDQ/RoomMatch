@@ -4,11 +4,12 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { assert, HttpError } from './errors.js';
+import { IMAGE_FORMATS, IMAGE_TYPE_MESSAGE, MAX_IMAGE_BYTES } from '../shared/imageUpload.js';
 
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export { MAX_IMAGE_BYTES } from '../shared/imageUpload.js';
 export const DEFAULT_UPLOAD_DIRECTORY = fileURLToPath(new URL('../storage/uploads/', import.meta.url));
 export const UPLOAD_PATH = /^\/uploads\/([1-9]\d*)\/([a-f0-9-]{36}\.webp)$/;
-const INPUT_TYPES = new Map([['image/jpeg', 'jpeg'], ['image/png', 'png'], ['image/webp', 'webp']]);
+const INPUT_TYPES = new Map(Object.entries(IMAGE_FORMATS));
 
 async function readImage(request) {
   assert(Number(request.headers['content-length'] ?? 0) <= MAX_IMAGE_BYTES, 413, 'รูปภาพต้องมีขนาดไม่เกิน 5 MB');
@@ -44,7 +45,7 @@ export function createImageStorage({ directory = process.env.ROOMMATCH_UPLOAD_DI
 
   async function upload(request, userId) {
     const type = String(request.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
-    assert(INPUT_TYPES.has(type), 415, 'รองรับเฉพาะรูป JPG, PNG และ WebP');
+    assert(INPUT_TYPES.has(type), 415, IMAGE_TYPE_MESSAGE);
     const now = Date.now();
     for (const [key, entry] of attempts) if (now - entry.start >= 60_000) attempts.delete(key);
     const entry = attempts.get(userId) ?? { start: now, count: 0 };

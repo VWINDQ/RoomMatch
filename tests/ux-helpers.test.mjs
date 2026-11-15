@@ -82,7 +82,7 @@ test('API errors translate raw server messages at construction while keeping sta
   const unsubscribe = adapter.subscribeUnauthorized?.(token => notifications.push(token));
   if (unsubscribe) t.after(unsubscribe);
   let current;
-  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ error: current.message }), { status: current.status }));
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ error: current.message, fieldErrors: current.fieldErrors }), { status: current.status }));
   for (const [status, message, expected] of [
     [409, 'You are already a member of this room', /เป็นสมาชิก.*แล้ว/],
     [409, 'Inactive rooms cannot accept requests', /พักรับคำขอ/],
@@ -98,5 +98,10 @@ test('API errors translate raw server messages at construction while keeping sta
     assert.equal(new adapter.ApiError(direct.message, status).message, direct.message);
     await assert.rejects(adapter.api.createJoinRequest('1'), caught => caught instanceof adapter.ApiError && caught.status === status && expected.test(caught.message));
   }
+  current = { status: 400, message: 'Invalid listing fields', fieldErrors: { title: 'กรุณากรอกหัวข้อประกาศ', price: 12 } };
+  await assert.rejects(adapter.api.createRoom({}), caught => {
+    assert.deepEqual(caught.fieldErrors, { title: 'กรุณากรอกหัวข้อประกาศ' });
+    return true;
+  });
   if (adapter.subscribeUnauthorized) assert.deepEqual(notifications, ['test-session']);
 });
