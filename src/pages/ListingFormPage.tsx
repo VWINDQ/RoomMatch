@@ -18,6 +18,7 @@ export function ListingFormPage() {
   const [checkingImages, setCheckingImages] = useState(false);
   const [loading, setLoading] = useState(Boolean(id)); const [loadError, setLoadError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [saving, setSaving] = useState(false); const [status, setStatus] = useState<RoomStatus>('available');
   const formRef = useRef<HTMLFormElement>(null);
+  const submitLocked = useRef(false);
   const [focusErrors, setFocusErrors] = useState(false);
   const summaryRef = useFormFeedback(errors, formRef, focusErrors);
   const fieldsWithErrors = useRef(new Set<string>());
@@ -64,14 +65,16 @@ export function ListingFormPage() {
   useEffect(() => { if (!id) return; let active = true; api.room(id).then(room => { if (!active) return; if (!room.isOwner) { setLoadError('คุณแก้ไขได้เฉพาะประกาศของตัวเอง'); return; } setExisting(room); setImages(savedImages(room.images.map(image => image.imageUrl))); setStatus(room.status === 'inactive' ? 'inactive' : 'available'); }).catch(caught => active && setLoadError(caught instanceof Error ? caught.message : 'โหลดประกาศไม่สำเร็จ')).finally(() => active && setLoading(false)); return () => { active = false; }; }, [id]);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (checkingImages) return;
+    if (submitLocked.current || checkingImages) return;
+    // Lock synchronously: React state and disabled controls update after this handler.
+    submitLocked.current = true;
     setFocusErrors(true);
     const values = Object.fromEntries(new FormData(event.currentTarget));
     const nextErrors = validateListing({ ...values, images: completedListingImageUrls(images) }, { minimumCapacity: existing ? existing.memberCount + 1 : 1 });
     Object.keys(nextErrors).forEach(field => fieldsWithErrors.current.add(field));
     setErrors(nextErrors);
     // Selected files can satisfy the image requirement only after successful upload.
-    if (Object.keys(nextErrors).some(field => field !== 'images') || (nextErrors.images && !images.some(image => image.file))) return;
+    if (Object.keys(nextErrors).some(field => field !== 'images') || (nextErrors.images && !images.some(image => image.file))) { submitLocked.current = false; return; }
     // Upload is in progress, not a missing-image failure. Its own failure is reported below.
     setErrors({});
     setFocusErrors(false);
@@ -93,10 +96,11 @@ export function ListingFormPage() {
         throw new ApiError(message, caught instanceof ApiError ? caught.status : 0, { images: message });
       });
       const uploadedErrors = validateListing({ images: imageUrls }, { partial: true });
-      if (uploadedErrors.images) { setFocusErrors(true); setErrors(uploadedErrors); return; }
+      if (uploadedErrors.images) { setFocusErrors(true); setErrors(uploadedErrors); submitLocked.current = false; setSaving(false); return; }
       if (existing) await api.updateRoom(existing.roomId, { ...payload, images: imageUrls });
       else await api.createRoom({ ...payload, images: imageUrls });
       notify(existing ? 'บันทึกการแก้ไขแล้ว' : 'สร้างประกาศแล้ว');
+      // Keep the lock through navigation so a successful save cannot be repeated.
       navigate('/my-listings');
     } catch (caught) {
       const fields = caught instanceof ApiError
@@ -105,7 +109,9 @@ export function ListingFormPage() {
       setFocusErrors(true);
       Object.keys(fields).forEach(field => fieldsWithErrors.current.add(field));
       setErrors(Object.keys(fields).length ? fields : { form: caught instanceof Error ? caught.message : 'บันทึกประกาศไม่สำเร็จ' });
-    } finally { setSaving(false); }
+      submitLocked.current = false;
+      setSaving(false);
+    }
   };
   if (loading) return <div className="page"><div className="detail-skeleton"><span/><span/><span/></div></div>;
   if (loadError) return <div className="page form-error-page"><h1>เปิดประกาศไม่ได้</h1><p>{loadError}</p><Button onClick={() => navigate('/my-listings')}>กลับไปประกาศของฉัน</Button></div>;
@@ -113,7 +119,7 @@ export function ListingFormPage() {
     <form ref={formRef} className="listing-form" onSubmit={submit} onBlur={event => validateField(event)} onChange={event => validateField(event, true)} noValidate aria-busy={saving}><fieldset className="image-upload-fields" disabled={saving}><section className="form-section"><header><span>1</span><div><h2>ข้อมูลห้อง</h2><p>ตั้งชื่อสั้น ๆ และเล่ารายละเอียดที่ช่วยตัดสินใจ</p></div></header><div className="form-section-body"><Input label="หัวข้อประกาศ *" name="title" maxLength={200} defaultValue={existing?.title} error={errors.title} required/><Textarea label="รายละเอียดห้อง" name="description" maxLength={5000} rows={6} defaultValue={existing?.description} error={errors.description}/><div className="form-grid"><Input label="ราคา / เดือน *" name="price" type="number" min={1} step={1} placeholder="เช่น 3500" defaultValue={existing?.price} error={errors.price} required/><label className="field"><span className="field-label">หน่วยราคา <span className="required-marker" aria-hidden="true">*</span></span><select name="priceBasis" required defaultValue={existing?.priceBasis || ''} aria-invalid={Boolean(errors.priceBasis)} aria-describedby={errors.priceBasis ? "price-basis-error" : undefined}><option value="">เลือกหน่วยราคา</option><option value="per_room">ทั้งห้อง / เดือน</option><option value="per_person">ต่อคน / เดือน</option></select>{errors.priceBasis && <span id="price-basis-error" className="field-error">{errors.priceBasis}</span>}</label></div><Input label="จำนวนผู้พักรวมเจ้าของ *" name="capacity" type="number" min={1} max={100} defaultValue={existing?.capacity ?? 2} error={errors.capacity} required/><Textarea label="ค่าใช้จ่ายที่รวมและไม่รวม" name="costNotes" maxLength={1000} rows={3} defaultValue={existing?.costNotes} error={errors.costNotes} placeholder="ระบุค่าน้ำ ค่าไฟ เงินประกัน หรือค่าแรกเข้าที่ทราบ หากยังไม่ทราบเว้นว่างได้"/><div className="form-tip"><UsersRound size={18}/><span>ความจุรวมเจ้าของห้อง เช่น จุ 2 คน หมายถึงรับสมาชิกเพิ่มได้ 1 คน</span></div></div></section>
       <section className="form-section"><header><span>2</span><div><h2>ตำแหน่งและสถานะ</h2><p>เพิ่มลิงก์แผนที่โดยไม่จำเป็นต้องเปิดเผยเลขห้อง</p></div></header><div className="form-section-body"><Input label="ย่านหรือถนน *" name="locality" required maxLength={200} defaultValue={existing?.locality} error={errors.locality} hint="ระบุทำเลโดยย่อ ไม่จำเป็นต้องเปิดเผยเลขห้อง"/><Input label="Google Maps URL *" name="googleMapsUrl" type="url" maxLength={2048} defaultValue={existing?.googleMapsUrl} error={errors.googleMapsUrl} required/><div className="form-tip"><MapPin size={18}/><span>ใช้ลิงก์แชร์จาก Google Maps เพื่อให้เปิดตำแหน่งได้จริง</span></div><div className="field"><span className="field-label" id="listing-status-label">สถานะประกาศ</span><div className="status-choice" role="group" aria-labelledby="listing-status-label"><button type="button" aria-pressed={status === 'available'} className={status === 'available' ? 'selected' : ''} onClick={() => setStatus('available')}>เปิดรับคำขอ</button><button type="button" aria-pressed={status === 'inactive'} className={status === 'inactive' ? 'selected' : ''} onClick={() => setStatus('inactive')}>พักประกาศ</button></div></div></div></section>
       <section className="form-section"><header><span>3</span><div><h2>รูปภาพห้อง</h2><p>เลือกรูปจากเครื่องได้สูงสุด 12 รูป แล้วจัดลำดับรูปปกได้เลย</p></div></header><div className="form-section-body"><ImagePicker label="รูปภาพห้อง" images={images} onCheckingChange={setCheckingImages} onSelectionCancel={cancelImageSelection} onChange={changeImages} fieldName="images" required max={12} disabled={saving} error={errors.images}/></div></section>
-      <footer className="listing-form-actions"><FormFeedback errors={errors.form ? { form: errors.form } : {}} summaryRef={summaryRef}/><div className="form-action-buttons"><Button type="button" variant="quiet" onClick={() => navigate('/my-listings')}>ยกเลิก</Button><Button type="submit" disabled={checkingImages} loading={saving}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : existing ? 'บันทึกการแก้ไข' : 'สร้างประกาศ'}</Button></div></footer>
+      <footer className="listing-form-actions"><FormFeedback errors={errors.form ? { form: errors.form } : {}} summaryRef={summaryRef}/><div className="form-action-buttons"><Button type="button" variant="quiet" onClick={() => navigate('/my-listings')}>ยกเลิก</Button><Button type="submit" disabled={saving || checkingImages} loading={saving}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : existing ? 'บันทึกการแก้ไข' : 'สร้างประกาศ'}</Button></div></footer>
     </fieldset></form>
   </div>;
 }
