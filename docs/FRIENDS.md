@@ -130,6 +130,10 @@ friendship remained intact. Final checks: `npm test` (106 passed),
 
 ### วิธีตรวจงาน
 
+ผลตรวจรับ 3 บัญชีครบ pending/accepted/declined/cancelled, สิทธิ์ผู้ส่ง/ผู้รับ/คนนอก,
+ความเป็นส่วนตัว, failure/rollback และ restart พร้อมขั้นตอนทดสอบซ้ำ:
+[RM-17 acceptance](RM17_ACCEPTANCE.md)
+
 ```bash
 node --test tests/friends.test.mjs tests/friend-discovery.test.mjs
 npm test
