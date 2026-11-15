@@ -1,12 +1,89 @@
 # Find a friend before choosing a room
 
+## เชื่อมงานกับทีม — RM-24
+
+การเป็นเพื่อนใช้ `FRIEND_CONNECTION` และแยกจาก [คำขอเข้าพัก](REQUESTS.md)
+กับ [สมาชิก/room match](MATCHES.md) ไม่ต้องมี roomId ตอนส่งคำชวน และการตอบรับไม่จองห้อง
+แต่ละคนยังต้องส่งคำขอเข้าพักเองและได้รับอนุมัติจากเจ้าของห้อง
+
+ใช้ adapter เดิม `api.friends(query)`, `friendConnections()`, `inviteFriend(userId)`,
+`decideFriend(connectionId, status)`, `cancelFriendInvitation(connectionId)`
+โดย API รับ recipientId เป็น number; adapter แปลง string ID ของ frontend ให้แล้ว
+ชื่อ route ของ UI คือ `/friends` ไม่ใช่ `/matches`
+
+| สถานะ | ผู้ทำรายการต่อได้ | การเปิดข้อมูลติดต่อ |
+| --- | --- | --- |
+| `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | ไม่มีข้อมูลติดต่อใน person ของทั้งสองฝ่าย |
+| `accepted` | ค้นหาห้องด้วยกัน; ยังไม่มี unfriend | ทั้งสองฝ่ายเห็น LINE, Instagram, email, phone ที่กรอกไว้ |
+| `declined` | ดูประวัติ ไม่ส่งซ้ำ/เปลี่ยนผล | ไม่มีข้อมูลติดต่อ |
+| `cancelled` | ผู้ส่งถอนซ้ำแบบ idempotent ได้ แต่ไม่ส่งคำชวนใหม่ | ไม่มีข้อมูลติดต่อ |
+
+คนนอกไม่เห็น connection ของคู่อื่น แม้แนบ userId ใน query และโปรไฟล์สาธารณะไม่มี contact
+เมื่อคู่ inactive API จะไม่คืนคู่นั้นใน connections; หลังโหลดใหม่ UI ต้องไม่ใช้ contact ที่ cache ไว้
+ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ, unfriend, ส่งซ้ำหลัง declined/cancelled
+หรือการสมัครห้องแบบกลุ่ม (อย่าใช้ POST สวนทางแทนการตอบรับ ต้อง PATCH โดยผู้รับ)
+
+### ตัวอย่างเรียก API
+
+ใช้ [Curl setup](REQUESTS.md#curl-setup) และเพิ่ม RM_SENDER_TOKEN, RM_RECIPIENT_TOKEN
+จาก login ของผู้ส่ง/ผู้รับ, RM_RECIPIENT_ID เป็น userId **ตัวเลข** ของผู้รับ และ
+RM_CONNECTION_ID จากผลส่งคำชวน ไม่ใช้ requestId ของคำขอห้อง
+
+```bash
+curl -sS -X POST "$RM_API/friends/connections" \
+  -H "Authorization: Bearer $RM_SENDER_TOKEN" -H 'Content-Type: application/json' \
+  --data "{\"recipientId\":$RM_RECIPIENT_ID}"
+```
+
+ตัวอย่าง `201` ก่อนตอบรับ (ไม่มี contact keys ใน person):
+
+```json
+{
+  "connection": {
+    "connectionId": 5, "direction": "outgoing", "status": "pending",
+    "createdAt": "2026-11-15T10:00:00.000Z", "respondedAt": null,
+    "person": {
+      "userId": 2, "firstName": "บี", "lastName": "ทดสอบ", "university": null,
+      "bio": null, "profileImage": null, "lifestyle": null, "budgetMin": null, "budgetMax": null
+    }
+  }
+}
+```
+
+ผู้รับอ่านรายการและตอบรับด้วย token ของตน:
+
+```bash
+curl -sS "$RM_API/friends/connections" -H "Authorization: Bearer $RM_RECIPIENT_TOKEN"
+```
+
+```bash
+curl -sS -X PATCH "$RM_API/friends/connections/$RM_CONNECTION_ID" \
+  -H "Authorization: Bearer $RM_RECIPIENT_TOKEN" -H 'Content-Type: application/json' \
+  --data '{"status":"accepted"}'
+```
+
+ผล `200 { connection }` เป็น incoming, accepted พร้อม respondedAt
+และ `person` เป็นโปรไฟล์ผู้ส่งพร้อม contact keys ของผู้ส่ง ไม่ใช่ข้อมูลของผู้รับเอง
+หากปฏิเสธใช้ `declined` และไม่มี contact keys ส่วนผู้ส่งถอน pending ด้วยคำสั่งนี้แทน:
+
+```bash
+curl -sS -X POST "$RM_API/friends/connections/$RM_CONNECTION_ID/cancel" \
+  -H "Authorization: Bearer $RM_SENDER_TOKEN"
+```
+
+คำสั่งถอนเป็นอีกทางเลือกก่อนผู้รับตัดสินใจ ไม่ใช้หลัง accepted/declined เพราะจะได้ 409
+หลังตอบรับจึงใช้ `/rooms?withFriend=<userId อีกฝ่าย>`; server ตรวจความเป็นเพื่อนและที่ว่าง
+หากบุคคลนั้นอยู่ห้องแล้วจะไม่คิดที่ว่างซ้ำ ดูกฎห้องใน [UX_FIXES.md](UX_FIXES.md)
+
 ## Preservation decision
 
 The user requested an additional people-first page without altering good existing
 data. Instead of relaxing/rebuilding `MATCHES` or rewriting its membership triggers,
 migration `003_friend_connections.sql` adds `FRIEND_CONNECTION` only. The original
 eight ER tables, room-based matches, capacity rules, and owner approval flow remain
-unchanged. The extended ER therefore has nine entities, not eight.
+unchanged by that migration. It adds the ninth business entity; the separately
+merged Favorites migration adds `ROOM_FAVORITE`, so the current database has ten
+business tables. The internal migration ledger is not another business entity.
 
 `USER 1:N FRIEND_CONNECTION` has two roles: sender and recipient. No room is required.
 An unordered user pair has one invitation; self-invitations and duplicate reversed
@@ -135,7 +212,7 @@ friendship remained intact. Final checks: `npm test` (106 passed),
 [RM-17 acceptance](RM17_ACCEPTANCE.md)
 
 ```bash
-node --test tests/friends.test.mjs tests/friend-discovery.test.mjs
+node --test tests/friends.test.mjs tests/friend-discovery.test.mjs tests/friend-cancellation-api.test.mjs
 npm test
 npm run build
 ```
@@ -154,8 +231,8 @@ Tests ใหม่อยู่ใน `tests/friend-discovery.test.mjs` เปิ
 4. ทดลองปฏิเสธกับอีกคู่ ต้องไม่เปิดข้อมูลติดต่อหรือเปลี่ยนสมาชิกห้อง
 5. กดค้นหาห้องด้วยกัน ต้องเปิดบริบทเพื่อนที่ตอบรับ ไม่ใช่เพิ่มสมาชิก/จองห้องอัตโนมัติ
 
-รอบนี้ตรวจ HTTP API/tests/build ยังไม่ได้กด UI ตาม checklist ข้างต้น
-และไม่มีการ stage, commit หรือ push ให้
+Checklist ข้างต้นตรวจผ่าน browser ด้วย 3 บัญชีแล้วใน [RM-17 acceptance](RM17_ACCEPTANCE.md)
+รายงานแยกเคสที่กดผ่าน UI ออกจากสิทธิ์/input/failure ที่ตรวจด้วย HTTP tests ไว้ชัดเจน
 
 
 ### RM-18: สถานะคำชวนเปลี่ยนระหว่างใช้งาน
