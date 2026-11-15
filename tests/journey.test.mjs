@@ -63,7 +63,7 @@ test('register → list → request → approve/reject → membership and match'
     body: JSON.stringify({
       title: 'Journey room',
       description: 'A persisted room used by the complete API journey.',
-      googleMapsUrl: 'https://maps.google.com/?q=13.65,100.49',
+      priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.65,100.49',
       price: 5900,
       capacity: 2,
       images: [
@@ -144,10 +144,10 @@ test('register → list → request → approve/reject → membership and match'
     body: JSON.stringify({
       title: 'Rejection journey room',
       description: 'Keeps the rejection path independent.',
-      googleMapsUrl: 'https://maps.google.com/?q=13.66,100.50',
+      priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.66,100.50',
       price: 5100,
       capacity: 2,
-      images: [],
+      images: ['https://example.test/room.jpg'],
     }),
   });
   assert.equal(rejectionRoom.response.status, 201);

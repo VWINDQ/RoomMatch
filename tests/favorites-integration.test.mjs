@@ -76,7 +76,7 @@ test('favorites survive withdrawal, approval and leaving without changing reques
 
 test('favorite status coexists with price units, locality and shared-room vacancy filtering', async t => {
   const { db, api } = await fixture(t);
-  const created = await api('/rooms', 1, 'POST', { title: 'ห้องสำหรับเพื่อนสองคน', description: 'ห้องทดสอบ', googleMapsUrl: 'https://maps.google.com/', price: 6000, capacity: 3, priceBasis: 'per_room', locality: 'ประชาอุทิศ', costNotes: 'เงินประกันหนึ่งเดือน' });
+  const created = await api('/rooms', 1, 'POST', { title: 'ห้องสำหรับเพื่อนสองคน', description: 'ห้องทดสอบ', googleMapsUrl: 'https://maps.google.com/', price: 6000, capacity: 3, images: ['https://example.test/room.jpg'], priceBasis: 'per_room', locality: 'ประชาอุทิศ', costNotes: 'เงินประกันหนึ่งเดือน' });
   assert.equal(created.status, 201);
   const roomId = created.body.room.roomId;
   db.exec("INSERT INTO FRIEND_CONNECTION(sender_id,recipient_id,status,responded_at) VALUES(3,4,'accepted',CURRENT_TIMESTAMP)");

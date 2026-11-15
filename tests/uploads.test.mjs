@@ -71,6 +71,8 @@ test('reject unauthenticated, empty, oversized, corrupt, spoofed, SVG, and overs
   assert.equal((await f.upload(Buffer.alloc(MAX_IMAGE_BYTES + 1))).status, 413);
   assert.equal((await f.upload(Buffer.from('<script>alert(1)</script>'))).status, 400);
   assert.equal((await f.upload(f.image, 'image/png')).status, 400);
+  assert.equal((await f.upload(Buffer.from('%PDF-1.7\nrenamed-to-photo.jpg'), 'image/jpeg')).status, 400);
+  assert.equal((await f.upload(Buffer.from('%PDF-1.7\nrenamed-to-photo.png'), 'image/png')).status, 400);
   assert.equal((await f.upload(Buffer.from('<svg/>'), 'image/svg+xml')).status, 415);
   const big = await sharp({ create: { width: 6000, height: 6000, channels: 3, background: '#fff' } }).png().toBuffer();
   assert.equal((await f.upload(big, 'image/png')).status, 400);
@@ -96,7 +98,7 @@ test('room create/edit stores uploaded images in order and keeps legacy URLs com
   const f = await fixture(t);
   const first = (await f.upload()).body.imageUrl;
   const second = (await f.upload()).body.imageUrl;
-  const payload = { title: 'ห้องทดสอบ', googleMapsUrl: 'https://maps.google.com/', price: 3000, capacity: 2, images: [first, 'https://example.test/old.jpg', second] };
+  const payload = { title: 'ห้องทดสอบ', priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/', price: 3000, capacity: 2, images: [first, 'https://example.test/old.jpg', second] };
   const created = await f.api('/rooms', 'POST', payload);
   assert.equal(created.status, 201);
   const roomId = created.body.room.roomId;
@@ -112,7 +114,7 @@ test('room create/edit stores uploaded images in order and keeps legacy URLs com
   assert.equal((await f.api('/profile', 'PATCH', { profileImage: 'https://example.test/old.jpg' })).status, 200);
   await f.restart();
   assert.deepEqual((await f.api(`/rooms/${roomId}`)).body.room.images.map(image => image.imageUrl), [second, first, first]);
-  assert.equal((await f.api(`/rooms/${roomId}`, 'PATCH', { images: [] })).status, 200);
+  assert.equal((await f.api(`/rooms/${roomId}`, 'PATCH', { images: [] })).status, 400);
   assert.equal((await f.api('/profile', 'PATCH', { profileImage: '' })).body.user.profileImage, null);
 });
 

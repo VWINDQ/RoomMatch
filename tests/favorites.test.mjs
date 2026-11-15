@@ -260,7 +260,7 @@ test('FAV-09: deleting a room removes its favorites', async () => {
     body: JSON.stringify({
       title: 'Favorite Cascade Test Room',
       description: 'Room created for testing favorite cascade.',
-      googleMapsUrl: 'https://maps.google.com/?q=13.7,100.5',
+      priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.7,100.5',
       price: 5000,
       capacity: 2,
       images: ['https://images.example.test/room.jpg'],

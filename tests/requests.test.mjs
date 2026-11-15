@@ -38,8 +38,8 @@ async function api(path, userId, method = 'GET', payload) {
 async function createRoom(ownerId = 1, overrides = {}) {
   const result = await api('/rooms', ownerId, 'POST', {
     title: 'ห้องทดสอบคำขอ', description: 'เก็บรายละเอียดแยกจากชื่อใน API',
-    googleMapsUrl: 'https://maps.google.com/?q=KMUTT', price: 5000,
-    capacity: 2, images: [], ...overrides,
+    priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=KMUTT', price: 5000,
+    capacity: 2, images: ['https://example.test/room.jpg'], ...overrides,
   });
   assert.equal(result.status, 201);
   return result.body.room.roomId;

@@ -6,7 +6,7 @@ let tokenRevision = 0;
 type JsonObject = Record<string, unknown>;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(friendlyApiError(message, status)); this.name = 'ApiError'; }
+  constructor(message: string, public status: number, public fieldErrors: Record<string, string> = {}) { super(friendlyApiError(message, status)); this.name = 'ApiError'; }
 }
 
 const object = (value: unknown): JsonObject => value && typeof value === 'object' ? value as JsonObject : {};
@@ -96,7 +96,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (response.status === 401 && token && token === tokenStorage.get() && revision === tokenRevision) {
       for (const listener of unauthorizedListeners) listener(token);
     }
-    throw new ApiError(text(object(payload), 'error', 'message') || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', response.status);
+    const fieldErrors = Object.fromEntries(Object.entries(object(object(payload).fieldErrors)).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+    throw new ApiError(text(object(payload), 'error', 'message') || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', response.status, fieldErrors);
   }
   if (!response.ok) throw new ApiError(friendlyApiError(text(object(payload), 'error', 'message'), response.status), response.status);
 

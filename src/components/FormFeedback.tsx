@@ -1,18 +1,20 @@
 import { useEffect, useRef, type RefObject } from 'react';
 
-export function useFormFeedback(errors: Record<string, string>, form: RefObject<HTMLFormElement | null>) {
+export function useFormFeedback(errors: Record<string, string>, form: RefObject<HTMLFormElement | null>, focusOnError = true) {
   const summary = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const key = Object.keys(errors)[0];
-    if (!key) return;
+    if (!key || !focusOnError) return;
     const frame = requestAnimationFrame(() => {
-      const field = key !== 'form' ? form.current?.elements.namedItem(key) : null;
-      const target = field instanceof HTMLElement ? field : summary.current;
+      const controls = Array.from(form.current?.elements || []);
+      const field = controls.find(control => control instanceof HTMLElement && Boolean(errors[control.getAttribute('name') || '']));
+      const group = Array.from(form.current?.querySelectorAll<HTMLElement>('[data-error-field]') || []).find(element => Boolean(errors[element.dataset.errorField || '']));
+      const target = field instanceof HTMLElement ? field : group || summary.current;
       target?.focus({ preventScroll: true });
       target?.scrollIntoView({ block: 'center', behavior: 'instant' });
     });
     return () => cancelAnimationFrame(frame);
-  }, [errors, form]);
+  }, [errors, form, focusOnError]);
   return summary;
 }
 

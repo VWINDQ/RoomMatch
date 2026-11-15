@@ -52,7 +52,7 @@ test('listing metadata remains unknown for legacy rooms and is validated, search
   const legacy = await api('/rooms/1');
   assert.equal(legacy.body.room.priceBasis, null);
   assert.equal(legacy.body.room.locality, null);
-  const payload = { title: 'ห้องใหม่', description: 'ห้องสำหรับทดสอบ', googleMapsUrl: 'https://maps.google.com/', price: 6000, capacity: 3, priceBasis: 'per_room', locality: 'ซอยประชาอุทิศ 100% ใกล้ มจธ.', costNotes: 'ไม่รวมค่าน้ำไฟ เงินประกัน 1 เดือน' };
+  const payload = { title: 'ห้องใหม่', description: 'ห้องสำหรับทดสอบ', googleMapsUrl: 'https://maps.google.com/', price: 6000, capacity: 3, images: ['https://example.test/room.jpg'], priceBasis: 'per_room', locality: 'ซอยประชาอุทิศ 100% ใกล้ มจธ.', costNotes: 'ไม่รวมค่าน้ำไฟ เงินประกัน 1 เดือน' };
   const created = await api('/rooms', 1, 'POST', payload);
   assert.equal(created.status, 201);
   const id = created.body.room.roomId;

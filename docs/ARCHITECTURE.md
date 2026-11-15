@@ -113,6 +113,30 @@ there is no schema migration. See [UPLOADS.md](UPLOADS.md) for limits and deploy
 
 Room write payload fields are `title`, `description`, `googleMapsUrl`, `price`, `capacity`, `status`, and `images`. `title` is encoded into the first description line per the presentation convention.
 
+Listing validation is shared by the form and room create/update APIs in
+`shared/listingValidation.js`. Price is a positive safe integer in whole baht; capacity is
+1–100 including the owner and cannot be reduced below current occupancy.
+Text limits after trimming are title 200, description 5000, map URL 2048,
+locality 200, and cost notes 1000. Map URLs must be complete HTTP(S) URLs;
+no Google-only host restriction is imposed. Price basis, locality, and at least
+one image are required on creation and on non-status-only edits (merged with
+existing metadata for partial edits). Description and cost notes stay optional.
+Legacy listings remain readable, and a PATCH containing only `status` bypasses
+these three new required fields. No legacy metadata is filled automatically.
+Images count only after upload succeeds; existing URLs also count. Uploads still
+run on save through the existing storage API. Deleting the last image is rejected.
+Room validation errors retain the existing `{ error: string }` response and add
+`fieldErrors: { [fieldName]: string }` with Thai messages for inline form feedback.
+Occupancy conflicts use status 409 and `fieldErrors.capacity`; general failures
+remain form-level errors. Uploaded image ownership is still checked by the API.
+The listing form validates an individual field on blur without moving focus;
+fields that have shown an error are revalidated on change, clearing their error
+as soon as valid. Untouched fields stay quiet until submission. Required empty
+values receive a required-field message; optional fields may remain empty.
+Submission still validates all fields and focuses the first error. Zero and
+fractional rent values are rejected with inline feedback. Storage remains whole
+baht in the existing INTEGER column; no migration or legacy data rewrite is performed.
+
 ### Requests, membership, and matches
 
 The room-request endpoints are implemented in `server/requests.js`, composed

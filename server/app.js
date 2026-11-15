@@ -10,6 +10,25 @@ import { handleFriendRoutes } from './friends.js';
 import { createRoomRequestHandler } from './requests.js';
 import { canViewRoomMembers, createRoomMatchesHandler, listRoomMembers } from './matches.js';
 import { createImageStorage } from './uploads.js';
+import { validateListing, isWebUrl } from '../shared/listingValidation.js';
+
+function assertListing(body, options) {
+  const fieldErrors = validateListing(body, options);
+  if (Object.keys(fieldErrors).length) throw new HttpError(400, 'Invalid listing fields', fieldErrors);
+}
+
+function listingImages(body, parse) {
+  try {
+    if (Array.isArray(body.images)) for (const value of body.images) {
+      if (typeof value === 'string' && !value.startsWith('/uploads/')) assert(isWebUrl(value.trim()), 400, 'imageUrl must be a valid URL');
+    }
+    return parse(body.images);
+  }
+  catch (error) {
+    if (error instanceof HttpError) error.fieldErrors = { images: 'ตรวจสอบรูปภาพ: ใช้ URL HTTP/HTTPS ที่สมบูรณ์หรือรูปที่คุณอัปโหลดเอง สูงสุด 12 รูป' };
+    throw error;
+  }
+}
 
 const BODY_LIMIT_BYTES = 1_048_576;
 const ROOM_STATUSES = new Set(['available', 'full', 'inactive']);
@@ -710,6 +729,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (request.method === 'POST' && pathname === '/api/rooms') {
         const user = authenticate(db, request);
         const body = await readJson(request);
+        assertListing(body);
         const title = text(body.title, 'title', { required: true, max: 200 });
         const description = text(body.description, 'description', { max: 5_000 }) ?? '';
         const googleMapsUrl = webUrl(body.googleMapsUrl, 'googleMapsUrl', { required: true });
@@ -721,7 +741,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const requestedStatus = body.status ?? 'available';
         assert(ROOM_STATUSES.has(requestedStatus), 400, 'status is invalid');
         const status = requestedStatus === 'inactive' ? 'inactive' : capacity === 1 ? 'full' : 'available';
-        const images = parseImages(body.images, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) }) ?? [];
+        const images = listingImages(body, value => parseImages(value, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) })) ?? [];
 
         db.exec('BEGIN IMMEDIATE');
         try {
@@ -743,10 +763,20 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (request.method === 'PATCH' && pathMatch) {
         const user = authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const existing = getRoomRow(db, roomId);
+        let existing = getRoomRow(db, roomId);
         assert(existing, 404, 'Room not found');
         assert(existing.owner_id === user.user_id, 403, 'Only the room owner can update this room');
         const body = await readJson(request);
+        // Membership may change while the request body is arriving.
+        existing = getRoomRow(db, roomId);
+        assert(existing, 404, 'Room not found');
+        const statusOnly = Object.hasOwn(body, 'status') && Object.keys(body).every(field => field === 'status');
+        assertListing(statusOnly ? body : {
+          ...body,
+          priceBasis: Object.hasOwn(body, 'priceBasis') ? body.priceBasis : existing.price_basis,
+          locality: Object.hasOwn(body, 'locality') ? body.locality : existing.locality,
+          images: Object.hasOwn(body, 'images') ? body.images : imageRows(db, roomId).map(image => image.image_url),
+        }, { partial: true });
         const stored = splitStoredDescription(existing.description);
         const title = Object.hasOwn(body, 'title') ? text(body.title, 'title', { required: true, max: 200 }) : stored.title;
         const description = Object.hasOwn(body, 'description') ? (text(body.description, 'description', { max: 5_000 }) ?? '') : stored.description;
@@ -757,11 +787,11 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const locality = Object.hasOwn(body, 'locality') ? text(body.locality, 'locality', { max: 200 }) : existing.locality;
         const costNotes = Object.hasOwn(body, 'costNotes') ? text(body.costNotes, 'costNotes', { max: 1000 }) : existing.cost_notes;
         const memberCount = Number(existing.member_count);
-        assert(capacity >= memberCount + 1, 409, 'capacity cannot be lower than current occupancy');
+        if (capacity < memberCount + 1) throw new HttpError(409, 'capacity cannot be lower than current occupancy', validateListing({ capacity }, { partial: true, minimumCapacity: memberCount + 1 }));
         let status = Object.hasOwn(body, 'status') ? body.status : existing.status;
         assert(ROOM_STATUSES.has(status), 400, 'status is invalid');
         if (status !== 'inactive') status = capacity <= memberCount + 1 ? 'full' : 'available';
-        const images = parseImages(body.images, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) });
+        const images = listingImages(body, value => parseImages(value, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) }));
 
         db.exec('BEGIN IMMEDIATE');
         try {
@@ -819,6 +849,9 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const room = getRoomRow(db, roomId);
         assert(room, 404, 'Room not found');
         assert(room.owner_id === user.user_id, 403, 'Only the room owner can remove images');
+        const currentImages = imageRows(db, roomId);
+        assert(currentImages.some(image => image.image_id === imageId), 404, 'Image not found');
+        assertListing({ images: currentImages.filter(image => image.image_id !== imageId).map(image => image.image_url) }, { partial: true });
         const result = db.prepare('DELETE FROM ROOM_IMAGE WHERE image_id = ? AND room_id = ?').run(imageId, roomId);
         assert(result.changes > 0, 404, 'Image not found');
         sendJson(response, 200, { success: true }, request);
@@ -898,7 +931,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       throw new HttpError(404, 'Page not found');
     } catch (error) {
       if (error instanceof HttpError) {
-        sendJson(response, error.status, { error: error.message }, request);
+        sendJson(response, error.status, { error: error.message, ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}) }, request);
         return;
       }
       logger.error?.(error);
