@@ -6,7 +6,7 @@ let tokenRevision = 0;
 type JsonObject = Record<string, unknown>;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public fieldErrors: Record<string, string> = {}) { super(friendlyApiError(message, status)); this.name = 'ApiError'; }
+  constructor(message: string, public status: number, public fieldErrors: Record<string, string> = {}, public networkError = false) { super(friendlyApiError(message, status)); this.name = 'ApiError'; }
 }
 
 const object = (value: unknown): JsonObject => value && typeof value === 'object' ? value as JsonObject : {};
@@ -88,7 +88,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
   try { response = await fetch(`/api${path}`, { ...options, headers }); }
-  catch { throw new ApiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง', 0); }
+  catch { throw new ApiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง', 0, {}, true); }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
 
   if (!response.ok) {

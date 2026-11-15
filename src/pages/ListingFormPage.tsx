@@ -3,12 +3,13 @@ import { useEffect, useRef, useState, type FocusEvent, type FormEvent } from 're
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { Button, Input, Textarea } from '../components/UI';
-import { api, ApiError } from '../lib/api';
+import { api } from '../lib/api';
 import { FormFeedback, useFormFeedback } from '../components/FormFeedback';
 import { ImagePicker, savedImages, uploadSelectedImages, type SelectedImage } from '../components/ImagePicker';
 import type { Room, RoomStatus } from '../types';
 import { completedListingImageUrls, validateListing } from '../../shared/listingValidation.js';
 import { cancelledImageSelectionErrors } from '../lib/listingImageFeedback';
+import { listingSaveFeedback } from '../lib/listingSaveFeedback';
 
 const listingFields = ['title', 'description', 'price', 'capacity', 'googleMapsUrl', 'priceBasis', 'locality', 'costNotes', 'images'];
 
@@ -85,30 +86,27 @@ export function ListingFormPage() {
       costNotes: String(values.costNotes || '').trim(), status,
     };
     setSaving(true);
+    let stage = 'upload';
     try {
       let uploadedImages = images;
       const imageUrls = await uploadSelectedImages(images, uploaded => {
         uploadedImages = uploadedImages.map(image => image.id === uploaded.id ? uploaded : image);
         setImages(uploadedImages);
         updateImageFeedback(uploadedImages);
-      }).catch(caught => {
-        const message = caught instanceof Error ? caught.message : 'อัปโหลดรูปไม่สำเร็จ กรุณาลองอีกครั้ง';
-        throw new ApiError(message, caught instanceof ApiError ? caught.status : 0, { images: message });
       });
       const uploadedErrors = validateListing({ images: imageUrls }, { partial: true });
       if (uploadedErrors.images) { setFocusErrors(true); setErrors(uploadedErrors); submitLocked.current = false; setSaving(false); return; }
+      stage = 'save';
       if (existing) await api.updateRoom(existing.roomId, { ...payload, images: imageUrls });
       else await api.createRoom({ ...payload, images: imageUrls });
       notify(existing ? 'บันทึกการแก้ไขแล้ว' : 'สร้างประกาศแล้ว');
       // Keep the lock through navigation so a successful save cannot be repeated.
       navigate('/my-listings');
     } catch (caught) {
-      const fields = caught instanceof ApiError
-        ? Object.fromEntries(Object.entries(caught.fieldErrors).filter(([field]) => listingFields.includes(field)))
-        : {};
+      const fields = listingSaveFeedback(caught, stage === 'upload' ? 'upload' : 'save', listingFields);
       setFocusErrors(true);
       Object.keys(fields).forEach(field => fieldsWithErrors.current.add(field));
-      setErrors(Object.keys(fields).length ? fields : { form: caught instanceof Error ? caught.message : 'บันทึกประกาศไม่สำเร็จ' });
+      setErrors(fields);
       submitLocked.current = false;
       setSaving(false);
     }
