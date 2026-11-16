@@ -767,11 +767,30 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         assert(existing, 404, 'Room not found');
         assert(existing.owner_id === user.user_id, 403, 'Only the room owner can update this room');
         const body = await readJson(request);
+        const statusOnly = Object.hasOwn(body, 'status') && Object.keys(body).every(field => field === 'status');
+        if (statusOnly) {
+          assertListing(body, { partial: true });
+          assert(ROOM_STATUSES.has(body.status), 400, 'status is invalid');
+          db.exec('BEGIN IMMEDIATE');
+          try {
+            const latest = getRoomRow(db, roomId);
+            assert(latest, 404, 'Room not found');
+            assert(latest.owner_id === user.user_id, 403, 'Only the room owner can update this room');
+            const status = body.status === 'inactive' ? 'inactive'
+              : latest.capacity <= Number(latest.member_count) + 1 ? 'full' : 'available';
+            db.prepare('UPDATE ROOM SET status = ? WHERE room_id = ?').run(status, roomId);
+            db.exec('COMMIT');
+          } catch (error) {
+            db.exec('ROLLBACK');
+            throw error;
+          }
+          sendJson(response, 200, { room: roomDto(getRoomRow(db, roomId), imageRows(db, roomId), { currentUserId: user.user_id }) }, request);
+          return;
+        }
         // Membership may change while the request body is arriving.
         existing = getRoomRow(db, roomId);
         assert(existing, 404, 'Room not found');
-        const statusOnly = Object.hasOwn(body, 'status') && Object.keys(body).every(field => field === 'status');
-        assertListing(statusOnly ? body : {
+        assertListing({
           ...body,
           priceBasis: Object.hasOwn(body, 'priceBasis') ? body.priceBasis : existing.price_basis,
           locality: Object.hasOwn(body, 'locality') ? body.locality : existing.locality,
