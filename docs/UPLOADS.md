@@ -74,12 +74,12 @@ Content-Type: image/jpeg
 ## ฐานข้อมูลและ deploy
 
 ใช้ `USER.profile_image` และ `ROOM_IMAGE.image_url` เดิมเก็บ path ที่ API สร้าง
-ไม่เก็บไฟล์หรือ base64 ใน SQLite ไม่มีการเปลี่ยน ER และไม่มี migration ใหม่
+ไม่เก็บไฟล์หรือ base64 ใน PostgreSQL ไม่มีการเปลี่ยน ER และไม่มี migration ใหม่
 
 1. หลัง pull ให้รัน `npm ci` เพื่อเพิ่ม native dependency `sharp` ตาม lockfile
 2. เริ่ม `npm run dev` ใหม่ เพราะมีทั้ง API module และ Vite proxy `/uploads` เพิ่มขึ้น
 3. Production ใช้ `npm run build` และ `npm start`; API เสิร์ฟทั้ง `dist` และรูปจาก storage
-4. ต้อง mount persistent disk สำหรับ SQLite และ uploads แยกจาก build/release directory
+4. ต้องมี PostgreSQL ที่เก็บข้อมูลถาวร และ persistent disk/object storage สำหรับ uploads แยกจาก build/release directory
 5. สำรอง DB และรูปให้สอดคล้องกัน และทดสอบ restore อย่าใช้ ephemeral disk โดยไม่มีแผนเก็บข้อมูล
 6. หากแยก frontend/API คนละโดเมน ให้ proxy `/api` และ `/uploads` ไป API origin เดียวกัน
 7. การ push GitHub ไม่ได้ส่งไฟล์ที่ผู้ใช้อัปโหลดขึ้นไปด้วย (`storage/uploads` ถูก ignore)

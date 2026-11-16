@@ -1,5 +1,9 @@
 # Find a friend before choosing a room
 
+> Current backend: PostgreSQL. Set up `TEST_DATABASE_URL` and use `npm test`
+> or `node --env-file=.env --test <file>`. SQLite mentions in earlier acceptance
+> results describe historical runs. See [PostgreSQL migration](../database/POSTGRESQL.md).
+
 ## เชื่อมงานกับทีม — RM-24
 
 การเป็นเพื่อนใช้ `FRIEND_CONNECTION` และแยกจาก [คำขอเข้าพัก](REQUESTS.md)

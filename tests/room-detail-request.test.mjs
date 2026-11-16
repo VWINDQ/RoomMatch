@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { openDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
 
 async function fixture(t) {
-  const db = openDatabase({ filename: ':memory:' });
+  const db = await openDatabase({ filename: ':memory:' });
   const app = await startRoomMatchServer({ db, port: 0, logger: { error() {} } });
-  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); db.close(); });
+  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); await db.close(); });
   return async (path, userId, method = 'GET', body) => {
     const response = await fetch(`http://127.0.0.1:${app.server.address().port}/api${path}`, {
       method, headers: { ...(userId ? { Authorization: `Bearer ${createToken(userId)}` } : {}), 'Content-Type': 'application/json' },

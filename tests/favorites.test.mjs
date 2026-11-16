@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
 import { startRoomMatchServer } from '../server/app.js';
-import { openDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 
-const database = openDatabase({ filename: ':memory:' });
+const database = await openDatabase({ filename: ':memory:' });
 
 let application;
 let baseUrl;
@@ -26,7 +26,7 @@ before(async () => {
   alice = await register('FavoriteAlice');
   bob = await register('FavoriteBob');
 
-  const room = database.prepare(
+  const room = await database.prepare(
     'SELECT room_id FROM ROOM ORDER BY room_id LIMIT 1'
   ).get();
 
@@ -38,7 +38,7 @@ after(async () => {
   if (application) {
     await new Promise((resolve) => application.server.close(resolve));
   }
-  database.close();
+  await database.close();
 });
 
 async function api(path, { token, method = 'GET' } = {}) {
@@ -91,7 +91,7 @@ test('FAV-02: add a room to favorites', async () => {
 
   assert.equal(result.status, 200);
 
-  const saved = database.prepare(`
+  const saved = await database.prepare(`
     SELECT *
     FROM ROOM_FAVORITE
     WHERE user_id = ? AND room_id = ?
@@ -108,11 +108,11 @@ test('FAV-03: adding the same room twice does not duplicate it', async () => {
 
   assert.equal(result.status, 200);
 
-  const count = database.prepare(`
+  const count = (await database.prepare(`
     SELECT COUNT(*) AS count
     FROM ROOM_FAVORITE
     WHERE user_id = ? AND room_id = ?
-  `).get(alice.userId, roomId).count;
+  `).get(alice.userId, roomId)).count;
 
   assert.equal(count, 1);
 });
@@ -165,11 +165,11 @@ test('FAV-07: remove a room from favorites', async () => {
 
   assert.equal(result.status, 200);
 
-  const count = database.prepare(`
+  const count = (await database.prepare(`
     SELECT COUNT(*) AS count
     FROM ROOM_FAVORITE
     WHERE user_id = ? AND room_id = ?
-  `).get(alice.userId, roomId).count;
+  `).get(alice.userId, roomId)).count;
 
   assert.equal(count, 0);
 
@@ -182,7 +182,7 @@ test('FAV-07: remove a room from favorites', async () => {
 
 
 test('FAV-08: favorites are sorted by newest date', async () => {
-  const rooms = database.prepare(`
+  const rooms = await database.prepare(`
     SELECT room_id
     FROM ROOM
     ORDER BY room_id
@@ -208,13 +208,13 @@ test('FAV-08: favorites are sorted by newest date', async () => {
     WHERE user_id = ? AND room_id = ?
   `);
 
-  updateTime.run(
+  await updateTime.run(
     '2026-01-02T10:00:00.000Z',
     alice.userId,
     firstRoomId
   );
 
-  updateTime.run(
+  await updateTime.run(
     '2026-01-01T10:00:00.000Z',
     alice.userId,
     secondRoomId
@@ -231,7 +231,7 @@ test('FAV-08: favorites are sorted by newest date', async () => {
     [firstRoomId, secondRoomId]
   );
 
-  updateTime.run(
+  await updateTime.run(
     '2026-01-02T10:00:00.000Z',
     alice.userId,
     secondRoomId
@@ -286,7 +286,7 @@ test('FAV-09: deleting a room removes its favorites', async () => {
   `);
 
   assert.equal(
-    countFavorite.get(bob.userId, testRoomId).count,
+    (await countFavorite.get(bob.userId, testRoomId)).count,
     1
   );
 
@@ -298,7 +298,7 @@ test('FAV-09: deleting a room removes its favorites', async () => {
   assert.equal(forbidden.status, 403);
 
   assert.equal(
-    countFavorite.get(bob.userId, testRoomId).count,
+    (await countFavorite.get(bob.userId, testRoomId)).count,
     1
   );
 
@@ -310,7 +310,7 @@ test('FAV-09: deleting a room removes its favorites', async () => {
   assert.equal(deleted.status, 200);
   assert.equal(deleted.body.success, true);
 
-  const room = database.prepare(`
+  const room = await database.prepare(`
     SELECT room_id
     FROM ROOM
     WHERE room_id = ?
@@ -319,7 +319,7 @@ test('FAV-09: deleting a room removes its favorites', async () => {
   assert.equal(room, undefined);
 
   assert.equal(
-    countFavorite.get(bob.userId, testRoomId).count,
+    (await countFavorite.get(bob.userId, testRoomId)).count,
     0
   );
 
