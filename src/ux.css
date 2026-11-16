@@ -34,6 +34,13 @@
 .filter-sheet { top: 24px; right: 24px; height: auto; max-height: calc(100dvh - 48px); border-radius: 26px; overflow: hidden; }
 .filter-scroll { display: grid; gap: 20px; padding-top: 20px; }
 .filter-scroll fieldset { padding: 0 0 20px; }
+/* Keep dialog controls visible; only the content scrolls on short screens. */
+.modal-card { min-width: 0; max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
+.modal-card>header,.modal-card>footer { flex-shrink: 0; }
+.modal-card>header h2 { min-width: 0; overflow-wrap: anywhere; }
+.modal-card>header>.icon-button { flex-shrink: 0; }
+.modal-card>footer { flex-wrap: wrap; }
+.modal-body { min-height: 0; overflow-y: auto; overflow-wrap: anywhere; }
 .empty-actions,.request-history-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .empty-actions { justify-content: center; }
 .request-history-actions { max-width: 220px; }
