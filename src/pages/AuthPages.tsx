@@ -5,6 +5,8 @@ import { useApp } from '../AppContext';
 import { Button, Input } from '../components/UI';
 import { useFormFeedback } from '../components/FormFeedback';
 import { SessionChangedError } from '../lib/api';
+import { BirthDateInput } from '../components/BirthDateInput';
+import { parseBirthDate } from '../lib/birthDate';
 
 function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate();
@@ -46,7 +48,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
           password,
           phone: String(data.get('phone') ?? '').trim(),
           gender: String(data.get('gender') ?? ''),
-          dateOfBirth: String(data.get('dateOfBirth') ?? ''),
+          dateOfBirth: parseBirthDate(String(data.get('dateOfBirth') ?? '')),
           university: String(data.get('university') ?? '').trim(),
         });
       }
@@ -147,11 +149,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
                     </select>
                   </label>
 
-                  <Input
-                    label="วันเกิด"
-                    name="dateOfBirth"
-                    type="date"
-                  />
+                  <BirthDateInput />
                 </div>
 
                 <Input
