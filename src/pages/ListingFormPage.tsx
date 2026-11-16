@@ -2,7 +2,7 @@ import { ArrowLeft, MapPin, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useState, type FocusEvent, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
-import { Button, Input, Textarea } from '../components/UI';
+import { Button, Input, Modal, Textarea } from '../components/UI';
 import { api } from '../lib/api';
 import { FormFeedback, useFormFeedback } from '../components/FormFeedback';
 import { ImagePicker, savedImages, uploadSelectedImages, type SelectedImage } from '../components/ImagePicker';
@@ -10,6 +10,7 @@ import type { Room, RoomStatus } from '../types';
 import { completedListingImageUrls, validateListing } from '../../shared/listingValidation.js';
 import { cancelledImageSelectionErrors } from '../lib/listingImageFeedback';
 import { listingSaveFeedback } from '../lib/listingSaveFeedback';
+import { useListingLeaveGuard } from '../lib/useListingLeaveGuard';
 
 const listingFields = ['title', 'description', 'price', 'capacity', 'googleMapsUrl', 'priceBasis', 'locality', 'costNotes', 'images'];
 
@@ -19,7 +20,10 @@ export function ListingFormPage() {
   const [checkingImages, setCheckingImages] = useState(false);
   const [loading, setLoading] = useState(Boolean(id)); const [loadError, setLoadError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [saving, setSaving] = useState(false); const [status, setStatus] = useState<RoomStatus>('available');
   const formRef = useRef<HTMLFormElement>(null);
+  const { blocker, markSaved } = useListingLeaveGuard(formRef, images, status, !loading && !loadError, existing);
   const submitLocked = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [focusErrors, setFocusErrors] = useState(false);
   const summaryRef = useFormFeedback(errors, formRef, focusErrors);
   const fieldsWithErrors = useRef(new Set<string>());
@@ -94,13 +98,17 @@ export function ListingFormPage() {
         setImages(uploadedImages);
         updateImageFeedback(uploadedImages);
       });
+      if (!mounted.current) return;
       const uploadedErrors = validateListing({ images: imageUrls }, { partial: true });
       if (uploadedErrors.images) { setFocusErrors(true); setErrors(uploadedErrors); submitLocked.current = false; setSaving(false); return; }
       stage = 'save';
       if (existing) await api.updateRoom(existing.roomId, { ...payload, images: imageUrls });
       else await api.createRoom({ ...payload, images: imageUrls });
+      // Discard/session changes may unmount this form while a request is in flight.
+      if (!mounted.current) return;
       notify(existing ? 'บันทึกการแก้ไขแล้ว' : 'สร้างประกาศแล้ว');
       // Keep the lock through navigation so a successful save cannot be repeated.
+      markSaved();
       navigate('/my-listings');
     } catch (caught) {
       const fields = listingSaveFeedback(caught, stage === 'upload' ? 'upload' : 'save', listingFields);
@@ -119,5 +127,6 @@ export function ListingFormPage() {
       <section className="form-section"><header><span>3</span><div><h2>รูปภาพห้อง</h2><p>เลือกรูปจากเครื่องได้สูงสุด 12 รูป แล้วจัดลำดับรูปปกได้เลย</p></div></header><div className="form-section-body"><ImagePicker label="รูปภาพห้อง" images={images} onCheckingChange={setCheckingImages} onSelectionCancel={cancelImageSelection} onChange={changeImages} fieldName="images" required max={12} disabled={saving} error={errors.images}/></div></section>
       <footer className="listing-form-actions"><FormFeedback errors={errors.form ? { form: errors.form } : {}} summaryRef={summaryRef}/><div className="form-action-buttons"><Button type="button" variant="quiet" onClick={() => navigate('/my-listings')}>ยกเลิก</Button><Button type="submit" disabled={saving || checkingImages} loading={saving}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : existing ? 'บันทึกการแก้ไข' : 'สร้างประกาศ'}</Button></div></footer>
     </fieldset></form>
+    {blocker.state === 'blocked' && <Modal title="ทิ้งการแก้ไขที่ยังไม่บันทึก?" onClose={() => blocker.reset()} actions={<><Button variant="quiet" onClick={() => blocker.reset()}>อยู่ต่อ</Button><Button variant="danger" onClick={() => blocker.proceed()}>ทิ้งการแก้ไข</Button></>}><p>ข้อมูลที่แก้ไขและรูปที่เลือกยังไม่ได้บันทึก หากออกจากหน้านี้จะสูญเสียการแก้ไข</p></Modal>}
   </div>;
 }
