@@ -1,5 +1,9 @@
 # สมาชิกห้องและแมตช์ — โมดูลที่ 3 / ฟีเจอร์ที่สอง
 
+> Current backend: PostgreSQL. Set up `TEST_DATABASE_URL` and use `npm test`
+> or `node --env-file=.env --test <file>`. SQLite mentions in earlier acceptance
+> results describe historical runs. See [PostgreSQL migration](../database/POSTGRESQL.md).
+
 ## เชื่อมงานกับทีม — RM-24
 
 เริ่มจาก [คำขอที่เจ้าของอนุมัติ](REQUESTS.md) จึงมีสมาชิกและ room match

@@ -3,7 +3,7 @@ import { copyFileSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFile
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { openDatabase, runMigrations } from '../server/database.js';
+import { openDatabase, runMigrations } from './support/sqlite-legacy.js';
 
 const migrationName = '006_cancel_friend_invitation.sql';
 

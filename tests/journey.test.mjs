@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
 import { startRoomMatchServer } from '../server/app.js';
-import { openDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 
-const database = openDatabase({ filename: ':memory:' });
+const database = await openDatabase({ filename: ':memory:' });
 let application;
 let baseUrl;
 
@@ -20,7 +20,7 @@ before(async () => {
 
 after(async () => {
   if (application) await new Promise((resolve) => application.server.close(resolve));
-  database.close();
+  await database.close();
 });
 
 async function api(path, options = {}) {

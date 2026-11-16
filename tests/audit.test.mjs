@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { startRoomMatchServer } from '../server/app.js';
-import { openDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 
 test('empty database, invalid inputs, database failures, and durable profile persistence', async () => {
   const filename = join(mkdtempSync(join(tmpdir(), 'roommatch-regression-')), 'audit.sqlite');
-  let db = openDatabase({ filename, seed: false });
+  let db = await openDatabase({ filename, seed: false });
   const app = await startRoomMatchServer({ db, port: 0, logger: { error() {} } });
   const url = `http://127.0.0.1:${app.server.address().port}/api`;
   let token;
@@ -20,11 +20,11 @@ test('empty database, invalid inputs, database failures, and durable profile per
   try {
     for (const invalid of [{ ...registration, email: 'bad' }, { ...registration, password: 'short' }, { ...registration, firstName: '' }, { ...registration, dateOfBirth: '2099-01-01' }]) {
       assert.equal((await api('/auth/register', 'POST', invalid)).status, 400);
-      assert.equal(db.prepare('SELECT count(*) AS count FROM USER').get().count, 0);
+      assert.equal((await db.prepare('SELECT count(*) AS count FROM USER').get()).count, 0);
     }
-    db.exec('PRAGMA query_only = ON');
+    db.setReadOnly(true);
     assert.equal((await api('/auth/register', 'POST', registration)).status, 500);
-    db.exec('PRAGMA query_only = OFF');
+    db.setReadOnly(false);
     const registered = await api('/auth/register', 'POST', registration);
     assert.equal(registered.status, 201);
     token = registered.body.token;
@@ -48,23 +48,23 @@ test('empty database, invalid inputs, database failures, and durable profile per
     const saved = await api('/profile', 'PATCH', { firstName: 'Durable', lifestyleName: 'เงียบ', preference: { budgetMin: 0, budgetMax: 6000 } });
     assert.equal(saved.status, 200);
     assert.equal(saved.body.preference.budgetMin, 0);
-    db.exec('PRAGMA query_only = ON');
+    db.setReadOnly(true);
     const failed = await api('/profile', 'PATCH', { firstName: 'Must not persist' });
     assert.equal(failed.status, 500);
     assert.deepEqual(Object.keys(failed.body), ['error']);
     assert.equal(failed.body.error, 'Internal server error');
-    db.exec('PRAGMA query_only = OFF');
+    db.setReadOnly(false);
     assert.deepEqual((await api('/profile')).body, saved.body);
-    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+    assert.deepEqual(await db.prepare('SELECT conname FROM pg_constraint WHERE connamespace = current_schema()::regnamespace AND contype = \'f\' AND NOT convalidated').all(), []);
   } finally {
     await new Promise(resolve => app.server.close(resolve));
-    db.close();
+    await db.close();
   }
-  db = openDatabase({ filename, seed: false });
+  db = await openDatabase({ filename, seed: false });
   try {
-    assert.equal(db.prepare('SELECT first_name FROM USER').get().first_name, 'Durable');
-    assert.equal(db.prepare('SELECT lifestyle_name FROM LIFESTYLE').get().lifestyle_name, 'เงียบ');
-    assert.equal(db.prepare('SELECT budget_min FROM PREFERENCE').get().budget_min, 0);
-    assert.equal(db.prepare('SELECT count(*) AS count FROM USER').get().count, 1);
-  } finally { db.close(); }
+    assert.equal((await db.prepare('SELECT first_name FROM USER').get()).first_name, 'Durable');
+    assert.equal((await db.prepare('SELECT lifestyle_name FROM LIFESTYLE').get()).lifestyle_name, 'เงียบ');
+    assert.equal((await db.prepare('SELECT budget_min FROM PREFERENCE').get()).budget_min, 0);
+    assert.equal((await db.prepare('SELECT count(*) AS count FROM USER').get()).count, 1);
+  } finally { await db.close(); }
 });

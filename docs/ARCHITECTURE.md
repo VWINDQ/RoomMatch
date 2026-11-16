@@ -2,9 +2,9 @@
 
 ## Continuation decision
 
-The existing Vite, React, TypeScript, and React Router application is structurally sound and its Claymorphism design is reusable. The implementation extends it with a small Node.js API and SQLite database instead of rebuilding the UI.
+The existing Vite, React, TypeScript, and React Router application is structurally sound and its Claymorphism design is reusable. The implementation extends it with a small Node.js API and PostgreSQL database instead of rebuilding the UI.
 
-The runtime target is Node.js 26. The server uses the built-in `node:http`, `node:crypto`, and `node:sqlite` modules, so no backend framework or database package is required.
+The runtime target is Node.js 26. The server uses `node:http`, `node:crypto`, and the `pg` PostgreSQL driver. One pooled connection is retained per request; database operations are asynchronous. Room writes acquire a room-row lock before checking capacity and changing requests/members. See [PostgreSQL setup and transaction contract](../database/POSTGRESQL.md).
 
 ## Database contract
 

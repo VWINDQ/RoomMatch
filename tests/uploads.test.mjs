@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import sharp from 'sharp';
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
-import { openDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 import { MAX_IMAGE_BYTES } from '../server/uploads.js';
 
 async function fixture(t, { brokenStorage = false } = {}) {
@@ -15,8 +15,8 @@ async function fixture(t, { brokenStorage = false } = {}) {
   const filename = join(directory, 'test.sqlite');
   const uploadDirectory = join(directory, 'images');
   if (brokenStorage) writeFileSync(uploadDirectory, 'not a directory');
-  let db = openDatabase({ filename, seed: false });
-  for (const name of ['Owner', 'Other']) db.prepare('INSERT INTO USER (first_name, last_name, phone, email, password_hash) VALUES (?, ?, ?, ?, ?)').run(name, 'Test', '0800000000', `${name}@upload.test`, 'unused-test-hash');
+  let db = await openDatabase({ filename, seed: false });
+  for (const name of ['Owner', 'Other']) await db.prepare('INSERT INTO USER (first_name, last_name, phone, email, password_hash) VALUES (?, ?, ?, ?, ?)').run(name, 'Test', '0800000000', `${name}@upload.test`, 'unused-test-hash');
   let app = await startRoomMatchServer({ db, port: 0, uploadDirectory, logger: { error() {} } });
   let base = `http://127.0.0.1:${app.server.address().port}`;
   const headers = { Authorization: `Bearer ${createToken(1)}` };
@@ -29,13 +29,13 @@ async function fixture(t, { brokenStorage = false } = {}) {
     const response = await fetch(`${base}/api/uploads/images`, { method: 'POST', headers: { ...(authenticated ? headers : {}), 'Content-Type': type }, body });
     return { status: response.status, body: await response.json() };
   };
-  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); db.close(); rmSync(directory, { recursive: true, force: true }); });
+  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); await db.close(); rmSync(directory, { recursive: true, force: true }); });
   return {
     api, upload, directory, uploadDirectory, image, db,
     fetch: path => fetch(`${base}${path}`),
     async restart() {
-      await new Promise(resolve => app.server.close(resolve)); db.close();
-      db = openDatabase({ filename, seed: false });
+      await new Promise(resolve => app.server.close(resolve)); await db.close();
+      db = await openDatabase({ filename, seed: false });
       app = await startRoomMatchServer({ db, port: 0, uploadDirectory, logger: { error() {} } });
       base = `http://127.0.0.1:${app.server.address().port}`;
     },
@@ -50,7 +50,7 @@ test('upload re-encodes, resizes, strips metadata, serves publicly, and survives
   assert.match(url, /^\/uploads\/1\/[a-f0-9-]{36}\.webp$/);
   const saved = await f.api('/profile', 'PATCH', { profileImage: url });
   assert.equal(saved.status, 200);
-  assert.equal(f.db.prepare('SELECT profile_image FROM USER WHERE user_id = 1').get().profile_image, url);
+  assert.equal((await f.db.prepare('SELECT profile_image FROM USER WHERE user_id = 1').get()).profile_image, url);
   const response = await f.fetch(url);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('content-type'), 'image/webp');
@@ -108,7 +108,7 @@ test('room create/edit stores uploaded images in order and keeps legacy URLs com
   const edited = await f.api(`/rooms/${roomId}`, 'PATCH', { images: [second, first] });
   assert.equal(edited.status, 200);
   assert.deepEqual(edited.body.room.images.map(image => image.imageUrl), [second, first]);
-  assert.deepEqual(f.db.prepare('SELECT image_url FROM ROOM_IMAGE WHERE room_id = ? ORDER BY image_order').all(roomId).map(row => row.image_url), [second, first]);
+  assert.deepEqual((await f.db.prepare('SELECT image_url FROM ROOM_IMAGE WHERE room_id = ? ORDER BY image_order').all(roomId)).map(row => row.image_url), [second, first]);
   const single = await f.api(`/rooms/${roomId}/images`, 'POST', { imageUrl: first });
   assert.equal(single.status, 201);
   assert.equal((await f.api('/profile', 'PATCH', { profileImage: 'https://example.test/old.jpg' })).status, 200);
@@ -122,17 +122,17 @@ test('storage failure returns a safe error and leaves profile/room records uncha
   const f = await fixture(t, { brokenStorage: true });
   assert.deepEqual(await f.upload(), { status: 500, body: { error: 'Internal server error' } });
   assert.equal((await f.api('/profile')).body.user.profileImage, null);
-  assert.equal(f.db.prepare('SELECT count(*) AS count FROM ROOM_IMAGE').get().count, 0);
+  assert.equal((await f.db.prepare('SELECT count(*) AS count FROM ROOM_IMAGE').get()).count, 0);
 });
 
 test('database save failure keeps the uploaded file available for a retry', async t => {
   const f = await fixture(t);
   const url = (await f.upload()).body.imageUrl;
-  f.db.exec('PRAGMA query_only = ON');
+  f.db.setReadOnly(true);
   assert.equal((await f.api('/profile', 'PATCH', { profileImage: url })).status, 500);
   assert.equal((await f.api('/profile')).body.user.profileImage, null);
   assert.equal((await f.fetch(url)).status, 200);
-  f.db.exec('PRAGMA query_only = OFF');
+  f.db.setReadOnly(false);
   assert.equal((await f.api('/profile', 'PATCH', { profileImage: url })).status, 200);
 });
 
