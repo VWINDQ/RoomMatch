@@ -1,16 +1,21 @@
 # RoomMatch database
 
 This directory contains the eight original ER entities, the separately requested
-`FRIEND_CONNECTION` extension, and realistic local-development seed data.
+`FRIEND_CONNECTION` and `ROOM_FAVORITE` extensions, and realistic local-development seed data.
 
 ## Files and order
 
-1. Run every file in `migrations/` in lexical order. Migration `001` creates the
+1. Use the application's `runMigrations` runner (called automatically by `npm run dev` / `npm start`), which applies files in numeric order and records filenames. Do not repeatedly execute raw migration SQL: `ALTER TABLE` migrations are intentionally one-time changes. Migration `001` creates the
    schema; migration `002` repairs literal `\\n` title separators created by an
    early development seed without changing descriptions that already contain
    real line feeds.
    Migration `003` only adds friend invitations and their constraints/indexes;
    it does not update or rebuild any existing table.
+   Migration `006` extends friend invitation status with `cancelled`. It rebuilds
+   only `FRIEND_CONNECTION`, preserving IDs, rows, timestamps, foreign keys and
+   indexes. Existing accepted/declined decisions remain final. Run migrations
+   through the application runner; do not re-run this SQL manually.
+   Migration `005` adds nullable listing metadata and the cancelled-request state while preserving rows. The internal `_roommatch_migrations` ledger also applies an earlier-numbered file arriving later, such as Favorites `004`, instead of skipping it because `user_version` is already 5. See [UX changes](../docs/UX_FIXES.md).
 2. Run `seed.sql` when demo data is wanted. The seed uses stable IDs,
    conflict-safe inserts, and existence guards, so it can be applied repeatedly
    without duplicating rows or overwriting data changed during a local session.
@@ -30,17 +35,27 @@ runtime. The project targets Node.js 26 and its built-in `node:sqlite` module.
 - `ROOM_IMAGE.room_id` owns ordered images; `(room_id, image_order)` is unique.
 - `ROOM_MEMBER` is the user-room junction and has the composite primary key
   `(user_id, room_id)`.
+- `ROOM_FAVORITE` stores saved rooms with the composite primary key
+  `(user_id, room_id)` and cascades when either parent is deleted.
 - `ROOM_REQUEST` stores pending and final join decisions.
 - `MATCHES` records the owner as `initiator_user_id`, the approved member as
   `completer_user_id`, and the room that brought them together.
 - `FRIEND_CONNECTION.sender_id` and `recipient_id` reference `USER`. An unordered
   pair is unique; self-invitations are forbidden. Only a pending invitation can
-  transition to accepted/declined, with a response timestamp.
+  transition to accepted/declined/cancelled, with a response timestamp. Cancelled
+  invitations remain in history and do not grant contact access. The existing
+  one-invitation-per-pair rule is unchanged; this migration does not enable re-sending.
 
 Deleting a user or room cascades to dependent rows. Frequently queried foreign
 keys, statuses, price, image order, and match roles are indexed. A partial unique
 index allows historical rejected/approved requests while permitting only one
 pending request for a user-room pair.
+
+`ROOM.price_basis` is `per_room`, `per_person`, or NULL for unknown legacy data;
+`locality` and `cost_notes` hold owner-provided location/cost information.
+`ROOM_REQUEST.cancelled` records withdrawal with `responded_at`, preserving history.
+`ROOM_MEMBER.left` releases capacity and revokes member/match visibility; reapproval
+reactivates the existing member/match rows with fresh joining timestamps.
 
 ## ER conflict and consequence
 
@@ -52,8 +67,9 @@ lifestyle description rather than a reusable catalogue item.
 
 If product requirements later need reusable lifestyle categories, the ER model
 must change to a category-style `LIFESTYLE` table plus a `USER_LIFESTYLE`
-junction table. That category entity is deliberately not added here. Amenities and
-favorites are likewise absent because they are not present in the current ER.
+junction table. That category entity is deliberately not added here. Amenities
+are not implemented in this schema. Favorites use the separately added
+`ROOM_FAVORITE` junction table (migration 004).
 
 ## Data invariants
 

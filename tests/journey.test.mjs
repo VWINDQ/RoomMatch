@@ -63,7 +63,7 @@ test('register → list → request → approve/reject → membership and match'
     body: JSON.stringify({
       title: 'Journey room',
       description: 'A persisted room used by the complete API journey.',
-      googleMapsUrl: 'https://maps.google.com/?q=13.65,100.49',
+      priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.65,100.49',
       price: 5900,
       capacity: 2,
       images: [
@@ -110,6 +110,14 @@ test('register → list → request → approve/reject → membership and match'
   assert.equal(roomAfterApproval.body.room.status, 'full');
   assert.equal(roomAfterApproval.body.room.availableSlots, 0);
 
+  const availableRooms = await api('/api/rooms?status=available');
+  assert.equal(availableRooms.response.status, 200);
+  assert.ok(availableRooms.body.rooms.every(room => room.status === 'available' && room.availableSlots > 0));
+  assert.equal(availableRooms.body.rooms.some(room => room.roomId === roomId), false);
+  const ownerListings = await api('/api/my/rooms', { headers: owner.headers });
+  assert.equal(ownerListings.response.status, 200);
+  assert.ok(ownerListings.body.rooms.some(room => room.roomId === roomId && room.status === 'full'));
+
   const members = await api(`/api/rooms/${roomId}/members`, { headers: seeker.headers });
   assert.equal(members.response.status, 200);
   assert.deepEqual(
@@ -136,10 +144,10 @@ test('register → list → request → approve/reject → membership and match'
     body: JSON.stringify({
       title: 'Rejection journey room',
       description: 'Keeps the rejection path independent.',
-      googleMapsUrl: 'https://maps.google.com/?q=13.66,100.50',
+      priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.66,100.50',
       price: 5100,
       capacity: 2,
-      images: [],
+      images: ['https://example.test/room.jpg'],
     }),
   });
   assert.equal(rejectionRoom.response.status, 201);
