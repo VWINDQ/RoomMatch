@@ -15,6 +15,12 @@
 .price span { line-height: 1.5; }
 .room-card .price.compact span { font-size: .72rem; }
 .gallery.gallery-empty { min-height: 160px; height: 180px; }
+/* Long user content must shrink with the detail grid instead of widening it. */
+.detail-page { overflow-wrap: anywhere; }
+.detail-title>div,.detail-layout>*,.detail-main>section,.owner-mini>div,.detail-member>div { min-width: 0; }
+.detail-main { grid-template-columns: minmax(0,1fr); }
+.detail-page .description { white-space: pre-wrap; }
+.detail-page .detail-member strong { white-space: normal; overflow: visible; text-overflow: clip; }
 .form-action-buttons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .listing-form-actions,.profile-actions { flex-direction: column; align-items: stretch; gap: 10px; }
 .form-feedback { padding: 10px 14px; border: 1px solid #dcada0; border-radius: 13px; background: #fff0e9; color: #873c2a; font-size: .83rem; line-height: 1.6; }
