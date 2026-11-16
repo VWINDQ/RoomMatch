@@ -5,14 +5,14 @@ import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
 import { Price, RoomImage } from '../components/RoomCard';
 import { Button, EmptyState, Modal, SkeletonGrid, StatusBadge } from '../components/UI';
-import { api } from '../lib/api';
+import { api, SessionChangedError } from '../lib/api';
 import { createListingStatusActions } from '../lib/listingStatus';
 import type { Room } from '../types';
 
 export function MyListingsPage() {
   const location = useLocation(); const navigate = useNavigate(); const { notify } = useApp(); const [rooms, setRooms] = useState<Room[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [deleting, setDeleting] = useState<Room | null>(null); const [busy, setBusy] = useState(false); const [reload, setReload] = useState(0);
   useEffect(() => { let active = true; setLoading(true); setError(''); api.myRooms().then(value => active && setRooms(value)).catch(caught => active && setError(caught instanceof Error ? caught.message : 'โหลดประกาศไม่สำเร็จ')).finally(() => active && setLoading(false)); return () => { active = false; }; }, [reload]);
-  const remove = async () => { if (!deleting || busy || statusActions.isPending(deleting.roomId)) return; setBusy(true); try { await api.deleteRoom(deleting.roomId); setRooms(current => current.filter(room => room.roomId !== deleting.roomId)); setDeleting(null); notify('ลบประกาศแล้ว'); } catch (caught) { notify(caught instanceof Error ? caught.message : 'ลบประกาศไม่สำเร็จ'); } finally { setBusy(false); } };
+  const remove = async () => { if (!deleting || busy || statusActions.isPending(deleting.roomId)) return; setBusy(true); try { await api.deleteRoom(deleting.roomId); setRooms(current => current.filter(room => room.roomId !== deleting.roomId)); setDeleting(null); notify('ลบประกาศแล้ว'); } catch (caught) { if (caught instanceof SessionChangedError) return; notify(caught instanceof Error ? caught.message : 'ลบประกาศไม่สำเร็จ'); } finally { setBusy(false); } };
   const [pendingRooms, setPendingRooms] = useState(new Set<string>());
   const [statusActions] = useState(() => createListingStatusActions({
     update: (roomId, payload) => api.updateRoom(roomId, payload),

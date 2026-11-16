@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { Button, Input } from '../components/UI';
 import { useFormFeedback } from '../components/FormFeedback';
+import { SessionChangedError } from '../lib/api';
 
 function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const submissionVersion = useRef(0);
 
   const formRef = useRef<HTMLFormElement>(null);
   const formErrors = useMemo(() => {
@@ -23,6 +25,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   const summaryRef = useFormFeedback(formErrors, formRef);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
+    const version = ++submissionVersion.current;
     event.preventDefault();
     setError('');
     setLoading(true);
@@ -59,11 +62,12 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
 
       navigate(destination, { replace: true });
     } catch (caught) {
+      if (caught instanceof SessionChangedError) return;
       setError(
         caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ',
       );
     } finally {
-      setLoading(false);
+      if (version === submissionVersion.current) setLoading(false);
     }
   };
 

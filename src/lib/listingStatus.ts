@@ -1,4 +1,5 @@
 import type { Room } from '../types';
+import { SessionChangedError } from './api';
 
 export function createListingStatusActions(callbacks: {
   update: (roomId: string, payload: { status: Room['status'] }) => Promise<Room>;
@@ -18,6 +19,7 @@ export function createListingStatusActions(callbacks: {
         const updated = await callbacks.update(room.roomId, { status: room.status === 'inactive' ? 'available' : 'inactive' });
         callbacks.onUpdated(updated);
       } catch (caught) {
+        if (caught instanceof SessionChangedError) return;
         callbacks.onError(caught instanceof Error ? caught.message : 'อัปเดตสถานะไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       } finally {
         pending.delete(room.roomId);

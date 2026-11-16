@@ -3,27 +3,20 @@
 This directory contains the eight original ER entities, the separately requested
 `FRIEND_CONNECTION` and `ROOM_FAVORITE` extensions, and realistic local-development seed data.
 
-## Files and order
+## Current engine: PostgreSQL
 
-1. Use the application's `runMigrations` runner (called automatically by `npm run dev` / `npm start`), which applies files in numeric order and records filenames. Do not repeatedly execute raw migration SQL: `ALTER TABLE` migrations are intentionally one-time changes. Migration `001` creates the
-   schema; migration `002` repairs literal `\\n` title separators created by an
-   early development seed without changing descriptions that already contain
-   real line feeds.
-   Migration `003` only adds friend invitations and their constraints/indexes;
-   it does not update or rebuild any existing table.
-   Migration `006` extends friend invitation status with `cancelled`. It rebuilds
-   only `FRIEND_CONNECTION`, preserving IDs, rows, timestamps, foreign keys and
-   indexes. Existing accepted/declined decisions remain final. Run migrations
-   through the application runner; do not re-run this SQL manually.
-   Migration `005` adds nullable listing metadata and the cancelled-request state while preserving rows. The internal `_roommatch_migrations` ledger also applies an earlier-numbered file arriving later, such as Favorites `004`, instead of skipping it because `user_version` is already 5. See [UX changes](../docs/UX_FIXES.md).
-2. Run `seed.sql` when demo data is wanted. The seed uses stable IDs,
-   conflict-safe inserts, and existence guards, so it can be applied repeatedly
-   without duplicating rows or overwriting data changed during a local session.
+Setup, safe SQLite import, environment variables, tests and deployment:
+[PostgreSQL guide](POSTGRESQL.md).
 
-Every SQLite connection must execute `PRAGMA foreign_keys = ON`; the migration
-and seed do this for their own connection, but the pragma is connection-local.
-The schema uses SQLite `STRICT` tables and therefore requires a modern SQLite
-runtime. The project targets Node.js 26 and its built-in `node:sqlite` module.
+- `postgresql/migrations/` is the active schema. The asynchronous application
+  runner applies migrations atomically and verifies applied checksums.
+- `postgresql/seed.sql` contains development demo data. The runner seeds only an
+  empty USER table, so restarting preserves existing records.
+- `migrations/` and `seed.sql` retain historical SQLite files unchanged. They are
+  used by legacy tests/import fixtures, not the current server.
+- PostgreSQL uses `"USER"` for the reserved entity name; other table names fold
+  to lowercase. BIGINT identities replace SQLite row IDs. Event times use
+  TIMESTAMPTZ, dates use DATE, and foreign keys are always enforced.
 
 ## Tables and relationships
 
@@ -81,7 +74,7 @@ are not implemented in this schema. Favorites use the separately added
   room.
 - A request cannot target the requester's own room, an already joined room, or
   a non-available room. Only `pending` requests can transition to `approved` or
-  `rejected`; final decisions cannot be changed.
+  `rejected` or `cancelled`; final decisions cannot be changed.
 - `responded_at` is null only for pending requests and required for final ones.
 - A match cannot be a self-match. Its initiator must own the room and its
   completer must be an approved member of that room.

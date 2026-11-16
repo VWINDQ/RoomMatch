@@ -1,7 +1,96 @@
 # ขอเข้าพัก — โมดูลที่ 3 / ฟีเจอร์แรก
 
-เอกสารนี้ครอบคลุมเฉพาะการส่งคำขอ ดูสถานะ และการอนุมัติ/ปฏิเสธ
-ไม่รวมการพัฒนาหน้าแมตช์/สมาชิกหรือหาเพื่อนเพิ่มเติม
+> Current backend: PostgreSQL. Set up `TEST_DATABASE_URL` and use `npm test`
+> or `node --env-file=.env --test <file>`. SQLite mentions in earlier acceptance
+> results describe historical runs. See [PostgreSQL migration](../database/POSTGRESQL.md).
+
+เอกสารนี้ครอบคลุมส่ง/ถอนคำขอ ดูโปรไฟล์ผู้ขอ และอนุมัติ/ปฏิเสธคำขอ
+หลังอนุมัติให้ใช้ [สมาชิก/แมตช์](MATCHES.md) ส่วนคำชวนคนก่อนหาห้องใช้
+[หาเพื่อน](FRIENDS.md) ซึ่งเป็นคนละสถานะและไม่จองที่ว่างแทนคำขอเข้าพัก
+
+## เชื่อมงานกับทีม — RM-24
+
+| ส่วนงาน | ส่งต่ออะไรให้ส่วนคำขอ | สิ่งที่ต้องคงไว้ |
+| --- | --- | --- |
+| บัญชี/โปรไฟล์ | token จาก login/register และ userId ของผู้ใช้ปัจจุบัน | ใช้ token ของผู้ทำรายการจริง; เปลี่ยนบัญชีต้องไม่ใช้ token เก่า |
+| ห้องพัก | roomId จาก create/list/detail และสถานะ/ที่ว่างปัจจุบัน | ความจุรวมเจ้าของ; pending ยังไม่ใช่การจอง; อย่าลบประกาศอัตโนมัติเมื่อเต็ม |
+| คำขอ/สมาชิก/เพื่อน | requestId จากคำขอ, connectionId จากคำชวน | อย่าสลับ ID ทั้งสองชนิด หรือใช้การเป็นเพื่อนแทนสิทธิ์สมาชิกห้อง |
+
+- JSON API ใช้ ID เป็น **number** และส่งเวลาตอบกลับเป็น ISO 8601 UTC ส่วน `src/lib/api.ts`
+  แปลง ID เป็น string ให้ frontend และแปลง recipientId ของคำชวนกลับเป็น number
+- ใช้ `api.createJoinRequest`, `mineRequests`, `ownerRequests`, `requesterProfile`,
+  `decideRequest`, `cancelRequest` ของ adapter เดิม ไม่ต้องสร้าง fetch/token handling ซ้ำ
+- `401` ให้ระบบบัญชีจัดการ session; `403` คือไม่มีสิทธิ์ ไม่ใช่ให้ logout;
+  `409` ให้โหลดสถานะล่าสุดก่อนลองใหม่; network/`5xx` ให้แสดง error และทางลองใหม่
+  ข้อความ error อาจเป็นภาษาไทยหรืออังกฤษ อย่าใช้ข้อความเป็นตัวตัดสินสิทธิ์
+- หลังอนุมัติ/ปฏิเสธให้อัปเดต `OwnerRequestsContext` เพื่อให้รายการและจุดแจ้งเตือนตรงกัน
+  จุดแสดงจำนวนงาน pending ไม่ใช่สถานะอ่านแล้ว และการเปิดหน้าไม่ทำให้จุดหาย
+- ฟิกซ์เจอร์ห้องใหม่ต้องผ่าน validation ที่รวมจาก `feature/listing-validation` แล้ว:
+  ราคาเป็นจำนวนเต็มมากกว่า 0, priceBasis, locality, map URL สมบูรณ์ และรูปอย่างน้อย 1 รูป
+  ใช้รูปที่อัปโหลดโดยเจ้าของตาม [UPLOADS.md](UPLOADS.md) หรือ URL เดิมที่รองรับ;
+  seed/รายงาน QA เก่าอาจมีห้องไม่มีรูป จึงไม่ควรคัดลอก payload เก่ามาสร้างห้องใหม่
+
+### Curl setup
+
+ตัวอย่างต่อไปใช้ `RM_API=http://127.0.0.1:3001/api` ตาม API dev ปกติ
+หากใช้ฐาน QA ให้เปลี่ยนเป็น URL ที่เปิดไว้ ตัวแปร token รับจาก login ของแต่ละบทบาท
+และเก็บเฉพาะ session ทดสอบในเครื่อง ไม่ใส่ token จริงลง Git หรือเอกสาร
+ID/ชื่อ/เวลาใน JSON ตัวอย่างมีไว้แสดงรูปแบบ ให้ใช้ค่าที่ API คืนจริงเสมอ
+
+```bash
+export RM_API='http://127.0.0.1:3001/api'
+```
+
+| ตัวแปร | ค่า |
+| --- | --- |
+| `RM_API` | base URL ที่ลงท้าย `/api` |
+| `RM_OWNER_TOKEN`, `RM_APPLICANT_TOKEN` | token เจ้าของห้อง / ผู้ขอ |
+| `RM_ROOM_ID` | roomId ของห้องที่เปิดรับและมีที่ว่าง |
+| `RM_REQUEST_ID` | requestId จากผลส่งคำขอ ไม่ใช่ roomId |
+
+ส่งคำขอด้วยบัญชีผู้ขอ ไม่ต้องส่ง userId หรือ ownerId ใน body:
+
+```bash
+curl -sS -X POST "$RM_API/rooms/$RM_ROOM_ID/requests" \
+  -H "Authorization: Bearer $RM_APPLICANT_TOKEN"
+```
+
+ตัวอย่างผล `201`:
+
+```json
+{
+  "request": {
+    "requestId": 42,
+    "status": "pending",
+    "requestedAt": "2026-11-15T10:00:00.000Z",
+    "respondedAt": null,
+    "membershipActive": false,
+    "room": { "roomId": 10, "title": "ห้องทดสอบ" },
+    "requester": { "userId": 2, "firstName": "เอ", "lastName": "ทดสอบ", "profileImage": null }
+  }
+}
+```
+
+เจ้าของอ่านคำขอแล้วอนุมัติด้วย token เจ้าของ:
+
+```bash
+curl -sS "$RM_API/owner/requests" -H "Authorization: Bearer $RM_OWNER_TOKEN"
+```
+
+```bash
+curl -sS -X PATCH "$RM_API/requests/$RM_REQUEST_ID" \
+  -H "Authorization: Bearer $RM_OWNER_TOKEN" -H 'Content-Type: application/json' \
+  --data '{"status":"approved"}'
+```
+
+ผล `200` มี `request` ที่เป็น approved และ `match` ตาม [MATCHES.md](MATCHES.md)
+หากปฏิเสธใช้ `status: rejected` และผลจะไม่มี key `match`
+ถอนใช้ requestId ของรายการที่ยัง pending เท่านั้น ตัวอย่างนี้เป็นอีกทางเลือกก่อนเจ้าของตัดสินใจ:
+
+```bash
+curl -sS -X POST "$RM_API/requests/$RM_REQUEST_ID/cancel" \
+  -H "Authorization: Bearer $RM_APPLICANT_TOKEN"
+```
 
 ## ไฟล์และขอบเขตงาน
 
@@ -11,10 +100,10 @@
 - UI ใช้ `src/pages/RequestsPage.tsx`, ปุ่มใน `RoomDetailPage.tsx` และ `src/lib/api.ts`
   ส่วนดูโปรไฟล์ผู้ขอใช้ `src/components/RequesterProfileModal.tsx` โดยไม่เปลี่ยน schema
 
-ระบบมี API เบื้องต้นอยู่ก่อนแล้ว รอบนี้แยกเฉพาะฟีเจอร์ออกจาก `app.js`
-เพื่อให้เพื่อนที่ทำบัญชีและห้องไม่ต้องแก้ logic คำขอในไฟล์เดียวกัน
-คง URL, ชื่อฟิลด์ และรูปแบบ response เดิม เพิ่มการตรวจ ID ให้เป็น positive safe integer
-และใช้เวลา `respondedAt` แบบ ISO 8601 UTC ที่มี `Z` เหมือน `requestedAt`
+Logic คำขอแยกอยู่ใน `server/requests.js` และเชื่อมผ่าน `app.js`
+เพื่อให้เพื่อนที่ทำบัญชีและห้องไม่ต้องแก้ business logic ในไฟล์เดียวกัน
+ID ต้องเป็น positive safe integer และเวลา `respondedAt` เป็น ISO 8601 UTC
+ที่มี `Z` เหมือน `requestedAt`
 
 ## API contract
 
@@ -46,6 +135,20 @@
 เก็บประวัติ ส่งใหม่ได้ และเรียกถอนซ้ำได้โดยไม่เปลี่ยนเวลาเดิม final อื่นตอบ 409
 `membershipActive` บอกสมาชิกปัจจุบัน แยกจากคำขออนุมัติในประวัติหลังออกจากห้อง
 รายละเอียด migration และ UI อยู่ [UX_FIXES.md](UX_FIXES.md)
+
+### สถานะที่ frontend ต้องแยก
+
+| สถานะคำขอ | ผลกับห้อง | สิ่งที่ผู้ใช้ทำต่อได้ |
+| --- | --- | --- |
+| `pending` | ไม่กินที่ว่าง และไม่สร้างสมาชิก/แมตช์ | ผู้ส่งถอน; เจ้าของอนุมัติเมื่อเปิดรับและมีที่ว่าง หรือปฏิเสธ |
+| `approved` | สร้าง/เปิดสมาชิกและแมตช์ใน transaction เดียว | ดูสมาชิก/ติดต่อ หรือออกจากห้องผ่าน member API |
+| `rejected` | ไม่เพิ่มสมาชิก/แมตช์ | ส่งคำขอใหม่ได้เมื่อห้องเปิดรับและมีที่ว่าง โดยใช้ requestId ใหม่ |
+| `cancelled` | ไม่เพิ่มสมาชิก/แมตช์ เก็บเวลาถอนเดิม | ผู้ส่งถอนซ้ำได้แบบ idempotent หรือส่งคำขอใหม่เมื่อห้องรับอยู่ |
+
+`membershipActive` เป็นสถานะสมาชิก **ปัจจุบันของคู่ผู้ใช้–ห้อง** ไม่ใช่สถานะของคำขอแถวนั้น
+คำขอเก่า approved ยังเป็นประวัติหลังออก; หากสมัครใหม่และอนุมัติอีกครั้ง ค่านี้อาจเป็น true
+ในประวัติเดิมด้วย ห้ามนับจำนวนสมาชิกจากจำนวนคำขอ approved หรือเปลี่ยนคำขอเป็น `left`
+เมื่อผู้ใช้ออก ให้ใช้ `/members`, `room.memberCount`, `availableSlots` และ member API แทน
 
 ### Error contract
 
@@ -179,3 +282,12 @@ tablet 820×1000, mobile 390×844 และ 320×740 รวมกรณีส่
 ที่ว่างสุดท้ายถูกอนุมัติจากอีกหน้า, พักประกาศ, ถอนชนกับอนุมัติ,
 คำขอถูกจัดการระหว่างเปิดหน้าต่าง และ GET สถานะตอบ 503 แล้วลองใหม่
 ไม่มีการเปลี่ยน schema หรือ API contract ในชุด UI นี้
+
+## ตรวจเอกสาร RM-24
+
+ตรวจเทียบกับฐานโค้ด `4c5833c` ที่รวม RM-16/RM-17 และ listing validation แล้ว
+รันตัวอย่าง curl ทั้ง 11 ชุดจากคู่มือ 3 ไฟล์จริงในฐาน QA แยก (13 ครั้ง รวมส่งใหม่
+เพื่อทดสอบทางเลือกถอน) ตรวจ HTTP status, keys ของ JSON, สิทธิ์สมาชิก/คนนอก
+และยืนยันว่าคำชวนเพื่อนไม่เปลี่ยนห้อง/คำขอ/สมาชิก/แมตช์
+`npm test` ผ่าน 131 ข้อ และ `npm run build` ผ่าน ตัวเลขในหัวข้อ RM-14/15/18
+และรายงาน acceptance เป็นผล ณ commit ที่รายงานนั้นตรวจ ไม่ใช่จำนวน tests ล่าสุด

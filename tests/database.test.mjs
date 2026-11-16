@@ -4,7 +4,7 @@ import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { test } from 'node:test';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { runMigrations } from '../server/database.js';
+import { runMigrations } from './support/sqlite-legacy.js';
 
 const migrationDirectory = resolve('database/migrations');
 const migrationSql = readdirSync(migrationDirectory)

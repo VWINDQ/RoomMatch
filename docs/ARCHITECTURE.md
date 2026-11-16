@@ -2,9 +2,9 @@
 
 ## Continuation decision
 
-The existing Vite, React, TypeScript, and React Router application is structurally sound and its Claymorphism design is reusable. The implementation extends it with a small Node.js API and SQLite database instead of rebuilding the UI.
+The existing Vite, React, TypeScript, and React Router application is structurally sound and its Claymorphism design is reusable. The implementation extends it with a small Node.js API and PostgreSQL database instead of rebuilding the UI.
 
-The runtime target is Node.js 26. The server uses the built-in `node:http`, `node:crypto`, and `node:sqlite` modules, so no backend framework or database package is required.
+The runtime target is Node.js 26. The server uses `node:http`, `node:crypto`, and the `pg` PostgreSQL driver. One pooled connection is retained per request; database operations are asynchronous. Room writes acquire a room-row lock before checking capacity and changing requests/members. See [PostgreSQL setup and transaction contract](../database/POSTGRESQL.md).
 
 Listing saves distinguish image upload failures (under the image picker) from
 room save failures (above the save buttons). API field errors stay with their
@@ -89,6 +89,9 @@ The ER has no room-title attribute. To preserve the useful existing title field 
 - Protected routes return `401`; owner-only routes return `403`; validation and conflicts use `400`/`409` with `{ "error": "..." }`.
 - The client ends the current session when an authenticated API request returns `401`, clears account errors, and redirects to login while preserving the full destination URL. Sign-in errors, network failures, and `403`/`5xx` responses retain their normal error handling. Responses from an earlier session cannot clear or overwrite a newer login.
 - Successful login and registration clear previous account-check errors. Client auth regression tests mount the React app in jsdom and run with `npm test`.
+- Before establishing a session, the client validates the raw login/register response: a non-empty ASCII token without whitespace, a positive safe integer user ID (number or digit string), non-empty first/last names, and a valid email. Optional profile text may be missing or null, and an explicitly inactive or malformed active flag is rejected. `/auth/me` uses the same user validation. Malformed successful responses raise `InvalidAuthResponseError` without storing a new token or user; token signatures are verified by the server.
+- Only the most recently started login or registration attempt may establish a session, even if that latest attempt fails. Earlier attempts reject with `SessionChangedError`; logout, external token changes, and provider unmount invalidate pending attempts. Account refreshes do not supersede a sign-in attempt.
+- Tabs synchronize account changes through localStorage `storage` events, including logout and storage clearing. The previous account is hidden while `/api/auth/me` verifies the current token; a failed verification can be retried without showing the previous account. Requests from an earlier session reject with `SessionChangedError`, and protected page state is recreated when the user changes. Requests already processed by the server are not rolled back.
 
 ## API contract
 

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
-import { openDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 
 let db, application, baseUrl;
 const contactFields = ['email', 'phone', 'lineId', 'instagram'];
@@ -18,21 +18,21 @@ async function start() {
 }
 
 beforeEach(async () => {
-  db = openDatabase({ filename: ':memory:', seed: false });
+  db = await openDatabase({ filename: ':memory:', seed: false });
   const insert = db.prepare(`INSERT INTO USER (user_id, first_name, last_name, email,
     password_hash, phone, line_id, instagram, university, bio)
     VALUES (?, ?, ?, ?, 'unused-test-hash', '0890000000', ?, ?, 'KMUTT', 'ชอบอ่านหนังสือ')`);
   for (const [id, first, last] of [[1, 'Alice', 'Student'], [2, 'สมชาย', 'ใจดี'], [3, 'Carol', 'Student'], [4, 'Dan', 'Student']]) {
-    insert.run(id, first, last, `friend-${id}@example.test`, `line-${id}`, `instagram-${id}`);
+    await insert.run(id, first, last, `friend-${id}@example.test`, `line-${id}`, `instagram-${id}`);
   }
-  db.prepare('INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)').run(2, 'ตื่นเช้า ไม่สูบบุหรี่');
-  db.prepare('INSERT INTO PREFERENCE (user_id, budget_min, budget_max) VALUES (?, ?, ?)').run(2, 0, 5000);
+  await db.prepare('INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)').run(2, 'ตื่นเช้า ไม่สูบบุหรี่');
+  await db.prepare('INSERT INTO PREFERENCE (user_id, budget_min, budget_max) VALUES (?, ?, ?)').run(2, 0, 5000);
   await start();
 });
 
 afterEach(async () => {
   if (application) await new Promise(resolve => application.server.close(resolve));
-  db?.close();
+  await db?.close();
 });
 
 async function api(path, userId, method = 'GET', payload) {
@@ -53,9 +53,9 @@ async function invite(senderId = 1, recipientId = 2) {
   return result.body.connection;
 }
 
-function originalTables() {
-  return Object.fromEntries(['USER', 'LIFESTYLE', 'PREFERENCE', 'ROOM', 'ROOM_IMAGE', 'ROOM_REQUEST', 'ROOM_MEMBER', 'MATCHES']
-    .map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+async function originalTables() {
+  return Object.fromEntries(await Promise.all(['USER', 'LIFESTYLE', 'PREFERENCE', 'ROOM', 'ROOM_IMAGE', 'ROOM_REQUEST', 'ROOM_MEMBER', 'MATCHES']
+    .map(async table => [table, await db.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all()])));
 }
 
 test('all friend endpoints require an active authenticated account', async () => {
@@ -64,12 +64,12 @@ test('all friend endpoints require an active authenticated account', async () =>
     ['/friends/connections', 'POST', { recipientId: 2 }],
     ['/friends/connections/1', 'PATCH', { status: 'accepted' }],
   ]) assert.equal((await api(path, null, method, payload)).status, 401);
-  db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(1);
+  await db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(1);
   assert.equal((await api('/friends', 1)).status, 401);
 });
 
 test('discovery omits self and inactive accounts and returns only public profile fields', async () => {
-  db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(4);
+  await db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(4);
   const result = await api('/friends', 1);
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.people.map(person => person.userId).sort(), [2, 3]);
@@ -92,7 +92,7 @@ test('search supports Thai full names, name parts, university, bio and lifestyle
 });
 
 test('search treats wildcard and SQL-like characters as literals and enforces query length', async () => {
-  db.prepare('UPDATE USER SET bio = ? WHERE user_id = 2').run('100% _quiet \\ room');
+  await db.prepare('UPDATE USER SET bio = ? WHERE user_id = 2').run('100% _quiet \\ room');
   for (const query of ['%', '_', '\\']) {
     assert.deepEqual((await api(`/friends?q=${encodeURIComponent(query)}`, 1)).body.people.map(person => person.userId), [2]);
   }
@@ -102,7 +102,7 @@ test('search treats wildcard and SQL-like characters as literals and enforces qu
 });
 
 test('empty discovery and invitation lists are successful empty responses', async () => {
-  db.exec('UPDATE USER SET is_active = 0 WHERE user_id != 1');
+  await db.exec('UPDATE USER SET is_active = 0 WHERE user_id != 1');
   assert.deepEqual(await api('/friends', 1), { status: 200, body: { people: [] } });
   assert.deepEqual(await api('/friends/connections', 1), { status: 200, body: { connections: [] } });
 });
@@ -113,13 +113,13 @@ test('invalid recipients and malformed bodies do not create invitations', async 
   }
   assert.equal((await api('/friends/connections', 1, 'POST', {})).status, 400);
   assert.equal((await api('/friends/connections', 1, 'POST', { recipientId: 999999 })).status, 404);
-  db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(4);
+  await db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(4);
   assert.equal((await api('/friends/connections', 1, 'POST', { recipientId: 4 })).status, 404);
   const malformed = await fetch(`${baseUrl}/friends/connections`, {
     method: 'POST', headers: { Authorization: `Bearer ${createToken(1)}`, 'Content-Type': 'application/json' }, body: '{',
   });
   assert.equal(malformed.status, 400);
-  assert.equal(db.prepare('SELECT count(*) AS count FROM FRIEND_CONNECTION').get().count, 0);
+  assert.equal((await db.prepare('SELECT count(*) AS count FROM FRIEND_CONNECTION').get()).count, 0);
 });
 
 test('pending invitations have correct directions, hide contacts and reject duplicate or reversed pairs', async () => {
@@ -141,6 +141,40 @@ test('pending invitations have correct directions, hide contacts and reject dupl
   assert.equal((await api('/friends/connections', 2, 'POST', { recipientId: 1 })).status, 409);
 });
 
+test('RM-17: forged sender, account query and consent fields cannot bypass authenticated invitation ownership', async () => {
+  const before = await originalTables();
+  const forgedTime = '2000-01-01T00:00:00.000Z';
+  const result = await api('/friends/connections?userId=3', 1, 'POST', {
+    recipientId: 2, senderId: 3, sender_id: 3, userId: 3,
+    status: 'accepted', createdAt: forgedTime, respondedAt: forgedTime,
+  });
+  assert.equal(result.status, 201);
+  const invitation = result.body.connection;
+  assert.equal(invitation.status, 'pending');
+  assert.equal(invitation.direction, 'outgoing');
+  assert.equal(invitation.respondedAt, null);
+  assert.notEqual(invitation.createdAt, forgedTime);
+  assert.equal(invitation.person.userId, 2);
+  assert.deepEqual(Object.keys(invitation.person).sort(), profileKeys);
+  const stored = await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(invitation.connectionId);
+  assert.deepEqual([stored.sender_id, stored.recipient_id, stored.status, stored.responded_at], [1, 2, 'pending', null]);
+
+  const incoming = await api('/friends/connections?userId=3', 2);
+  assert.equal(incoming.status, 200);
+  assert.equal(incoming.body.connections.length, 1);
+  assert.equal(incoming.body.connections[0].direction, 'incoming');
+  assert.equal(incoming.body.connections[0].person.userId, 1);
+  assert.deepEqual(Object.keys(incoming.body.connections[0].person).sort(), profileKeys);
+  assert.deepEqual(await api('/friends/connections?userId=1', 3), { status: 200, body: { connections: [] } });
+
+  const impersonation = await api(`/friends/connections/${invitation.connectionId}?userId=2`, 1, 'PATCH', {
+    status: 'accepted', userId: 2, recipientId: 1,
+  });
+  assert.equal(impersonation.status, 403);
+  assert.deepEqual(await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(invitation.connectionId), stored);
+  assert.deepEqual(await originalTables(), before);
+});
+
 test('only the recipient may decide and invalid decisions leave the invitation pending', async () => {
   const invitation = await invite();
   for (const userId of [1, 3]) {
@@ -152,7 +186,7 @@ test('only the recipient may decide and invalid decisions leave the invitation p
     assert.equal((await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', payload)).status, 400);
   }
   assert.equal((await api('/friends/connections/999999', 2, 'PATCH', { status: 'accepted' })).status, 404);
-  assert.equal(db.prepare('SELECT status FROM FRIEND_CONNECTION').get().status, 'pending');
+  assert.equal((await db.prepare('SELECT status FROM FRIEND_CONNECTION').get()).status, 'pending');
 });
 
 test('connection IDs must be positive safe integers', async () => {
@@ -162,7 +196,7 @@ test('connection IDs must be positive safe integers', async () => {
 });
 
 test('acceptance reveals contacts only to both participants and never changes room data', async () => {
-  const before = originalTables();
+  const before = await originalTables();
   const invitation = await invite();
   const result = await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'accepted' });
   assert.equal(result.status, 200);
@@ -180,7 +214,7 @@ test('acceptance reveals contacts only to both participants and never changes ro
   const outsiderProfiles = (await api('/friends', 3)).body.people;
   assert.deepEqual(Object.keys(outsiderProfiles.find(person => person.userId === 2)).sort(), profileKeys);
   assert.equal((await api(`/friends/connections/${invitation.connectionId}`, 3, 'PATCH', { status: 'accepted' })).status, 403);
-  assert.deepEqual(originalTables(), before);
+  assert.deepEqual(await originalTables(), before);
 });
 
 test('decline never shares contacts and final decisions cannot be changed or re-sent', async () => {
@@ -201,15 +235,15 @@ test('decline never shares contacts and final decisions cannot be changed or re-
 
 test('inactive partners disappear from connections and cannot be accepted', async () => {
   const invitation = await invite();
-  db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(1);
+  await db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(1);
   assert.equal((await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'accepted' })).status, 409);
   assert.deepEqual((await api('/friends/connections', 2)).body.connections, []);
-  assert.equal(db.prepare('SELECT status FROM FRIEND_CONNECTION').get().status, 'pending');
+  assert.equal((await db.prepare('SELECT status FROM FRIEND_CONNECTION').get()).status, 'pending');
   const accepted = await invite(3, 2);
   assert.equal((await api(`/friends/connections/${accepted.connectionId}`, 2, 'PATCH', { status: 'accepted' })).status, 200);
-  db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(2);
+  await db.prepare('UPDATE USER SET is_active = 0 WHERE user_id = ?').run(2);
   assert.deepEqual((await api('/friends/connections', 3)).body.connections, []);
-  assert.equal(db.prepare('SELECT status FROM FRIEND_CONNECTION WHERE connection_id = ?').get(accepted.connectionId).status, 'accepted');
+  assert.equal((await db.prepare('SELECT status FROM FRIEND_CONNECTION WHERE connection_id = ?').get(accepted.connectionId)).status, 'accepted');
 });
 
 test('simultaneous reversed invitations and competing decisions have only one successful result', async () => {
@@ -218,40 +252,40 @@ test('simultaneous reversed invitations and competing decisions have only one su
     api('/friends/connections', 2, 'POST', { recipientId: 1 }),
   ]);
   assert.deepEqual(results.map(result => result.status).sort(), [201, 409]);
-  const row = db.prepare('SELECT * FROM FRIEND_CONNECTION').get();
+  const row = await db.prepare('SELECT * FROM FRIEND_CONNECTION').get();
   const decisions = await Promise.all(['accepted', 'declined'].map(status =>
     api(`/friends/connections/${row.connection_id}`, row.recipient_id, 'PATCH', { status })));
   assert.deepEqual(decisions.map(result => result.status).sort(), [200, 409]);
-  assert.equal(db.prepare('SELECT status FROM FRIEND_CONNECTION').get().status, decisions.find(result => result.status === 200).body.connection.status);
-  assert.equal(db.prepare('SELECT count(*) AS count FROM FRIEND_CONNECTION').get().count, 1);
+  assert.equal((await db.prepare('SELECT status FROM FRIEND_CONNECTION').get()).status, decisions.find(result => result.status === 200).body.connection.status);
+  assert.equal((await db.prepare('SELECT count(*) AS count FROM FRIEND_CONNECTION').get()).count, 1);
 });
 
 test('database write failures do not create invitations or partially accept them', async () => {
-  db.exec('PRAGMA query_only = ON');
+  db.setReadOnly(true);
   try {
     assert.deepEqual(await api('/friends/connections', 1, 'POST', { recipientId: 2 }), { status: 500, body: { error: 'Internal server error' } });
-  } finally { db.exec('PRAGMA query_only = OFF'); }
-  assert.equal(db.prepare('SELECT count(*) AS count FROM FRIEND_CONNECTION').get().count, 0);
+  } finally { db.setReadOnly(false); }
+  assert.equal((await db.prepare('SELECT count(*) AS count FROM FRIEND_CONNECTION').get()).count, 0);
   const invitation = await invite();
-  db.exec('PRAGMA query_only = ON');
+  db.setReadOnly(true);
   try {
     assert.deepEqual(await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'accepted' }), { status: 500, body: { error: 'Internal server error' } });
-  } finally { db.exec('PRAGMA query_only = OFF'); }
-  assert.equal(db.prepare('SELECT status FROM FRIEND_CONNECTION').get().status, 'pending');
+  } finally { db.setReadOnly(false); }
+  assert.equal((await db.prepare('SELECT status FROM FRIEND_CONNECTION').get()).status, 'pending');
   assert.equal((await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'accepted' })).status, 200);
 });
 
 test('a profile read failure after insertion rolls back the invitation instead of returning a false failure', async () => {
-  db.exec('DROP TABLE PREFERENCE');
+  await db.exec('DROP TABLE PREFERENCE');
   assert.deepEqual(await api('/friends/connections', 1, 'POST', { recipientId: 2 }), { status: 500, body: { error: 'Internal server error' } });
-  assert.equal(db.prepare('SELECT count(*) AS count FROM FRIEND_CONNECTION').get().count, 0);
+  assert.equal((await db.prepare('SELECT count(*) AS count FROM FRIEND_CONNECTION').get()).count, 0);
 });
 
 test('a profile read failure after acceptance rolls back consent and its response timestamp', async () => {
   const invitation = await invite();
-  db.exec('DROP TABLE PREFERENCE');
+  await db.exec('DROP TABLE PREFERENCE');
   assert.deepEqual(await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'accepted' }), { status: 500, body: { error: 'Internal server error' } });
-  const row = db.prepare('SELECT status, responded_at FROM FRIEND_CONNECTION').get();
+  const row = await db.prepare('SELECT status, responded_at FROM FRIEND_CONNECTION').get();
   assert.equal(row.status, 'pending');
   assert.equal(row.responded_at, null);
 });
@@ -263,7 +297,7 @@ test('multiple accepted friends are supported without a room or automatic member
   }
   assert.equal((await api('/friends/connections', 1)).body.connections.filter(connection => connection.status === 'accepted').length, 2);
   for (const table of ['ROOM', 'ROOM_REQUEST', 'ROOM_MEMBER', 'MATCHES']) {
-    assert.equal(db.prepare(`SELECT count(*) AS count FROM ${table}`).get().count, 0);
+    assert.equal((await db.prepare(`SELECT count(*) AS count FROM ${table}`).get()).count, 0);
   }
 });
 
@@ -271,14 +305,14 @@ test('accepted friendship and privacy survive restarting with the same database'
   const invitation = await invite();
   assert.equal((await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'accepted' })).status, 200);
   const filename = join(mkdtempSync(join(tmpdir(), 'roommatch-friends-')), 'friends.sqlite');
-  db.exec(`VACUUM INTO '${filename.replaceAll("'", "''")}'`);
+  const schema = db.schema;
   await new Promise(resolve => application.server.close(resolve));
-  db.close();
-  db = openDatabase({ filename, seed: false });
+  await db.close();
+  db = await openDatabase({ filename, schema, seed: false });
   await start();
   const result = await api('/friends/connections', 1);
   assert.equal(result.body.connections[0].status, 'accepted');
   assert.equal(result.body.connections[0].person.email, 'friend-2@example.test');
   assert.deepEqual((await api('/friends/connections', 3)).body.connections, []);
-  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+  assert.deepEqual(await db.prepare('SELECT conname FROM pg_constraint WHERE connamespace = current_schema()::regnamespace AND contype = \'f\' AND NOT convalidated').all(), []);
 });

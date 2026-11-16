@@ -15,7 +15,7 @@ test('listing form marks required fields, keeps optional text optional and start
   });
   const vite = await createServer({
     configFile: false, envDir: false, plugins: [react()],
-    server: { middlewareMode: true, watch: null },
+    server: { middlewareMode: true, watch: null, hmr: false, ws: false },
     optimizeDeps: { noDiscovery: true, include: [] },
   });
   t.after(() => vite.close());

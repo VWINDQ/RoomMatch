@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { request as httpRequest } from 'node:http';
-import { openDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
 import { completedListingImageUrls, validateListing } from '../shared/listingValidation.js';
@@ -68,9 +68,9 @@ test('required metadata and completed image counting use the same rules for the 
 });
 
 test('legacy listings remain readable and status-only PATCH works, but editing requires complete metadata', async t => {
-  const db = openDatabase({ filename: ':memory:' });
+  const db = await openDatabase({ filename: ':memory:' });
   const app = await startRoomMatchServer({ db, port: 0, logger: { error() {} } });
-  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); db.close(); });
+  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); await db.close(); });
   const call = async (path, method = 'GET', body) => {
     const response = await fetch(`http://127.0.0.1:${app.server.address().port}/api${path}`, {
       method, headers: { Authorization: `Bearer ${createToken(1)}`, 'Content-Type': 'application/json' },
@@ -78,19 +78,19 @@ test('legacy listings remain readable and status-only PATCH works, but editing r
     });
     return { status: response.status, body: await response.json() };
   };
-  db.prepare('DELETE FROM ROOM_IMAGE WHERE room_id=1').run();
+  await db.prepare('DELETE FROM ROOM_IMAGE WHERE room_id=1').run();
   const legacy = await call('/rooms/1');
   assert.equal(legacy.status, 200);
   assert.equal(legacy.body.room.priceBasis, null);
   assert.equal(legacy.body.room.locality, null);
   assert.deepEqual(legacy.body.room.images, []);
   for (const status of ['inactive', 'available']) assert.equal((await call('/rooms/1', 'PATCH', { status })).status, 200);
-  const before = db.prepare('SELECT * FROM ROOM WHERE room_id=1').get();
+  const before = await db.prepare('SELECT * FROM ROOM WHERE room_id=1').get();
   for (const body of [{ title: 'แก้ชื่อ' }, { status: 'inactive', title: 'แก้ชื่อ' }]) {
     const result = await call('/rooms/1', 'PATCH', body);
     assert.equal(result.status, 400);
     assert.deepEqual(result.body.fieldErrors, { locality: 'กรุณากรอกย่านหรือถนน', priceBasis: 'กรุณาเลือกหน่วยราคา', images: 'กรุณาเพิ่มรูปห้องอย่างน้อย 1 รูป' });
-    assert.deepEqual(db.prepare('SELECT * FROM ROOM WHERE room_id=1').get(), before);
+    assert.deepEqual(await db.prepare('SELECT * FROM ROOM WHERE room_id=1').get(), before);
   }
   for (const field of ['priceBasis', 'locality', 'images']) {
     const payload = { ...valid };
@@ -111,9 +111,9 @@ test('legacy listings remain readable and status-only PATCH works, but editing r
 });
 
 test('room create/edit return structured field errors, preserve records and enforce occupancy/ownership', async t => {
-  const db = openDatabase({ filename: ':memory:' });
+  const db = await openDatabase({ filename: ':memory:' });
   const app = await startRoomMatchServer({ db, port: 0, logger: { error() {} } });
-  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); db.close(); });
+  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); await db.close(); });
   const call = async (path, method, body, userId = 1) => {
     const response = await fetch(`http://127.0.0.1:${app.server.address().port}/api${path}`, {
       method, headers: { Authorization: `Bearer ${createToken(userId)}`, 'Content-Type': 'application/json' },
@@ -129,7 +129,7 @@ test('room create/edit return structured field errors, preserve records and enfo
     { description: 'x'.repeat(5001) }, { locality: 'x'.repeat(201) }, { costNotes: 'x'.repeat(1001) }, { priceBasis: 'weekly' },
   ]) {
     const field = Object.keys(invalid)[0];
-    const before = db.prepare('SELECT * FROM ROOM ORDER BY room_id').all();
+    const before = await db.prepare('SELECT * FROM ROOM ORDER BY room_id').all();
     const created = await call('/rooms', 'POST', { ...valid, ...invalid });
     assert.equal(created.status, 400, field);
     assert.equal(typeof created.body.error, 'string');
@@ -139,7 +139,7 @@ test('room create/edit return structured field errors, preserve records and enfo
     assert.equal(edited.status, 400, field);
     assert.match(edited.body.fieldErrors[field], /[ก-๙]/);
     if (field === 'price') assert.equal(edited.body.fieldErrors.price, invalid.price === '   ' ? 'กรุณากรอกราคา' : 'กรุณากรอกราคาเป็นจำนวนเต็มมากกว่า 0 บาท');
-    assert.deepEqual(db.prepare('SELECT * FROM ROOM ORDER BY room_id').all(), before);
+    assert.deepEqual(await db.prepare('SELECT * FROM ROOM ORDER BY room_id').all(), before);
   }
   const created = await call('/rooms', 'POST', { ...valid, title: '  ห้องใหม่  ', description: ' ', costNotes: null });
   assert.equal(created.status, 201);
@@ -155,11 +155,11 @@ test('room create/edit return structured field errors, preserve records and enfo
       assert.match(result.body.fieldErrors.images, /[ก-๙]/);
     }
   }
-  const beforeCapacity = db.prepare('SELECT * FROM ROOM WHERE room_id=1').get();
+  const beforeCapacity = await db.prepare('SELECT * FROM ROOM WHERE room_id=1').get();
   const capacity = await call('/rooms/1', 'PATCH', { capacity: 1 });
   assert.equal(capacity.status, 409);
   assert.match(capacity.body.fieldErrors.capacity, /[ก-๙]/);
-  assert.deepEqual(db.prepare('SELECT * FROM ROOM WHERE room_id=1').get(), beforeCapacity);
+  assert.deepEqual(await db.prepare('SELECT * FROM ROOM WHERE room_id=1').get(), beforeCapacity);
 
   // A member can be approved after edit starts but before its body finishes arriving.
   const arriving = new Promise(resolve => app.server.once('request', resolve));
@@ -183,11 +183,11 @@ test('room create/edit return structured field errors, preserve records and enfo
   const conflict = await concurrentResult;
   assert.equal(conflict.status, 409);
   assert.match(conflict.body.fieldErrors.capacity, /3/);
-  assert.equal(db.prepare('SELECT capacity FROM ROOM WHERE room_id=1').get().capacity, 3);
-  db.exec('PRAGMA query_only=ON');
+  assert.equal((await db.prepare('SELECT capacity FROM ROOM WHERE room_id=1').get()).capacity, 3);
+  db.setReadOnly(true);
   const failed = await call(path, 'PATCH', { title: 'ต้องไม่บันทึก' });
   assert.equal(failed.status, 500);
   assert.deepEqual(failed.body, { error: 'Internal server error' });
-  db.exec('PRAGMA query_only=OFF');
+  db.setReadOnly(false);
   assert.equal((await call(path, 'GET')).body.room.title, 'แก้ไขประกาศเก่า');
 });

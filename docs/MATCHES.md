@@ -1,5 +1,25 @@
 # สมาชิกห้องและแมตช์ — โมดูลที่ 3 / ฟีเจอร์ที่สอง
 
+> Current backend: PostgreSQL. Set up `TEST_DATABASE_URL` and use `npm test`
+> or `node --env-file=.env --test <file>`. SQLite mentions in earlier acceptance
+> results describe historical runs. See [PostgreSQL migration](../database/POSTGRESQL.md).
+
+## เชื่อมงานกับทีม — RM-24
+
+เริ่มจาก [คำขอที่เจ้าของอนุมัติ](REQUESTS.md) จึงมีสมาชิกและ room match
+การตอบรับ [คำชวนเพื่อน](FRIENDS.md) เพียงอย่างเดียวยังไม่สร้างข้อมูลชุดนี้
+
+| หน้าที่ใน frontend | Adapter เดิม | หมายเหตุ |
+| --- | --- | --- |
+| อ่านแมตช์ของบัญชีปัจจุบัน | `api.matches()` | API คืน `{ matches }`; adapter คืน array และแปลง ID เป็น string |
+| อ่านสมาชิกห้อง | `api.roomMembers(roomId)` | API คืนสมาชิกแบบ flat; adapter วางข้อมูลผู้ใช้ใน `member.user` |
+| อ่านสถานะห้องหลังเปลี่ยนสมาชิก | `api.room(roomId)` | อย่าคำนวณที่ว่างจากแมตช์หรือประวัติคำขอ |
+| ออกจากห้อง | `api.leaveRoom(roomId)` | ต้องยืนยัน และโหลดข้อมูลห้อง/แมตช์ใหม่หลังสำเร็จ |
+
+ใช้ [ตัวแปร curl](REQUESTS.md#curl-setup) เดิม โดย RM_APPLICANT_TOKEN ต้องเป็นสมาชิก
+ที่อนุมัติแล้วสำหรับตัวอย่างอ่านสมาชิก/ออกจากห้อง ทุก endpoint ต้องมี bearer token
+ข้อมูล JSON ตัวอย่างด้านล่างเป็น response ดิบจาก API ไม่ใช่รูปร่างหลังผ่าน adapter
+
 ## ขอบเขตและไฟล์
 
 ต่อยอดจากการอนุมัติคำขอเข้าพักเดิม โดยแยก API อ่านสมาชิก/แมตช์มาไว้ใน
@@ -36,6 +56,25 @@ Errors: `400` สำหรับ roomId ไม่เป็นจำนวนเ�
 `404` เมื่อไม่พบห้อง และ `500` สำหรับข้อผิดพลาดฐานข้อมูลที่ไม่คาดคิด
 ทุก error เป็น `{ "error": "ข้อความ" }` ไม่คืน SQL หรือ stack trace
 
+```bash
+curl -sS "$RM_API/rooms/$RM_ROOM_ID/members" \
+  -H "Authorization: Bearer $RM_APPLICANT_TOKEN"
+```
+
+ตัวอย่าง `200` สำหรับห้องความจุ 2 ที่อนุมัติเอแล้ว (สมาชิกเป็น flat object ไม่มี key `user`):
+
+```json
+{
+  "members": [
+    { "userId": 1, "firstName": "เจ้าของ", "lastName": "ทดสอบ", "profileImage": null, "status": "owner", "joinedAt": "2026-11-15T09:00:00.000Z" },
+    { "userId": 2, "firstName": "เอ", "lastName": "ทดสอบ", "profileImage": null, "status": "approved", "joinedAt": "2026-11-15T10:00:00.000Z" }
+  ]
+}
+```
+
+`members.length` รวมเจ้าของ แต่ `room.memberCount` ไม่รวมเจ้าของ
+เช่นห้องตัวอย่างมี `members.length = 2`, `memberCount = 1`, `availableSlots = 0`
+
 ### GET /api/matches
 
 ต้องล็อกอิน ผลสำเร็จ: `200 { "matches": [...] }` ไม่มีแมตช์ให้คืน array ว่าง
@@ -64,6 +103,50 @@ Errors: `400` สำหรับ roomId ไม่เป็นจำนวนเ�
 ยังเป็นเจ้าของห้องนั้น เพื่อไม่ให้แมตช์เก่าเปิดเผยช่องทางติดต่อหลังพ้นสถานะสมาชิก
 แถวประวัติ `MATCHES` ไม่ถูกลบโดยการอ่าน หากบัญชีไม่มีสิทธิ์ล็อกอินตอบ `401`
 และฐานข้อมูลล้มเหลวตอบ `500` แบบทั่วไป
+
+```bash
+curl -sS "$RM_API/matches" -H "Authorization: Bearer $RM_APPLICANT_TOKEN"
+```
+
+ตัวอย่าง `200` ฝั่งผู้ขอเมื่อเจ้าของมี LINE/Instagram:
+
+```json
+{
+  "matches": [{
+    "matchId": 7,
+    "matchedAt": "2026-11-15T10:00:00.000Z",
+    "otherRole": "owner",
+    "room": { "roomId": 10, "title": "ห้องทดสอบ" },
+    "otherUser": {
+      "userId": 1, "firstName": "เจ้าของ", "lastName": "ทดสอบ", "profileImage": null,
+      "bio": null, "lineId": "qa_owner", "instagram": "qa.owner"
+    }
+  }]
+}
+```
+
+ถ้าเจ้าของอ่านรายการเดียวกัน `otherRole` จะเป็น `member` และ otherUser คือผู้ขอ
+หากคู่มีแต่เบอร์ จะมี key `phone` เพิ่มตามกฎสำรองข้างต้น แต่ endpoint นี้ไม่ส่ง email
+ต่างจาก friend connection ที่ accepted ซึ่งส่งช่องทางติดต่อที่อนุญาตทั้ง 4 ฟิลด์
+
+### DELETE /api/rooms/:roomId/members/me
+
+เฉพาะสมาชิก approved หรือสมาชิกเดิม left ของห้องนั้น เจ้าของต้องจัดการประกาศแทน
+ไม่รับ userId เพื่อออกแทนคนอื่น และไม่ต้องมี body:
+
+```bash
+curl -sS -X DELETE "$RM_API/rooms/$RM_ROOM_ID/members/me" \
+  -H "Authorization: Bearer $RM_APPLICANT_TOKEN"
+```
+
+ผลสำเร็จ `200 { "success": true }`; adapter ไม่คืนข้อมูลที่ต้องใช้ต่อ ให้โหลดห้องและแมตช์ใหม่
+API ตั้ง ROOM_MEMBER เป็น `left` คืนที่ว่างและเปิดห้อง full ให้ available หากยังรับอยู่
+ห้อง inactive ยังคง inactive ส่วน ROOM_REQUEST ที่อนุมัติและ MATCHES ยังคงเป็นประวัติ
+สมาชิกที่ออกแล้วไม่ได้รายชื่อสมาชิก/ช่องทางติดต่อผ่านแมตช์ และหากกลับต้องส่งคำขอใหม่ให้เจ้าของอนุมัติ
+การออกซ้ำโดยบัญชีเดิมที่เป็น left แล้วคืนผลสำเร็จเดิมโดยไม่เปลี่ยน joinedAt
+
+Errors: `400` ID ผิด, `401` session ใช้ไม่ได้, `403` เจ้าของ/คนนอก/ผู้ที่ไม่เคยเป็นสมาชิก,
+`404` ไม่พบห้อง และ `500` เมื่อฐานข้อมูลล้มเหลว โดย rollback ก่อนตอบ error
 
 ## สิทธิ์ในรายละเอียดห้อง
 
@@ -103,8 +186,8 @@ field whitelist, ลำดับเจ้าของและ timezone เก�
 4. บัญชีที่ไม่ได้รับอนุมัติต้องไม่มีแมตช์นั้น และไม่ได้รายชื่อสมาชิกผ่าน API รายละเอียดห้อง
 5. ตรวจหน้า empty/error และ desktop/mobile ของ frontend ที่มีอยู่
 
-การตรวจ browser และ API ล่าสุด รวมออกจากห้อง/สมัครใหม่/อนุมัติซ้ำ อยู่ใน
-[UX_FIXES.md](UX_FIXES.md) ไม่มีการ stage, commit หรือ push ให้
+ผลตรวจรับเจ้าของกับผู้ขอ 2 คน รวมออกจากห้อง/สมัครใหม่/อนุมัติซ้ำและ restart อยู่ใน
+[RM-16 acceptance](RM16_ACCEPTANCE.md) ส่วนประวัติการปรับ UX อยู่ใน [UX_FIXES.md](UX_FIXES.md)
 
 ## RM-14 — เบอร์โทรสำรอง
 
