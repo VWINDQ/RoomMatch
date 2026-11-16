@@ -3,8 +3,7 @@ import { test, before, after } from 'node:test';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { runMigrations, seedDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
 import { validateListing, completedListingImageUrls } from '../shared/listingValidation.js';
@@ -28,20 +27,27 @@ const handler = source.match(/const submit = (async \(event: FormEvent<HTMLFormE
 const compiled = `const submit = ${handler.replace('event: FormEvent<HTMLFormElement>', 'event')};`;
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
-async function fixture(t, editing = false) {
+async function fixture(t, editing = false, onSaveResponse = () => {}) {
   const directory = mkdtempSync(join(tmpdir(), 'roommatch-submit-'));
-  const db = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
-  assert.equal(db.prepare('PRAGMA database_list').get().file, '');
-  runMigrations(db); seedDatabase(db);
-  const app = await startRoomMatchServer({ db, port: 0, uploadDirectory: directory, logger: { error() {} } });
-  t.after(async () => { await new Promise(resolve => app.server.close(resolve)); db.close(); rmSync(directory, { recursive: true, force: true }); });
-  const baseline = db.prepare('SELECT count(*) AS count FROM ROOM').get().count;
+  const db = await openDatabase({ filename: ':memory:' });
+  let app;
+  t.after(async () => {
+    try { if (app) await new Promise(resolve => app.server.close(resolve)); }
+    finally {
+      try { await db.close(); }
+      finally { rmSync(directory, { recursive: true, force: true }); }
+    }
+  });
+  app = await startRoomMatchServer({ db, port: 0, uploadDirectory: directory, logger: { error() {} } });
+  const baseline = (await db.prepare('SELECT count(*) AS count FROM room').get()).count;
   const state = { saving: false, errors: {}, requests: 0, uploads: 0, navigations: [], fail: false, gate: deferred(), uploadGate: deferred(), requestStarted: deferred() };
   const bytes = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#fff' } }).png().toBuffer();
   const images = [{ id: 'selected', file: new File([bytes], 'test.png', { type: 'image/png' }), url: '' }];
   const values = { title: 'Repeated submit', description: 'Keep this text', price: '3500', capacity: '2', googleMapsUrl: 'https://maps.google.com/?q=Bangkok', priceBasis: 'per_room', locality: 'Bangkok', costNotes: '' };
   const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
-  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => createToken(1) } });
+  // Browser storage returns the same token until a session explicitly changes.
+  const token = createToken(1);
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => token } });
   t.after(() => { if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage); else delete globalThis.localStorage; });
   const realFetch = globalThis.fetch;
   t.mock.method(globalThis, 'fetch', async (path, options) => {
@@ -55,6 +61,7 @@ async function fixture(t, editing = false) {
     const failure = uploading ? state.uploadResponse : state.saveResponse;
     if (failure) return new Response(JSON.stringify(failure.body), { status: failure.status });
     const response = await realFetch(`http://127.0.0.1:${app.server.address().port}${path}`, options);
+    if (!uploading) onSaveResponse();
     if (!uploading && state.loseResponse) { await response.arrayBuffer(); throw new TypeError('Connection lost after commit'); }
     return response;
   });
@@ -70,7 +77,7 @@ async function fixture(t, editing = false) {
   };
   const submit = new Function(...Object.keys(dependencies), `${compiled}\nreturn submit;`)(...Object.values(dependencies));
   const event = { preventDefault() {}, currentTarget: {} };
-  return { state, values, images, submit: () => submit(event), count: () => db.prepare('SELECT count(*) AS count FROM ROOM').get().count - baseline };
+  return { state, values, images, submit: () => submit(event), count: async () => (await db.prepare('SELECT count(*) AS count FROM room').get()).count - baseline };
 }
 
 for (const editing of [false, true]) {
@@ -85,7 +92,7 @@ for (const editing of [false, true]) {
     Array.from({ length: 10 }, f.submit);
     assert.equal(f.state.requests, 1);
     f.state.gate.resolve(); await first;
-    assert.equal(f.count(), editing ? 0 : 1);
+    assert.equal(await f.count(), editing ? 0 : 1);
     assert.deepEqual(f.state.navigations, ['/my-listings']);
     await f.submit();
     assert.equal(f.state.requests, 1);
@@ -99,11 +106,11 @@ test('failure unlocks for retry and preserves form values and completed image', 
   f.state.fail = true; f.state.uploadGate.resolve(); f.state.gate.resolve();
   await f.submit();
   assert.equal(f.state.saving, false); assert.deepEqual(f.state.errors, { form: 'บันทึกประกาศไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง' });
-  assert.equal(f.count(), 0); assert.deepEqual(f.values, original);
+  assert.equal(await f.count(), 0); assert.deepEqual(f.values, original);
   assert.match(f.images[0].url, /^\/uploads\/1\//);
   f.state.fail = false;
   await f.submit();
-  assert.equal(f.state.requests, 2); assert.equal(f.count(), 1);
+  assert.equal(f.state.requests, 2); assert.equal(await f.count(), 1);
   assert.equal(f.state.uploads, 1);
 });
 
@@ -112,7 +119,7 @@ test('validation failure unlocks so corrected values can be submitted', async t 
   f.values.title = ''; await f.submit();
   assert.ok(f.state.errors.title); assert.equal(f.state.requests, 0);
   f.values.title = 'Corrected'; f.state.uploadGate.resolve(); f.state.gate.resolve();
-  await f.submit(); assert.equal(f.count(), 1);
+  await f.submit(); assert.equal(await f.count(), 1);
 });
 
 
@@ -128,7 +135,7 @@ test('upload failure unlocks and keeps the selected file for retry', async t => 
   assert.equal(f.state.requests, 0);
   f.state.uploadFail = false;
   await f.submit();
-  assert.equal(f.state.requests, 1); assert.equal(f.count(), 1);
+  assert.equal(f.state.requests, 1); assert.equal(await f.count(), 1);
 });
 
 for (const stage of ['upload', 'save']) {
@@ -141,10 +148,10 @@ for (const stage of ['upload', 'save']) {
       ? { images: 'อัปโหลดรูปไม่สำเร็จ กรุณาลองอีกครั้ง' }
       : { form: 'บันทึกประกาศไม่สำเร็จ กรุณาลองอีกครั้ง' });
     assert.equal(f.state.focusErrors, true);
-    assert.equal(f.state.saving, false); assert.equal(f.count(), 0);
+    assert.equal(f.state.saving, false); assert.equal(await f.count(), 0);
     f.state[`${stage}Response`] = null;
     await f.submit();
-    assert.equal(f.count(), 1);
+    assert.equal(await f.count(), 1);
     assert.equal(f.state.uploads, stage === 'upload' ? 2 : 1);
   });
 }
@@ -157,17 +164,21 @@ test('API field errors stay under the field without a duplicate form error', asy
   assert.deepEqual(f.state.errors, { title: 'กรุณาตรวจสอบหัวข้อประกาศ' });
   assert.equal(f.state.focusErrors, true); assert.equal(f.state.saving, false);
   f.state.saveResponse = null; await f.submit();
-  assert.equal(f.count(), 1); assert.equal(f.state.uploads, 1);
+  assert.equal(await f.count(), 1); assert.equal(f.state.uploads, 1);
 });
 
 test('lost response after committed creation cannot prevent another room on retry', async t => {
-  const f = await fixture(t);
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  // A response may arrive in a later second without the stored session changing.
+  const f = await fixture(t, false, () => { now += 2_000; });
   f.state.loseResponse = true; f.state.uploadGate.resolve(); f.state.gate.resolve();
   await f.submit();
-  assert.equal(f.count(), 1);
+  assert.equal(await f.count(), 1);
   assert.deepEqual(f.state.errors, { form: 'บันทึกประกาศไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง' });
   f.state.loseResponse = false; await f.submit();
-  assert.equal(f.count(), 2); assert.equal(f.state.requests, 2); assert.equal(f.state.uploads, 1);
+  assert.equal(await f.count(), 2); assert.equal(f.state.requests, 2); assert.equal(f.state.uploads, 1);
+  assert.deepEqual(f.state.errors, {});
   assert.deepEqual(f.state.navigations, ['/my-listings']);
 });
 
@@ -176,7 +187,7 @@ test('correcting the form after a failed save permits retry without reuploading'
   f.state.fail = true; f.state.uploadGate.resolve(); f.state.gate.resolve();
   await f.submit();
   f.values.title = 'New title'; f.state.fail = false; await f.submit();
-  assert.equal(f.count(), 1); assert.equal(f.state.uploads, 1);
+  assert.equal(await f.count(), 1); assert.equal(f.state.uploads, 1);
 });
 
 test('network wording requires an explicit fetch failure; safe HTTP causes remain actionable', () => {
@@ -195,6 +206,6 @@ test('partial upload failure retries only the remaining file', async t => {
   assert.match(savedUrl, /^\/uploads\/1\//); assert.equal(f.images[0].file, undefined);
   assert.ok(f.images[1].file); assert.equal(f.state.saving, false);
   await f.submit();
-  assert.equal(f.state.uploads, 3); assert.equal(f.state.requests, 1); assert.equal(f.count(), 1);
+  assert.equal(f.state.uploads, 3); assert.equal(f.state.requests, 1); assert.equal(await f.count(), 1);
   assert.equal(f.images[0].url, savedUrl);
 });
