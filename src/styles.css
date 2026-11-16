@@ -119,6 +119,26 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .auth-switch { margin: 24px 0 0; text-align: center; color: var(--text-secondary); font-size: .85rem; }.auth-switch a { color: var(--primary); font-weight: 600; }
 .step-indicator { margin-top: 16px; display: flex; align-items: center; gap: 6px; }.step-indicator i { width: 36px; height: 4px; border-radius: 4px; background: #d6d6d2; }.step-indicator i.active { background: var(--primary); }.step-indicator em { margin-left: 5px; color: var(--text-secondary); font-size: .73rem; font-style: normal; }
 
+@media (min-width: 1024px) {
+  .auth-page { height: 100vh; height: 100dvh; min-height: 0; }
+  .auth-aside {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100%;
+    min-height: 0;
+    padding-block: clamp(16px, 4dvh, 42px);
+    gap: clamp(12px, 3dvh, 32px);
+  }
+  .auth-aside > * { flex-shrink: 0; }
+  .auth-aside h1 { font-size: clamp(1.35rem, min(3.5vw, 6dvh), 3rem); }
+  .auth-aside > div > p:first-child { margin-bottom: clamp(4px, 1dvh, 10px); }
+  .auth-note { margin-top: clamp(6px, 2dvh, 20px); font-size: clamp(.8rem, 2.2dvh, .94rem); }
+  /* Auto margins center short forms and keep the top of long forms reachable. */
+  .auth-form-wrap { height: 100%; min-height: 0; overflow-y: auto; display: flex; justify-content: center; align-items: flex-start; }
+  .auth-form-card { flex-shrink: 0; margin-block: auto; }
+}
+
 /* Browse */
 .search-panel { margin-top: 22px; padding: 10px; border-radius: 19px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; background: #e9e8e4; box-shadow: var(--shadow-clay-sm); }
 .search-input { min-height: 54px; padding: 0 16px; border: 1px solid #d3d1cd; border-radius: 14px; display: flex; align-items: center; gap: 11px; background: #fff; color: var(--primary); }
