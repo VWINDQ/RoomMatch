@@ -55,23 +55,23 @@ fallback content, bounded requests and absence of page errors.
 
 Verified on 2026-11-17 (Asia/Bangkok), using Node 26.13.0, Playwright 1.65.1
 and Playwright Chromium on Windows. The complete current suite passed in one run:
-**283 passed, 0 failed, 0 skipped, 0 flaky** (retries remain disabled).
+**301 passed, 0 failed, 0 skipped, 0 flaky** (retries remain disabled).
 
 | Project / viewport | Passed | Failed | Baseline routes exercised |
 | --- | ---: | ---: | --- |
-| mobile-360 / 360x800 | 43 | 0 | 12/12 |
-| mobile-390 / 390x844 | 43 | 0 | 12/12 |
-| landscape / 844x390 | 43 | 0 | 12/12 |
-| tablet-768 / 768x1024 | 43 | 0 | 12/12 |
-| tablet-820 / 820x1180 | 43 | 0 | 12/12 |
-| desktop / 1280x800 | 43 | 0 | 12/12 |
+| mobile-360 / 360x800 | 46 | 0 | 12/12 |
+| mobile-390 / 390x844 | 46 | 0 | 12/12 |
+| landscape / 844x390 | 46 | 0 | 12/12 |
+| tablet-768 / 768x1024 | 46 | 0 | 12/12 |
+| tablet-820 / 820x1180 | 46 | 0 | 12/12 |
+| desktop / 1280x800 | 46 | 0 | 12/12 |
 | CSS boundaries + inventory guard | 25 | 0 | 5 layouts at each of 24 widths |
-| **Total** | **283** | **0** | **72 principal route/viewport baselines** |
+| **Total** | **301** | **0** | **72 principal route/viewport baselines** |
 
 | Category | Passed | Failed |
 | --- | ---: | ---: |
 | Route baselines | 72 | 0 |
-| Interactions, states, permissions, route guard and focused regressions | 102 | 0 |
+| Interactions, states, permissions, route guard and focused regressions | 120 | 0 |
 | Broken-image cases | 84 | 0 |
 | CSS boundaries and CSS inventory guard | 25 | 0 |
 
@@ -79,18 +79,19 @@ Before these fixes the latest audit had 215 passed / 56 failed across 271 unique
 cases. All of those existing assertions and the long fixture were retained.
 Two focused tests add 12 project/test combinations: complete URL/name readability
 and modal keyboard/scroll behavior. They do not duplicate the original geometry
-regressions or test approval business logic.
+regressions or test approval business logic. The card-title follow-up adds another
+18 combinations, bringing the current total to 301.
 
 Validation and evidence (runtime outputs remain ignored):
 
 - Previously failing groups plus focused regressions: **78/78 passed**.
   Command: `npm run test:e2e -- --workers=3 --grep 'baseline detail-owner|broken fixture image: (gallery|member-profile|detail-owner-profile)|detail member|request owner|long-title|CSS boundary|long URL|approval modal scrolls'`.
   Log: `tmp/rm09-fixes-targeted-final.log`.
-- Full suite: `npm run test:e2e -- --workers=3` -> **283/283 passed**.
-  Log: `tmp/rm09-ui-fixes-full.log`; canonical JSON: `test-results/results.json`;
+- Full suite: `npm run test:e2e -- --workers=3` -> **301/301 passed**.
+  Log: `tmp/rm09-card-full.log`; canonical JSON: `test-results/results.json`;
   HTML: `playwright-report/index.html` (`npm run test:e2e:report`).
-- `npm test`: **234/234 passed**, no skips (`tmp/rm09-ui-fixes-unit.log`).
-- `npm run build` (type check and production build): passed.
+- `npm test`: **234/234 passed**, no skips (`tmp/rm09-card-unit.log`).
+- `npm run build` (type check and production build): passed (`tmp/rm09-card-build.log`).
 - `git diff --check`: passed.
 - Each run closed its owned servers/pools and removed its own schemas/uploads.
   Final read-only verification found **0 remaining owned audit schemas**, and no
@@ -205,77 +206,102 @@ of a scrollable text body, PageDown and mouse-wheel reading on the short viewpor
 hit targeting of approve/cancel/close, and restored opener focus after cancel,
 Escape and the close button. The test does not approve a real request.
 
-## Proposed commit split (do not commit yet)
+## Card-title follow-up: R09-03 and R09-04 (resolved)
 
-1. `test(e2e): set up isolated Playwright environment`
-   - `package.json`, `package-lock.json`, `.gitignore`, `playwright.config.mjs`
-   - `tests/support/postgres.mjs`, `tests/support/postgres-fixtures.mjs`
-   - `tests/e2e/fixtures.mjs`, `tests/e2e/lifecycle.mjs`
-2. `test(responsive): cover all routes across mobile tablet and desktop`
-   - `tests/e2e/routes.mjs`, `tests/e2e/responsive.spec.mjs`, `tests/e2e/breakpoints.spec.mjs`
-3. `test(images): cover broken-image fallbacks`
-   - `tests/e2e/images.spec.mjs`
-4. `fix(responsive): wrap long room detail content`
-   - First (detail) hunk of `src/ux.css`
-   - `tests/e2e/room-detail-layout.spec.mjs`
-5. `fix(responsive): keep approval dialogs within short viewports`
-   - Second (modal) hunk of `src/ux.css`
-   - `tests/e2e/approval-modal.spec.mjs`
-6. `docs(qa): record responsive coverage and results`
-   - `docs/RESPONSIVE_QA.md`
+The prior 283-case suite passed but did not establish card-level safety for an
+unbroken name. Its Thai title contained break opportunities, and its document/
+workspace overflow assertions could not detect text clipped by the card's existing
+`overflow: hidden`. It also did not require real truncation, symmetric title
+insets or title/price/button separation inside each card.
 
-Commands below are prepared for review only; **none of these commits or staging
-commands were executed**. Inspect `git diff --cached` before each future commit
-and keep unrelated user work out of the index.
+Reproduced both reported symptoms before changing CSS: **6/6 new cases failed**
+on mobile-360 and desktop across `/rooms`, `/favorites` and `/my-listings`.
+The My Listings flex text child retained an intrinsic minimum width; its heading
+expanded to 1629px on desktop and displaced the price/actions. RoomCard's `1fr`
+track also retained a content minimum and clipped text at the outside edge instead
+of applying ellipsis within the padded content area.
+
+`src/ux.css` now allows the card copy and My Listings flex text children to shrink,
+uses `minmax(0,1fr)` for the RoomCard title track, keeps the listing price from
+shrinking, and applies `nowrap`, `hidden` and `ellipsis` only to card headings.
+The existing symmetric padding values are preserved. No strings, accessible names,
+JSX, detail-page wrapping or document/body overflow styles were changed.
+
+`tests/e2e/card-titles.spec.mjs` adds three route cases at all six viewports
+(**18/18 targeted passes**, retained in the **301/301** full run). Its 193-character
+unbroken title replaces only the title in real isolated PostgreSQL API responses;
+all other fixture fields and existing assertions remain unchanged. It checks:
+
+- `scrollWidth > clientWidth` and computed nowrap/ellipsis/hidden styles.
+- Exact full heading text/accessibility and RoomCard link/delete-button names.
+- Title, price, price parts, image and every button inside the card; no overlap
+  between text/price/image or between action buttons. The intended image-overlay
+  favorite button is allowed. Buttons also pass real trial-click hit targeting.
+- Equal positive RoomCard content padding and title insets matching both sides.
+- Navigation to the detail page, full exact h1 text, wrapping and page bounds.
+
+Measured examples (scroll/client widths in CSS pixels):
+
+| Route | 360px title | 1280px title | Content padding left/right |
+| --- | --- | --- | --- |
+| Rooms | 1400 / 206 | 1628 / 275 | 14/14 mobile, 18/18 desktop |
+| Favorites | 1400 / 206 | 1628 / 275 | 14/14 mobile, 18/18 desktop |
+| My Listings | 1628 / 182 | 1628 / 335 | Existing listing layout retained |
+
+Commands/logs:
 
 ```powershell
-# 1. Shared setup and isolated lifecycle (8 files)
-git add -- .gitignore package.json package-lock.json playwright.config.mjs tests/support/postgres.mjs tests/support/postgres-fixtures.mjs tests/e2e/fixtures.mjs tests/e2e/lifecycle.mjs
-git diff --cached
-git commit -m "test(e2e): set up isolated Playwright environment"
-
-# 2. Original route/layout coverage (3 files)
-git add -- tests/e2e/routes.mjs tests/e2e/responsive.spec.mjs tests/e2e/breakpoints.spec.mjs
-git diff --cached
-git commit -m "test(responsive): cover all routes across mobile tablet and desktop"
-
-# 3. Image coverage (1 file)
-git add -- tests/e2e/images.spec.mjs
-git diff --cached
-git commit -m "test(images): cover broken-image fallbacks"
-
-# 4. Answer y for the "Long user content" hunk, n for the modal hunk.
-git add -p -- src/ux.css
-git add -- tests/e2e/room-detail-layout.spec.mjs
-git diff --cached
-git commit -m "fix(responsive): wrap long room detail content"
-
-# 5. Stage the remaining "Keep dialog controls visible" hunk.
-git add -p -- src/ux.css
-git add -- tests/e2e/approval-modal.spec.mjs
-git diff --cached
-git commit -m "fix(responsive): keep approval dialogs within short viewports"
-
-# 6. Final evidence and instructions (1 file)
-git add -- docs/RESPONSIVE_QA.md
-git diff --cached
-git commit -m "docs(qa): record responsive coverage and results"
+npm run test:e2e -- --workers=3 --grep 'unbroken card title'
+npm run test:e2e -- --workers=3
+npm test
+npm run build
+git diff --check
 ```
 
-The existing generic geometry regressions belong to the responsive/image commits;
-they are not copied into either fix commit. Only the focused URL/readability and
-keyboard/scroll regressions accompany their respective fixes. `src/ux.css` is the
-only file shared between the two production fixes and must be staged as hunks.
+Targeted log: `tmp/rm09-cards-targeted.log`; before-fix log:
+`tmp/rm09-cards-before.log`. Before screenshots and report are preserved in
+`tmp/rm09-card-before/`. Current full-suite screenshots include:
+
+- `test-results/card-titles-unbroken-card-title-rooms-mobile-360/unbroken-rooms.png`
+- `test-results/card-titles-unbroken-card-title-my-listings-desktop/unbroken-my-listings.png`
+- `test-results/card-titles-unbroken-card-title-my-listings-mobile-360/unbroken-my-listings.png`
+- `test-results/card-titles-unbroken-card-title-favorites-tablet-768/unbroken-favorites.png`
+
+Visually reviewed these after images and the reproduced before images: ellipsis
+ends inside padding, My Listings price/actions remain visible, and Favorites uses
+the same corrected RoomCard. Geometry automation covers all six viewport groups;
+visual review is sampled. No user attachment was available in this conversation,
+so comparison against the user's referenced image is **not verified**. This is
+comparison against the independently reproduced before screenshots instead.
+
+## Proposed commit split for the current diff (do not commit yet)
+
+The earlier Playwright setup, image tests, detail and modal fixes are already in
+HEAD on `fix/room-responsive`. The current diff contains only the following three
+files. Keep this fix with its regression; no empty commits or hunk split needed.
+These commands are prepared only: no staging, commit or push was performed.
+
+```powershell
+# 1. Card fix and its directly related regression
+git add -- src/ux.css tests/e2e/card-titles.spec.mjs
+git diff --cached
+git commit -m "fix(responsive): ellipsize long room card titles"
+
+# 2. Verified coverage, results and limitations
+git add -- docs/RESPONSIVE_QA.md
+git diff --cached
+git commit -m "docs(qa): record card title regression results"
+```
 
 Do not stage `.env`, browser state, screenshots, `test-results/`, reports, `tmp/`,
 or `dist/`. No screenshot snapshot baseline has been created or approved.
 
 ## RM-09 status and next work
 
-**Complete for the requested responsive Chromium scope.** Both approved UI groups
+**Complete for the requested responsive Chromium scope.** The detail, modal and card-title groups
 are fixed, all 12 routes and original viewport/breakpoint checks pass, and before/
 after evidence was reviewed. Real-device and other-browser checks remain outside
-this verified scope. Review the six proposed commit groups before creating any
+this verified scope. Review the two current commit groups before creating any
 commit; no staging, commit or push was performed by this task.
 
 Reference: [Playwright worker fixtures](https://playwright.dev/docs/test-fixtures).
