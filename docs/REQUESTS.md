@@ -1,5 +1,9 @@
 # ขอเข้าพัก — โมดูลที่ 3 / ฟีเจอร์แรก
 
+> Current backend: PostgreSQL. Set up `TEST_DATABASE_URL` and use `npm test`
+> or `node --env-file=.env --test <file>`. SQLite mentions in earlier acceptance
+> results describe historical runs. See [PostgreSQL migration](../database/POSTGRESQL.md).
+
 เอกสารนี้ครอบคลุมส่ง/ถอนคำขอ ดูโปรไฟล์ผู้ขอ และอนุมัติ/ปฏิเสธคำขอ
 หลังอนุมัติให้ใช้ [สมาชิก/แมตช์](MATCHES.md) ส่วนคำชวนคนก่อนหาห้องใช้
 [หาเพื่อน](FRIENDS.md) ซึ่งเป็นคนละสถานะและไม่จองที่ว่างแทนคำขอเข้าพัก

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { test } from 'node:test';
 import { createToken, validateAuthConfiguration, verifyToken } from '../server/auth.js';
-import { openDatabase } from '../server/database.js';
+import { openDatabase } from './support/postgres.mjs';
 
-test('reject known example signing key and fail closed in production', () => {
+test('reject known example signing key and fail closed in production', async () => {
   const secret = process.env.ROOMMATCH_TOKEN_SECRET;
   const environment = process.env.NODE_ENV;
   try {
@@ -21,9 +21,9 @@ test('reject known example signing key and fail closed in production', () => {
     }
     process.env.ROOMMATCH_TOKEN_SECRET = 'audit-only-valid-secret-32-characters-long';
     validateAuthConfiguration();
-    const productionDatabase = openDatabase({ filename: ':memory:' });
-    try { assert.equal(productionDatabase.prepare('SELECT count(*) AS count FROM USER').get().count, 0); }
-    finally { productionDatabase.close(); }
+    const productionDatabase = await openDatabase({ filename: ':memory:' });
+    try { assert.equal((await productionDatabase.prepare('SELECT count(*) AS count FROM USER').get()).count, 0); }
+    finally { await productionDatabase.close(); }
     assert.equal(verifyToken(createToken(1)), 1);
     for (const body of [{ sub: 1 }, { sub: 0, exp: 9999999999 }, { sub: 1, exp: '9999999999' }, { sub: 1, exp: 1 }]) {
       const encoded = Buffer.from(JSON.stringify(body)).toString('base64url');

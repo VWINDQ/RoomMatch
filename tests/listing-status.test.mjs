@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createServer } from 'vite';
 
 test('listing status actions lock synchronously per room, use the response and allow retry', async t => {
-  const vite = await createServer({ configFile: false, envDir: false, server: { middlewareMode: true, watch: null }, optimizeDeps: { noDiscovery: true, include: [] } });
+  const vite = await createServer({ configFile: false, envDir: false, server: { middlewareMode: true, watch: null, hmr: false, ws: false }, optimizeDeps: { noDiscovery: true, include: [] } });
   t.after(() => vite.close());
   const { createListingStatusActions } = await vite.ssrLoadModule('/src/lib/listingStatus.ts');
   const requests = []; const updates = []; const errors = []; let pending;

@@ -77,8 +77,8 @@ export function createImageStorage({ directory = process.env.ROOMMATCH_UPLOAD_DI
       if (db) {
         const prefix = `/uploads/${userId}/`;
         const referenced = new Set([
-          ...db.prepare('SELECT profile_image AS url FROM USER WHERE profile_image LIKE ?').all(`${prefix}%`),
-          ...db.prepare('SELECT image_url AS url FROM ROOM_IMAGE WHERE image_url LIKE ?').all(`${prefix}%`),
+          ...(await db.prepare('SELECT profile_image AS url FROM USER WHERE profile_image ILIKE ?').all(`${prefix}%`)),
+          ...(await db.prepare('SELECT image_url AS url FROM ROOM_IMAGE WHERE image_url ILIKE ?').all(`${prefix}%`)),
         ].map(row => row.url));
         files = files.filter(name => {
           const path = resolve(userDirectory, name);
