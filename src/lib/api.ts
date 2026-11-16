@@ -3,10 +3,35 @@ import { friendlyApiError } from './apiErrors';
 
 const TOKEN_KEY = 'roommatch:token';
 let tokenRevision = 0;
+let observedToken: string | null | undefined;
+const tokenChangeListeners = new Set<() => void>();
 type JsonObject = Record<string, unknown>;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public fieldErrors: Record<string, string> = {}) { super(friendlyApiError(message, status)); this.name = 'ApiError'; }
+  constructor(message: string, public status: number, public fieldErrors: Record<string, string> = {}) { super(status === 0 ? message : friendlyApiError(message, status)); this.name = 'ApiError'; }
+}
+
+export class SessionChangedError extends Error {
+  constructor() { super('The active account has been changed; please try again.'); this.name = 'SessionChangedError'; }
+}
+
+export class InvalidAuthResponseError extends Error {
+  constructor() {
+    super('The server sent incomplete or incorrect account information. Please try again.');
+    this.name = 'InvalidAuthResponseError';
+  }
+}
+
+function synchronizeToken() {
+  // Read the latest value: a queued storage event may describe an older change.
+  observedToken = localStorage.getItem(TOKEN_KEY);
+  tokenRevision += 1;
+  for (const listener of tokenChangeListeners) listener();
+}
+
+function handleTokenStorage(event: StorageEvent) {
+  if (event.storageArea !== localStorage || (event.key !== TOKEN_KEY && event.key !== null)) return;
+  synchronizeToken();
 }
 
 const object = (value: unknown): JsonObject => value && typeof value === 'object' ? value as JsonObject : {};
@@ -28,6 +53,43 @@ export function normalizeUser(value: unknown): User {
     profileImage: text(source, 'profileImage', 'profile_image'), bio: text(source, 'bio'), email: text(source, 'email'), instagram: text(source, 'instagram'),
     lineId: text(source, 'lineId', 'line_id'), isActive: Boolean(pick(source, 'isActive', 'is_active') ?? true),
   };
+}
+
+const isJsonObject = (value: unknown): value is JsonObject => value !== null && typeof value === 'object' && !Array.isArray(value);
+const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
+function parseAuthenticatedUser(value: unknown): User {
+  if (!isJsonObject(value)) throw new InvalidAuthResponseError();
+  const userId = pick(value, 'userId', 'user_id', 'id');
+  const validId = typeof userId === 'number'
+    ? Number.isSafeInteger(userId) && userId > 0
+    : typeof userId === 'string' && /^[1-9]\d*$/.test(userId) && Number.isSafeInteger(Number(userId));
+  const firstName = pick(value, 'firstName', 'first_name');
+  const lastName = pick(value, 'lastName', 'last_name');
+  const email = value.email;
+  const active = value.isActive !== undefined ? value.isActive : value.is_active;
+  if (!validId || !isNonEmptyString(firstName) || !isNonEmptyString(lastName)
+    || !isNonEmptyString(email) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    || (active !== undefined && active !== true && active !== 1)) {
+    throw new InvalidAuthResponseError();
+  }
+  const optionalTextFields = [
+    ['phone'], ['gender'], ['dateOfBirth', 'date_of_birth'], ['university'],
+    ['profileImage', 'profile_image'], ['bio'], ['instagram'], ['lineId', 'line_id'],
+  ];
+  if (optionalTextFields.some(keys => {
+    const field = pick(value, ...keys);
+    return field !== undefined && typeof field !== 'string';
+  })) throw new InvalidAuthResponseError();
+  // Validate before normalization can turn missing fields or wrong types into strings.
+  return normalizeUser(value);
+}
+
+function parseAuthSession(value: unknown) {
+  if (!isJsonObject(value) || typeof value.token !== 'string' || !/^[\x21-\x7e]+$/.test(value.token)) {
+    throw new InvalidAuthResponseError();
+  }
+  return { token: value.token, user: parseAuthenticatedUser(value.user) };
 }
 
 function normalizeRoom(value: unknown): Room {
@@ -80,17 +142,29 @@ export function subscribeUnauthorized(listener: (token: string) => void) {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const sessionToken = tokenStorage.get();
+  if (tokenChangeListeners.size && sessionToken !== observedToken) {
+    // Do not send an old screen's action under a new account before its storage event arrives.
+    synchronizeToken();
+    throw new SessionChangedError();
+  }
   const headers = new Headers(options.headers);
   const isSignInRequest = path === '/auth/login' || path === '/auth/register';
-  const token = isSignInRequest ? null : tokenStorage.get();
+  const token = isSignInRequest ? null : sessionToken;
   const revision = tokenRevision;
+  const assertCurrentSession = () => {
+    if (revision !== tokenRevision || sessionToken !== tokenStorage.get()) throw new SessionChangedError();
+  };
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
   try { response = await fetch(`/api${path}`, { ...options, headers }); }
-  catch { throw new ApiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง', 0); }
+  catch {
+    assertCurrentSession();
+    throw new ApiError('Unable to connect to the server. Please try again.', 0);
+  }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
-
+  assertCurrentSession();
   if (!response.ok) {
     // A late failure must not invalidate a newer login, even if its token is identical.
     if (response.status === 401 && token && token === tokenStorage.get() && revision === tokenRevision) {
@@ -99,7 +173,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const fieldErrors = Object.fromEntries(Object.entries(object(object(payload).fieldErrors)).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
     throw new ApiError(text(object(payload), 'error', 'message') || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', response.status, fieldErrors);
   }
-  if (!response.ok) throw new ApiError(friendlyApiError(text(object(payload), 'error', 'message'), response.status), response.status);
 
   return payload as T;
 }
@@ -108,11 +181,26 @@ export const tokenStorage = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (token: string) => {
     localStorage.setItem(TOKEN_KEY, token);
+    observedToken = token;
     tokenRevision += 1;
   },
   clear: () => {
     localStorage.removeItem(TOKEN_KEY);
+    observedToken = null;
     tokenRevision += 1;
+  },
+  subscribe: (listener: () => void) => {
+    if (!tokenChangeListeners.size) {
+      const token = tokenStorage.get();
+      if (observedToken !== token) tokenRevision += 1;
+      observedToken = token;
+      window.addEventListener('storage', handleTokenStorage);
+    }
+    tokenChangeListeners.add(listener);
+    return () => {
+      tokenChangeListeners.delete(listener);
+      if (!tokenChangeListeners.size) window.removeEventListener('storage', handleTokenStorage);
+    };
   },
 };
 
@@ -146,9 +234,9 @@ export const api = {
   async inviteFriend(recipientId: string) { const result = await request<JsonObject>('/friends/connections', { method: 'POST', body: JSON.stringify({ recipientId: Number(recipientId) }) }); return normalizeConnection(result.connection); },
   async decideFriend(connectionId: string, status: 'accepted' | 'declined') { const result = await request<JsonObject>(`/friends/connections/${connectionId}`, { method: 'PATCH', body: JSON.stringify({ status }) }); return normalizeConnection(result.connection); },
   async cancelFriendInvitation(connectionId: string) { const result = await request<JsonObject>(`/friends/connections/${encodeURIComponent(connectionId)}/cancel`, { method: 'POST' }); return normalizeConnection(result.connection); },
-  async login(payload: { email: string; password: string }) { const result = await request<JsonObject>('/auth/login', { method: 'POST', body: JSON.stringify(payload) }); return { token: text(result, 'token'), user: normalizeUser(result.user) }; },
-  async register(payload: JsonObject) { const result = await request<JsonObject>('/auth/register', { method: 'POST', body: JSON.stringify(payload) }); return { token: text(result, 'token'), user: normalizeUser(result.user) }; },
-  async me() { const result = await request<JsonObject>('/auth/me'); return normalizeUser(result.user); },
+  async login(payload: { email: string; password: string }) { return parseAuthSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) })); },
+  async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
+  async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
   async rooms(params: URLSearchParams) { return list(await request(`/rooms${params.size ? `?${params}` : ''}`), 'rooms').map(normalizeRoom); },
   async room(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}`); return normalizeRoom(result.room); },
   async myRooms() { return list(await request('/my/rooms'), 'rooms').map(normalizeRoom); },

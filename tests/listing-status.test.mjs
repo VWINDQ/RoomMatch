@@ -37,3 +37,23 @@ test('listing status actions lock synchronously per room, use the response and a
   assert.equal(updates.length, 2);
   assert.equal(pending.size, 0);
 });
+
+test('an account change discards the old listing error and releases its pending lock', async t => {
+  const vite = await createServer({ configFile: false, envDir: false, server: { middlewareMode: true, watch: null, hmr: false, ws: false }, optimizeDeps: { noDiscovery: true, include: [] } });
+  t.after(() => vite.close());
+  const { createListingStatusActions } = await vite.ssrLoadModule('/src/lib/listingStatus.ts');
+  const { SessionChangedError } = await vite.ssrLoadModule('/src/lib/api.ts');
+  const errors = []; const updates = []; let pending; let rejectRequest;
+  const actions = createListingStatusActions({
+    update: () => new Promise((_, reject) => { rejectRequest = reject; }),
+    onPending: ids => { pending = ids; }, onUpdated: room => updates.push(room), onError: message => errors.push(message),
+  });
+  const request = actions.toggle({ roomId: '1', status: 'available' });
+  assert.equal(actions.isPending('1'), true);
+  rejectRequest(new SessionChangedError());
+  await request;
+  assert.deepEqual(errors, [], 'the next account must not receive an obsolete error notification');
+  assert.deepEqual(updates, []);
+  assert.equal(actions.isPending('1'), false);
+  assert.equal(pending.size, 0);
+});
