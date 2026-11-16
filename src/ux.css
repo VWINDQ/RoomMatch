@@ -7,11 +7,16 @@
 .room-card { position: relative; display: block; }
 .room-card-link { display: flex; flex-direction: column; height: 100%; color: inherit; text-decoration: none; }
 .room-card-link:focus-visible { outline: 3px solid var(--primary); outline-offset: -4px; border-radius: inherit; }
-.room-card-copy { flex: 1; display: flex; flex-direction: column; }
+.room-card-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .room-card-copy .location { flex: 1; align-items: flex-start; }
 .room-card-copy .location svg { flex-shrink: 0; margin-top: 2px; }
-.room-title-price { grid-template-columns: 1fr; gap: 7px; }
+.room-title-price { min-width: 0; grid-template-columns: minmax(0,1fr); gap: 7px; }
 .room-title-price .price { text-align: left; }
+/* Truncate only card headings; retain full titles in the DOM and detail page. */
+.room-title-price h2,.my-listing-main h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-listing-main,.my-listing-main>div { min-width: 0; }
+.my-listing-main>div { flex: 1; }
+.my-listing-main>.price { flex-shrink: 0; }
 .price span { line-height: 1.5; }
 .room-card .price.compact span { font-size: .72rem; }
 .gallery.gallery-empty { min-height: 160px; height: 180px; }
