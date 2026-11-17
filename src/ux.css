@@ -7,14 +7,25 @@
 .room-card { position: relative; display: block; }
 .room-card-link { display: flex; flex-direction: column; height: 100%; color: inherit; text-decoration: none; }
 .room-card-link:focus-visible { outline: 3px solid var(--primary); outline-offset: -4px; border-radius: inherit; }
-.room-card-copy { flex: 1; display: flex; flex-direction: column; }
+.room-card-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; }
 .room-card-copy .location { flex: 1; align-items: flex-start; }
 .room-card-copy .location svg { flex-shrink: 0; margin-top: 2px; }
-.room-title-price { grid-template-columns: 1fr; gap: 7px; }
+.room-title-price { min-width: 0; grid-template-columns: minmax(0,1fr); gap: 7px; }
 .room-title-price .price { text-align: left; }
+/* Truncate only card headings; retain full titles in the DOM and detail page. */
+.room-title-price h2,.my-listing-main h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-listing-main,.my-listing-main>div { min-width: 0; }
+.my-listing-main>div { flex: 1; }
+.my-listing-main>.price { flex-shrink: 0; }
 .price span { line-height: 1.5; }
 .room-card .price.compact span { font-size: .72rem; }
 .gallery.gallery-empty { min-height: 160px; height: 180px; }
+/* Long user content must shrink with the detail grid instead of widening it. */
+.detail-page { overflow-wrap: anywhere; }
+.detail-title>div,.detail-layout>*,.detail-main>section,.owner-mini>div,.detail-member>div { min-width: 0; }
+.detail-main { grid-template-columns: minmax(0,1fr); }
+.detail-page .description { white-space: pre-wrap; }
+.detail-page .detail-member strong { white-space: normal; overflow: visible; text-overflow: clip; }
 .form-action-buttons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .listing-form-actions,.profile-actions { flex-direction: column; align-items: stretch; gap: 10px; }
 .form-feedback { padding: 10px 14px; border: 1px solid #dcada0; border-radius: 13px; background: #fff0e9; color: #873c2a; font-size: .83rem; line-height: 1.6; }
@@ -28,6 +39,13 @@
 .filter-sheet { top: 24px; right: 24px; height: auto; max-height: calc(100dvh - 48px); border-radius: 26px; overflow: hidden; }
 .filter-scroll { display: grid; gap: 20px; padding-top: 20px; }
 .filter-scroll fieldset { padding: 0 0 20px; }
+/* Keep dialog controls visible; only the content scrolls on short screens. */
+.modal-card { min-width: 0; max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
+.modal-card>header,.modal-card>footer { flex-shrink: 0; }
+.modal-card>header h2 { min-width: 0; overflow-wrap: anywhere; }
+.modal-card>header>.icon-button { flex-shrink: 0; }
+.modal-card>footer { flex-wrap: wrap; }
+.modal-body { min-height: 0; overflow-y: auto; overflow-wrap: anywhere; }
 .empty-actions,.request-history-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .empty-actions { justify-content: center; }
 .request-history-actions { max-width: 220px; }
