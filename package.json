@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:client": "vite",
-    "dev:api": "node server/index.mjs",
+    "dev:api": "node --watch server/index.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "start": "node server/index.mjs",

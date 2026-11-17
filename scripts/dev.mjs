@@ -10,7 +10,7 @@ try {
 // Run Vite through Node so Windows does not need to spawn a .cmd wrapper.
 const viteScript = join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js');
 const children = [
-  spawn(process.execPath, ['server/index.mjs'], { stdio: 'inherit', env: process.env }),
+  spawn(process.execPath, ['--watch', 'server/index.mjs'], { stdio: 'inherit', env: process.env }),
   spawn(process.execPath, [viteScript, ...process.argv.slice(2)], { stdio: 'inherit', env: process.env }),
 ];
 
