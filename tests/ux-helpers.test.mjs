@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { transformWithOxc } from 'vite';
 import { friendlyApiError } from '../src/lib/apiErrors.ts';
-import { roomReturn } from '../src/lib/roomNavigation.ts';
+import { listingReturn, roomReturn } from '../src/lib/roomNavigation.ts';
 
 test('form errors explain authentication and failed saves in Thai without leaking internal errors', () => {
   assert.equal(friendlyApiError('Invalid email or password', 401), 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
@@ -22,6 +22,17 @@ test('room return preserves list context and filters while rejecting arbitrary d
     assert.equal(roomReturn({ from, focusReturnId: 'room-card-1' }).focusTarget, 'room-card-1');
   }
   for (const state of [null, {}, { from: '//evil.example' }, { from: 'https://evil.example' }, { from: '/rooms/1' }, { from: '/rooms-unrelated' }]) assert.equal(roomReturn(state).to, '/rooms');
+});
+
+test('edit return preserves personal-list page and filters and rejects unsafe destinations', () => {
+  for (const from of ['/my-listings?page=3&status=inactive&sort=price_asc', '/favorites?q=test&page=2', '/rooms?page=5']) {
+    const back = listingReturn({ from, focusReturnId: 'listing-12' });
+    assert.equal(back.to, from);
+    assert.equal(back.focusTarget, 'listing-12');
+  }
+  for (const state of [null, {}, { from: '//example.com' }, { from: '/my-listings/12/edit' }, { from: '/favorites-unrelated' }]) {
+    assert.equal(listingReturn(state).to, '/my-listings');
+  }
 });
 
 test('room request conflicts explain the actual state rather than using one generic availability message', () => {

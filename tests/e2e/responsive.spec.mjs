@@ -207,7 +207,7 @@ test('empty layouts and list error layouts', async ({ page, environment }, testI
     await capture(page, testInfo, `empty-${path.split('?')[0].slice(1)}`);
   }
   await signIn(page, environment, 'owner');
-  const cases = [['/rooms','/api/rooms*'], ['/favorites','/api/favorites'], ['/my-listings','/api/my/rooms'], ['/profile','/api/profile'], ['/matches','/api/matches'], ['/friends','/api/friends*'], ['/requests?view=incoming','/api/owner/requests']];
+  const cases = [['/rooms','/api/rooms*'], ['/favorites','/api/favorites*'], ['/my-listings','/api/my/rooms*'], ['/profile','/api/profile'], ['/matches','/api/matches'], ['/friends','/api/friends*'], ['/requests?view=incoming','/api/owner/requests']];
   for (const [path, endpoint] of cases) {
     const pattern = `**${endpoint}`;
     await page.route(pattern, route => route.fulfill({ status: 503, json: { error: 'Service temporarily unavailable' } }));

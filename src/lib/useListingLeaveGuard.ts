@@ -22,7 +22,9 @@ export function useListingLeaveGuard(formRef: RefObject<HTMLFormElement | null>,
     // Capture only when the loaded record becomes ready, not on user edits.
   }, [ready, initial]);
 
-  const hasChanges = useCallback(() => ready && !saved.current && baseline.current !== null && snapshot() !== baseline.current, [ready, snapshot]);
+  // A rapid Back can arrive before the old route's blocker effect is cleaned up.
+  // An unmounted form must not compare its empty DOM against the saved baseline.
+  const hasChanges = useCallback(() => Boolean(formRef.current?.isConnected) && ready && !saved.current && baseline.current !== null && currentSnapshot.current() !== baseline.current, [formRef, ready]);
   const blocker = useBlocker(hasChanges);
   const currentBlocker = useRef(blocker);
   currentBlocker.current = blocker;

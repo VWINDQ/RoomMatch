@@ -138,6 +138,36 @@ there is no schema migration. See [UPLOADS.md](UPLOADS.md) for limits and deploy
 - `POST /api/rooms/:roomId/images` — owner-only add an image URL.
 - `DELETE /api/rooms/:roomId/images/:imageId` — owner-only remove an image.
 - `GET /api/my/rooms` — authenticated user's listings.
+- `GET /api/favorites` — authenticated user's saved rooms, including full/paused rooms.
+
+Personal lists use the same opt-in pagination contract and SQL helper as Rooms.
+Favorites defaults to 12 per page, ordered by favorite save time descending;
+My Listings defaults to 10, ordered by room creation time descending. Both use
+descending room ID for ties. Every count/filter/page is scoped to the authenticated
+account before pagination. Without `page`/`pageSize`, personal endpoints retain
+the complete legacy `rooms` array with additive `total` (no implicit cap).
+In paginated mode, Favorites rejects pageSize above 12 and My Listings above 10;
+Rooms retains its maximum of 100. Paginated client adapters always opt into this
+mode, even when callers omit paging parameters. They validate numeric metadata,
+the requested page size, canonical page, totalPages and exact page item count.
+An older API's unbounded legacy response is an error, never a client-side page.
+They accept `q`, `status`, `minPrice`, `maxPrice`, `minSlots`, `priceBasis` and
+`sort=newest|price_asc|price_desc|capacity_desc`; Favorites also accepts `saved`
+(its default). Invalid paging values or mixing page with limit/offset returns 400.
+
+Rooms, Favorites and My Listings share the pagination controls, range formatting,
+and URL/request lifecycle hook. Personal status/sort controls reset page 1 while
+retaining other query parameters. Successful un-favorite/delete/status changes
+reload the server page and total; SQL clamps a now-empty last page and the URL
+is replaced without a second request. Empty results show zero, with no pagination.
+Back/Forward fetches the current page again; obsolete responses are discarded.
+Detail/edit links carry the complete originating list URL and focus target through
+router state (including reload). Edit back/cancel/save return to that URL, with
+safe default `/my-listings` for direct edit links; the unsaved-change guard remains
+in effect. No schema change is required.
+
+See [personal pagination reproduction and checks](PERSONAL_PAGINATION_QA.md) for
+the stale development API incident, exact boundary matrix and runtime safeguards.
 
 Room write payload fields are `title`, `description`, `googleMapsUrl`, `price`, `capacity`, `status`, and `images`. `title` is encoded into the first description line per the presentation convention.
 

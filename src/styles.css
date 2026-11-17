@@ -790,6 +790,8 @@ p,.description,.field-hint,.field-error,input,textarea,select { font-family: 'Fr
 .room-pagination .button-secondary { background: var(--surface); }
 .room-pagination [aria-current="page"] { background: var(--primary-soft); color: var(--primary); opacity: 1; }
 .pagination-mobile { display: none; color: var(--text-secondary); font-size: .85rem; }
+.personal-list-toolbar { margin-top: 28px; align-items: center; flex-wrap: wrap; }
+.personal-list-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 @media (max-width: 640px) {
   .room-pagination { gap: 8px; justify-content: space-between; }
   .room-pagination > .button { padding-inline: 12px; }
