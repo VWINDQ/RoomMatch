@@ -121,6 +121,16 @@ there is no schema migration. See [UPLOADS.md](UPLOADS.md) for limits and deploy
 ### Rooms and images
 
 - `GET /api/rooms` — browse/search/sort/filter by price and status.
+  RM-12: `page` (positive safe integer, default 1) / `pageSize` (1–100,
+  default 12) opt into server pagination. Response: `{ rooms, total, page,
+  pageSize, totalPages }`. Filtering precedes counting and sorting; every sort
+  uses descending room ID to break ties. Count and page share one SQL snapshot.
+  Oversized pages return the last real page; empty results return page 1 and
+  totalPages 0. Legacy `limit`/`offset` callers retain `{ rooms }` with additive
+  `total`; mixing the two pagination styles returns 400.
+  `/rooms` displays 12 rooms per page and keeps page/search/filter/sort in the
+  URL. Condition changes reset page; canonical page corrections replace history
+  without another API call. Room detail return state preserves the list URL.
 - `GET /api/rooms/:roomId` — room, owner, ordered images, occupancy, members, and current-user request state.
 - `POST /api/rooms` — create an owned room with image URLs.
 - `PATCH /api/rooms/:roomId` — owner-only update.

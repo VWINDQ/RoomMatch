@@ -37,7 +37,7 @@ export const test = base.extend({
       app = await startRoomMatchServer({ db, host: '127.0.0.1', port: 0, uploadDirectory, logger: { error() {} } });
       const friend = await db.prepare('SELECT first_name,last_name FROM USER WHERE user_id=4').get();
       // Server receives this explicit db; no path can open the development database.
-      await use({ baseURL: `http://127.0.0.1:${app.server.address().port}`, friendName: `${friend.first_name} ${friend.last_name}`, tokens: {
+      await use({ db, baseURL: `http://127.0.0.1:${app.server.address().port}`, friendName: `${friend.first_name} ${friend.last_name}`, tokens: {
         owner: createToken(1), member: createToken(2), seeker: createToken(3), empty: createToken(empty.insertId),
       } });
     } finally {
