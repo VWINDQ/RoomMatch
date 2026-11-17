@@ -1,3 +1,4 @@
+import { Skeleton } from '../components/Skeleton';
 import { Check, HeartHandshake, RefreshCw, Search, Send, UserRoundPlus, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -203,7 +204,7 @@ export function FriendsPage() {
     {view === 'discover' && <label className="friend-search"><Search size={20}/><input aria-label="ค้นหาเพื่อน" placeholder="ค้นหาชื่อ มหาวิทยาลัย หรือไลฟ์สไตล์" maxLength={100} disabled={Boolean(busy)} value={query} onChange={event => setQuery(event.target.value)}/>{query && <button disabled={Boolean(busy)} onClick={() => setQuery('')} aria-label="ล้างคำค้นหาเพื่อน"><X size={18}/></button>}</label>}
     {actionNeedsRefresh && !selected && !actionError && <p className="inline-note" role="status">กรุณาอัปเดตคำชวนเพื่อตรวจสถานะล่าสุดก่อนดำเนินการต่อ</p>}
     {actionError && !selected && <p ref={actionFeedback} tabIndex={-1} className="form-alert" role="alert">{actionError}</p>}
-    {loading ? <div className="friend-grid" aria-label="กำลังโหลดเพื่อน"><div className="match-skeleton"/><div className="match-skeleton"/></div>
+    {loading ? <Skeleton variant="friends"/>
       : error ? <EmptyState icon={<RefreshCw/>} title="โหลดข้อมูลเพื่อนไม่สำเร็จ" text={error} action={<Button onClick={() => setReload(current => current + 1)}>ลองอีกครั้ง</Button>}/>
       : view === 'discover' ? people.length || sentPending.length ? <><p className="friends-result" aria-live="polite">{people.length > 0 && `ทำความรู้จักได้ ${people.length} คน`}{people.length > 0 && sentPending.length > 0 && ' · '}{sentPending.length > 0 && `ส่งคำชวนแล้ว ${sentPending.length} คน`}</p><div className="friend-grid">
         {sentPending.map(connection => <PersonCard key={`sent-${connection.connectionId}`} person={connection.person} onView={() => openProfile(connection.person)} badge={<span className="status pending"><Check size={15}/>ส่งคำชวนแล้ว · รอตอบรับ</span>} actions={<Button variant="secondary" className="w-full" onClick={() => openInvitations('outgoing')}>ดูคำชวนที่ส่ง</Button>}/>)}

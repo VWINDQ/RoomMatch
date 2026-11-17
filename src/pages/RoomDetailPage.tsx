@@ -1,3 +1,4 @@
+import { Skeleton } from '../components/Skeleton';
 import { ArrowLeft, CalendarDays, ExternalLink, Heart, MapPin, RefreshCw, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -92,7 +93,7 @@ export function RoomDetailPage() {
   };
   const closeWithdrawal = () => { if (withdrawing) return; setWithdrawOpen(false); if (room?.requestStatus !== 'pending') requestAnimationFrame(() => requestPanel.current?.focus()); };
   useEffect(() => { setWithdrawOpen(false); setWithdrawError(''); setRequestError(''); setRequestNeedsRefresh(false); setSending(false); }, [id]);
-  if (loading) return <div className="page"><div className="detail-skeleton"><span/><span/><span/></div></div>;
+  if (loading) return <div className="page"><Skeleton variant="room-detail"/></div>;
   if (error || !room) return <div className="page"><EmptyState icon={<RefreshCw/>} title="เปิดประกาศนี้ไม่ได้" text={error || 'ไม่พบประกาศห้องนี้'} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
   const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอพิจารณา' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
   return <div className="page detail-page"><button className="back-link" onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}><ArrowLeft size={18}/>{back.label}</button>

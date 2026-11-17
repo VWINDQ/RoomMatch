@@ -1,3 +1,4 @@
+import { Skeleton } from '../components/Skeleton';
 import { AtSign, HeartHandshake, LogOut, Mail, MessageCircle, Pencil, Phone, RefreshCw, UserRound } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -42,7 +43,7 @@ export function ProfilePage() {
       setProfile(updated); await refreshUser(updated.user); setEditing(false); notify('บันทึกข้อมูลเรียบร้อยแล้ว');
     } catch (caught) { setErrors({ form: caught instanceof Error ? caught.message : 'บันทึกข้อมูลไม่สำเร็จ' }); } finally { setSaving(false); }
   };
-  if (loading) return <div className="page"><div className="detail-skeleton"><span/><span/><span/></div></div>;
+  if (loading) return <div className="page"><Skeleton variant="profile"/></div>;
   if (error || !profile) return <div className="page"><EmptyState icon={<RefreshCw/>} title="โหลดโปรไฟล์ไม่สำเร็จ" text={error} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
   const { user, lifestyle, preference } = profile; const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}` || 'R';
   return <div className="page profile-page"><PageHeader title="โปรไฟล์ของฉัน" subtitle="ข้อมูลที่ช่วยให้เจ้าของห้องและเพื่อนใหม่รู้จักคุณ" actions={<Button variant="quiet" disabled={saving} onClick={() => { logout(); navigate('/login'); }}><LogOut size={17}/>ออกจากระบบ</Button>}/>

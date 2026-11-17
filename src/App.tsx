@@ -1,3 +1,4 @@
+import { SessionSkeleton } from './components/Skeleton';
 import { useEffect, type ReactNode } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { AppProvider, useApp } from './AppContext';
@@ -42,7 +43,7 @@ function ScrollToTop() {
 
 function ProtectedRoutes() {
   const { user, authLoading, authError, retryAuth } = useApp(); const location = useLocation();
-  if (authLoading) return <main className="route-loading"><span className="clay-loader"/><p>กำลังเตรียมห้องให้คุณ...</p></main>;
+  if (authLoading) return <SessionSkeleton/>;
   if (authError) return <main className="route-loading"><p>{authError}</p><button className="button button-primary" onClick={retryAuth}>ลองเชื่อมต่ออีกครั้ง</button></main>;
   return user ? <Outlet key={user.userId}/> : <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }}/>;
 }
@@ -51,7 +52,7 @@ function GuestOnly({ children }: { children: ReactNode }) {
   const { user, authLoading } = useApp();
   const location = useLocation();
   const destination = (location.state as { from?: string } | null)?.from || '/rooms';
-  if (authLoading) return null;
+  if (authLoading) return <SessionSkeleton/>;
   return user ? <Navigate to={destination} replace/> : children;
 }
 

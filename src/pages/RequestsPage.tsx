@@ -1,3 +1,4 @@
+import { Skeleton } from '../components/Skeleton';
 import { ProfilePhoto } from '../components/ProfilePhoto';
 import { ArrowUpRight, Inbox, RefreshCw, Send, UserCheck, UserRound, UserX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -153,7 +154,7 @@ export function RequestsPage() {
       <button ref={sentTab} className={activeView === 'sent' ? 'selected' : ''} aria-pressed={activeView === 'sent'} onClick={() => setView('sent')}><Send size={18}/>คำขอที่ฉันส่ง</button>
     </nav>
     {approvedNotice && <p className="success-next-step" role="status">อนุมัติและเพิ่มสมาชิกแล้ว <Link to="/matches">ดูสมาชิกห้องและช่องทางติดต่อ</Link></p>}
-    {viewLoading ? <div className="request-skeleton" aria-label="กำลังโหลดคำขอ"><span/><span/><span/></div>
+    {viewLoading ? <Skeleton variant="requests"/>
       : viewError ? <EmptyState icon={<RefreshCw/>} title="โหลดคำขอไม่สำเร็จ" text={viewError} action={<Button onClick={() => { setReload(value => value + 1); void refreshOwnerRequests(); }}>ลองอีกครั้ง</Button>}/>
       : <div className="request-panel">{activeView === 'incoming'
         ? <RequestSection icon={<Inbox/>} title="คำขอถึงฉัน" count={pending.length}>

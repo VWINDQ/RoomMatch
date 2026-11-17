@@ -61,9 +61,7 @@ export function Modal({ title, children, onClose, actions }: { title: string; ch
   </div>;
 }
 
-export function SkeletonGrid() {
-  return <div className="room-grid" aria-label="กำลังโหลดห้อง">{[1,2,3,4,5,6].map(item => <div className="skeleton-card" key={item}><div/><span/><span/><i/></div>)}</div>;
-}
+export { SkeletonGrid } from './Skeleton';
 
 export function EmptyState({ icon, title, text, action }: { icon: ReactNode; title: string; text: string; action?: ReactNode }) {
   return <section className="empty-state"><div className="empty-icon">{icon}</div><h2>{title}</h2><p>{text}</p>{action}</section>;

@@ -1,3 +1,4 @@
+import { Skeleton } from './Skeleton';
 import { HeartHandshake } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -21,5 +22,5 @@ export function FriendSearchContext() {
     return () => { active = false; };
   }, [friendId]);
   if (!friendId) return null;
-  return <aside className="friends-note friend-search-context"><span><HeartHandshake/></span><p>{error || (person ? `กำลังหาห้องกับ ${person.firstName} ${person.lastName}` : 'กำลังโหลดข้อมูลเพื่อน…')}<br/><small>{person ? 'แสดงห้องที่มีที่ว่างพอสำหรับคนที่ยังไม่ได้อยู่ในห้องนั้น ทั้งคู่ยังต้องส่งคำขอและให้เจ้าของอนุมัติแยกกัน' : 'การหาห้องด้วยกันยังไม่เพิ่มสมาชิกห้องอัตโนมัติ'}</small></p><Link to={error ? '/friends' : '/rooms'}>{error ? 'กลับไปหาเพื่อน' : 'หาห้องตามปกติ'}</Link></aside>;
+  return <aside className="friends-note friend-search-context"><span><HeartHandshake/></span>{!error && !person ? <Skeleton variant="friend-context"/> : <p>{error || (person ? `กำลังหาห้องกับ ${person.firstName} ${person.lastName}` : 'กำลังโหลดข้อมูลเพื่อน…')}<br/><small>{person ? 'แสดงห้องที่มีที่ว่างพอสำหรับคนที่ยังไม่ได้อยู่ในห้องนั้น ทั้งคู่ยังต้องส่งคำขอและให้เจ้าของอนุมัติแยกกัน' : 'การหาห้องด้วยกันยังไม่เพิ่มสมาชิกห้องอัตโนมัติ'}</small></p>}<Link to={error ? '/friends' : '/rooms'}>{error ? 'กลับไปหาเพื่อน' : 'หาห้องตามปกติ'}</Link></aside>;
 }
