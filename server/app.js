@@ -679,16 +679,37 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           capacity_desc: 'r.capacity DESC, r.room_id DESC',
         };
         const sort = url.searchParams.get('sort') ?? 'newest';
-        assert(sortMap[sort], 400, 'sort is invalid');
-        const limit = integer(url.searchParams.get('limit') ?? 100, 'limit', { min: 1, max: 100 });
-        const offset = integer(url.searchParams.get('offset') ?? 0, 'offset', { min: 0 });
-        parameters.push(limit, offset);
-        const rows = await db.prepare(`
-          ${ROOM_SELECT}
-          ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
-          ORDER BY ${sortMap[sort]}
-          LIMIT ? OFFSET ?
-        `).all(...parameters);
+        assert(Object.hasOwn(sortMap, sort), 400, 'sort is invalid');
+        const paginated = url.searchParams.has('page') || url.searchParams.has('pageSize');
+        const paginationInteger = (name, fallback, max = Number.MAX_SAFE_INTEGER) => {
+          const value = url.searchParams.get(name) ?? String(fallback);
+          assert(/^[1-9]\d*$/.test(value), 400, `${name} must be a positive integer`);
+          return integer(value, name, { required: true, min: 1, max });
+        };
+        const requestedPage = paginated ? paginationInteger('page', 1) : 1;
+        const pageSize = paginated ? paginationInteger('pageSize', 12, 100) : null;
+        assert(!paginated || (!url.searchParams.has('limit') && !url.searchParams.has('offset')), 400, 'Use page/pageSize or limit/offset, not both');
+        const limit = pageSize ?? integer(url.searchParams.get('limit') ?? 100, 'limit', { required: true, min: 1, max: 100 });
+        const offset = paginated ? 0 : integer(url.searchParams.get('offset') ?? 0, 'offset', { required: true, min: 0, max: Number.MAX_SAFE_INTEGER });
+        // One statement gives the count and clamped page the same PostgreSQL snapshot.
+        const order = sortMap[sort].replaceAll('r.', '');
+        const result = await db.prepare(`
+          WITH filtered AS (
+            ${ROOM_SELECT} WHERE ${conditions.join(' AND ')}
+          ), totals AS (SELECT COUNT(*) AS total FROM filtered),
+          paging AS (
+            SELECT total, LEAST(?::bigint, GREATEST(1, CEIL(total::numeric / ?)))::bigint AS page
+            FROM totals
+          )
+          SELECT selected.*, paging.total, paging.page
+          FROM paging LEFT JOIN LATERAL (
+            SELECT * FROM filtered ORDER BY ${order}
+            LIMIT ? OFFSET ${paginated ? '(SELECT (page - 1) * ? FROM paging)' : '?'}
+          ) selected ON true
+          ORDER BY ${order}
+        `).all(...parameters, requestedPage, limit, limit, paginated ? limit : offset);
+        const { total, page } = result[0];
+        const rows = result.filter(row => row.room_id !== null);
         const favoriteRoomIds = new Set(
           currentUser
             ? (await db
@@ -701,7 +722,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const rooms = await roomDtos(db, rows, row => ({
           isFavorite: favoriteRoomIds.has(Number(row.room_id)),
         }));
-        sendJson(response, 200, { rooms }, request);
+        sendJson(response, 200, { rooms, total, ...(paginated ? { page, pageSize: limit, totalPages: Math.ceil(total / limit) } : {}) }, request);
         return;
       }
 
