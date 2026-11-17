@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -37,8 +37,8 @@ test('listing errors render once at the image, field or above the save buttons',
     ['title', 'กรุณาตรวจสอบหัวข้อประกาศ'],
   ]) {
     globalThis.__listingFeedbackTestErrors = { [field]: message };
-    const html = renderToStaticMarkup(createElement(MemoryRouter, null,
-      createElement(AppProvider, null, createElement(ListingFormPage))));
+    const html = renderToStaticMarkup(createElement(RouterProvider, { router: createMemoryRouter([{ path: '*',
+      element: createElement(AppProvider, null, createElement(ListingFormPage)) }]) }));
     assert.equal(html.split(message).length - 1, 1);
     const position = html.indexOf(message);
     const footer = html.indexOf('<footer');

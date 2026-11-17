@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -21,8 +21,8 @@ test('listing form marks required fields, keeps optional text optional and start
   t.after(() => vite.close());
   const { ListingFormPage } = await vite.ssrLoadModule('/src/pages/ListingFormPage.tsx');
   const { AppProvider } = await vite.ssrLoadModule('/src/AppContext.tsx');
-  const html = renderToStaticMarkup(createElement(MemoryRouter, null,
-    createElement(AppProvider, null, createElement(ListingFormPage))));
+  const html = renderToStaticMarkup(createElement(RouterProvider, { router: createMemoryRouter([{ path: '*',
+    element: createElement(AppProvider, null, createElement(ListingFormPage)) }]) }));
   for (const name of ['title', 'price', 'capacity', 'googleMapsUrl', 'priceBasis', 'locality']) {
     const input = html.match(new RegExp(`<(?:input|select)\\b[^>]*name="${name}"[^>]*>`))?.[0];
     assert.ok(input, name);

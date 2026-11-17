@@ -66,14 +66,14 @@ async function fixture(t, editing = false, onSaveResponse = () => {}) {
     return response;
   });
   const dependencies = {
-    checkingImages: false, saving: false, submitLocked: { current: false },
+    checkingImages: false, saving: false, submitLocked: { current: false }, mounted: { current: true },
     setSaving: value => { state.saving = value; }, setFocusErrors: value => { state.focusErrors = value; }, setErrors: value => { state.errors = value; },
     FormData: class { constructor() { return Object.entries(values); } },
     validateListing, completedListingImageUrls, images, existing: editing ? { roomId: '1', memberCount: 0 } : null,
     fieldsWithErrors: { current: new Set() }, status: 'available', listingFields: Object.keys(values).concat('images'),
     uploadSelectedImages, listingSaveFeedback,
     setImages: next => { images.splice(0, images.length, ...next); }, updateImageFeedback() {},
-    api, notify() {}, navigate: path => state.navigations.push(path),
+    api, notify() {}, markSaved: () => { state.saved = true; }, navigate: path => state.navigations.push(path),
   };
   const submit = new Function(...Object.keys(dependencies), `${compiled}\nreturn submit;`)(...Object.values(dependencies));
   const event = { preventDefault() {}, currentTarget: {} };
@@ -94,6 +94,7 @@ for (const editing of [false, true]) {
     f.state.gate.resolve(); await first;
     assert.equal(await f.count(), editing ? 0 : 1);
     assert.deepEqual(f.state.navigations, ['/my-listings']);
+    assert.equal(f.state.saved, true);
     await f.submit();
     assert.equal(f.state.requests, 1);
     assert.equal(f.state.saving, true);
@@ -105,6 +106,7 @@ test('failure unlocks for retry and preserves form values and completed image', 
   const original = { ...f.values };
   f.state.fail = true; f.state.uploadGate.resolve(); f.state.gate.resolve();
   await f.submit();
+  assert.notEqual(f.state.saved, true);
   assert.equal(f.state.saving, false); assert.deepEqual(f.state.errors, { form: 'บันทึกประกาศไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง' });
   assert.equal(await f.count(), 0); assert.deepEqual(f.values, original);
   assert.match(f.images[0].url, /^\/uploads\/1\//);
