@@ -1,10 +1,11 @@
+import { Skeleton } from '../components/Skeleton';
 import { Building2, Edit3, Eye, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
 import { Price, RoomImage } from '../components/RoomCard';
-import { Button, EmptyState, Modal, SkeletonGrid, StatusBadge } from '../components/UI';
+import { Button, EmptyState, Modal, StatusBadge } from '../components/UI';
 import { api, SessionChangedError } from '../lib/api';
 import { createListingStatusActions } from '../lib/listingStatus';
 import type { Room } from '../types';
@@ -25,7 +26,7 @@ export function MyListingsPage() {
   }));
   const roomLocked = (roomId: string) => statusActions.isPending(roomId) || deleting?.roomId === roomId;
   return <div className="page"><PageHeader title="ประกาศของฉัน" subtitle="ดูแลข้อมูล ราคา และสถานะห้องที่คุณลงประกาศ" actions={<Button onClick={() => navigate('/my-listings/new')}><Plus size={18}/>ลงประกาศใหม่</Button>}/>
-    {loading ? <SkeletonGrid/> : error ? <EmptyState icon={<RefreshCw/>} title="โหลดประกาศไม่สำเร็จ" text={error} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/> : rooms.length ? <div className="listing-stack">{rooms.map(room => <article id={`listing-${room.roomId}`} tabIndex={-1} className="my-listing" key={room.roomId}><RoomImage room={room}/><div className="my-listing-main"><div><StatusBadge status={room.status}/><h2>{room.title}</h2><p>ว่าง {room.availableSlots} ที่ · ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH') : '-'}</p></div><Price amount={room.price} basis={room.priceBasis} compact/></div>
+    {loading ? <Skeleton variant="listings"/> : error ? <EmptyState icon={<RefreshCw/>} title="โหลดประกาศไม่สำเร็จ" text={error} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/> : rooms.length ? <div className="listing-stack">{rooms.map(room => <article id={`listing-${room.roomId}`} tabIndex={-1} className="my-listing" key={room.roomId}><RoomImage room={room}/><div className="my-listing-main"><div><StatusBadge status={room.status}/><h2>{room.title}</h2><p>ว่าง {room.availableSlots} ที่ · ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH') : '-'}</p></div><Price amount={room.price} basis={room.priceBasis} compact/></div>
       <div className="listing-actions"><Button variant="quiet" onClick={() => navigate(`/rooms/${room.roomId}`, { state: { from: location.pathname + location.search, focusReturnId: `listing-${room.roomId}` } })}><Eye size={17}/><span className="desktop-action">ดูรายละเอียด</span><span className="mobile-action">ดู</span></Button><Button variant="secondary" disabled={pendingRooms.has(room.roomId) || deleting?.roomId === room.roomId} onClick={() => { if (!roomLocked(room.roomId)) navigate(`/my-listings/${room.roomId}/edit`); }}><Edit3 size={17}/>แก้ไข</Button><button className="status-toggle" disabled={pendingRooms.has(room.roomId) || deleting?.roomId === room.roomId} aria-busy={pendingRooms.has(room.roomId)} onClick={() => { if (!roomLocked(room.roomId)) void statusActions.toggle(room); }}>{pendingRooms.has(room.roomId) ? 'กำลังบันทึก…' : room.status === 'inactive' ? 'เปิดประกาศ' : 'พักประกาศ'}</button><button className="delete-action" disabled={pendingRooms.has(room.roomId) || deleting?.roomId === room.roomId} onClick={() => { if (!roomLocked(room.roomId)) setDeleting(room); }} aria-label={`ลบ ${room.title}`}><Trash2 size={17}/></button></div></article>)}</div> : <EmptyState icon={<Building2/>} title="ยังไม่มีประกาศของคุณ" text="ลงประกาศห้องแรกเพื่อเริ่มรับคำขอจากเพื่อนใหม่" action={<Button onClick={() => navigate('/my-listings/new')}><Plus size={17}/>ลงประกาศห้อง</Button>}/>}
     {deleting && <Modal title="ลบประกาศนี้?" onClose={() => !busy && setDeleting(null)} actions={<><Button variant="quiet" disabled={busy} onClick={() => setDeleting(null)}>ยกเลิก</Button><Button variant="danger" loading={busy} onClick={remove}>ลบประกาศ</Button></>}><p>“{deleting.title}” จะถูกลบพร้อมคำขอ สมาชิก และแมตช์ที่เกี่ยวข้อง หากต้องการเก็บประวัติไว้ให้เลือกพักประกาศแทน</p></Modal>}
   </div>;
