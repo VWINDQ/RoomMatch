@@ -19,15 +19,10 @@ export function Pagination({ page, totalPages, busy, onChange, label = 'แบ�
   </nav>;
 }
 
-export function pageRange(page: number, pageSize: number, count: number, total: number, unit = 'ห้อง') {
-  return total ? `แสดง ${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + count} จาก ${total} ${unit}` : `พบ 0 ${unit}`;
-}
-
-export function PersonalListToolbar({ count, status, sort, favorites, onChange, listStartRef }: {
-  count: string; status: string; sort: string; favorites?: boolean; onChange: (changes: Record<string, string>) => void; listStartRef?: Ref<HTMLDivElement>;
+export function PersonalListToolbar({ status, sort, favorites, onChange, listStartRef }: {
+  status: string; sort: string; favorites?: boolean; onChange: (changes: Record<string, string>) => void; listStartRef?: Ref<HTMLDivElement>;
 }) {
   return <div ref={listStartRef} className="list-toolbar personal-list-toolbar">
-    <p aria-live="polite">{count}</p>
     <div className="personal-list-filters">
       <label><span>สถานะ</span><select aria-label="กรองสถานะ" value={status} onChange={event => onChange({ status: event.target.value })}>
         <option value="">ทั้งหมด</option><option value="available">ว่าง</option><option value="full">เต็มแล้ว</option><option value="inactive">พักประกาศ</option>

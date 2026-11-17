@@ -5,12 +5,12 @@ import { PageHeader } from '../components/Layout';
 import { RoomGrid } from '../components/RoomCard';
 import { Button, EmptyState, SkeletonGrid } from '../components/UI';
 import { api } from '../lib/api';
-import { Pagination, pageRange, PersonalListToolbar } from '../components/Pagination';
+import { Pagination, PersonalListToolbar } from '../components/Pagination';
 import { useRoomPagination } from '../lib/useRoomPagination';
 
 export function FavoritesPage() {
   const navigate = useNavigate();
-  const { rooms, page: currentPage, total, totalPages, params, loading, error, refresh, changeParams, changePage, listStartRef } = useRoomPagination(api.favoritesPage, 12);
+  const { rooms, page: currentPage, totalPages, params, loading, error, refresh, changeParams, changePage, listStartRef } = useRoomPagination(api.favoritesPage, 12);
   const restoreFavoriteFocus = useRef(false);
   const page = useRef<HTMLDivElement>(null);
   const filtered = ['status', 'q', 'minPrice', 'maxPrice', 'minSlots', 'priceBasis'].some(key => Boolean(params.get(key)));
@@ -32,7 +32,7 @@ export function FavoritesPage() {
         subtitle="ห้องที่คุณบันทึกไว้"
       />
 
-      <PersonalListToolbar listStartRef={listStartRef} count={loading ? 'กำลังค้นหา…' : error ? 'ยังโหลดจำนวนห้องไม่ได้' : pageRange(currentPage, 12, rooms.length, total)} status={params.get('status') || ''} sort={params.get('sort') || 'saved'} favorites onChange={changeParams}/>
+      <PersonalListToolbar listStartRef={listStartRef} status={params.get('status') || ''} sort={params.get('sort') || 'saved'} favorites onChange={changeParams}/>
       {loading ? (
         <SkeletonGrid />
       ) : error ? (

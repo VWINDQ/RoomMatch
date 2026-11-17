@@ -24,7 +24,9 @@ function installScrollRecorder() {
 const observeScroll = page => page.evaluate(installScrollRecorder);
 async function ready(page,selector,size,pageNumber=1) {
   await expect(page.locator(selector)).toHaveCount(size);
-  await expect(page.locator('.list-toolbar p')).toContainText(`แสดง ${(pageNumber-1)*size+1}–`);
+  if (new URL(page.url()).pathname === '/rooms') await expect(page.locator('.list-toolbar p')).toHaveText(/^พบ \d+ ห้อง$/);
+  else await expect(page.locator('.list-toolbar p')).toHaveCount(0);
+  expect(Number(new URL(page.url()).searchParams.get('page') || 1)).toBe(pageNumber);
   await expect(page.locator('.skeleton-region')).toHaveCount(0);
 }
 const clearScroll = page => page.evaluate(() => { window.__listScrollCalls = []; });

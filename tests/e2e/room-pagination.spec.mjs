@@ -11,7 +11,10 @@ test.afterEach(async ({ environment }) => {
 
 const ready = async (page, number, count = 12) => {
   await expect(page.locator('.room-card')).toHaveCount(count);
-  await expect(page.locator('.list-toolbar p')).toHaveText(`แสดง ${(number - 1) * 12 + 1}–${(number - 1) * 12 + count} จาก 125 ห้อง`);
+  await expect(page.locator('.list-toolbar p')).toHaveText('พบ 125 ห้อง');
+  await expect(page.getByText('พบ 125 ห้อง', { exact: true })).toHaveCount(1);
+  await expect(page.locator('.skeleton-region')).toHaveCount(0);
+  expect(Number(new URL(page.url()).searchParams.get('page') || 1)).toBe(number);
 };
 
 test('pagination URL, refresh, detail return, history and responsive controls', async ({ page, environment }, testInfo) => {
@@ -68,7 +71,7 @@ test('conditions reset page; oversized and shrinking pages clamp once; empty sta
   await page.waitForTimeout(600); expect(requests).toBe(1);
   await environment.db.prepare("DELETE FROM ROOM WHERE room_id IN (SELECT room_id FROM ROOM WHERE description LIKE 'RM12%' ORDER BY room_id LIMIT 10)").run();
   await page.reload();
-  await expect(page.locator('.list-toolbar p')).toHaveText('แสดง 109–115 จาก 115 ห้อง');
+  await expect(page.locator('.list-toolbar p')).toHaveText('พบ 115 ห้อง');
   await expect(page).toHaveURL(/page=10/);
   await page.goto('/rooms?q=RM12-no-match&page=5');
   await expect(page.locator('.list-toolbar p')).toHaveText('พบ 0 ห้อง');
@@ -76,6 +79,7 @@ test('conditions reset page; oversized and shrinking pages clamp once; empty sta
   await expect(page.locator('.room-pagination')).toHaveCount(0);
   await page.goto('/rooms?q=RM12%20fixture%20125');
   await expect(page.locator('.room-card')).toHaveCount(1);
+  await expect(page.locator('.list-toolbar p')).toHaveText('พบ 1 ห้อง');
   await expect(page.locator('.room-pagination')).toHaveCount(0);
 });
 

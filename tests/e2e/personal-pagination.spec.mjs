@@ -8,15 +8,17 @@ const pagination = page => page.getByRole('navigation', { name: 'แบ่งห
 const nextButton = page => pagination(page).getByRole('button', { name: 'ถัดไป', exact: true });
 const titleInput = page => page.locator('[name=title]');
 
-for (const [path, endpoint, size, actor, selector, unit] of [
-  ['/favorites', '/api/favorites', 12, 'seeker', '.room-card', 'ห้อง'],
-  ['/my-listings', '/api/my/rooms', 10, 'owner', '.my-listing', 'ประกาศ'],
+for (const [path, endpoint, size, actor, selector] of [
+  ['/favorites', '/api/favorites', 12, 'seeker', '.room-card'],
+  ['/my-listings', '/api/my/rooms', 10, 'owner', '.my-listing'],
 ]) {
   const base = `${path}?q=Private+pagination`;
   const ready = async (page, number = 1, total = 125) => {
     const count = Math.min(size, total - (number-1)*size);
     await expect(page.locator(selector)).toHaveCount(Math.max(0,count));
-    await expect(page.locator('.personal-list-toolbar > p')).toHaveText(total ? `แสดง ${(number-1)*size+1}–${(number-1)*size+count} จาก ${total} ${unit}` : `พบ 0 ${unit}`);
+    await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
+    await expect(page.locator('.skeleton-region')).toHaveCount(0);
+    expect(Number(new URL(page.url()).searchParams.get('page') || 1)).toBe(number);
   };
 
   test(`${path}: URL, refresh, history, detail return and responsive pagination`, async ({ page, environment }, testInfo) => {
@@ -120,7 +122,8 @@ for (const [path, endpoint, size, actor, selector, unit] of [
       await nextButton(page).click(); await waiting;
       // Real storage event remounts protected pages for the other account.
       await page.evaluate(token=>{localStorage.setItem('roommatch:token',token);window.dispatchEvent(new StorageEvent('storage',{key:'roommatch:token',storageArea:localStorage}));},environment.tokens.empty);
-      await expect(page.locator('.personal-list-toolbar > p')).toHaveText(`พบ 0 ${unit}`);
+      await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
+      await expect(page.locator('.skeleton-region')).toHaveCount(0);
       await expect(page.locator(selector)).toHaveCount(0);
       release(); await page.waitForTimeout(400);
       await expect(page.locator(selector)).toHaveCount(0);
@@ -133,7 +136,8 @@ test('edit back/cancel/save preserve the source query, including favorites → d
   for(const source of ['/my-listings?q=Private+pagination&sort=price_asc&page=2','/favorites?q=Private+pagination&sort=price_asc&page=2']) {
     if(source.startsWith('/favorites')) await environment.db.prepare("INSERT INTO ROOM_FAVORITE(user_id,room_id) SELECT 1,room_id FROM ROOM WHERE description LIKE 'Private pagination%' ON CONFLICT DO NOTHING").run();
     await page.goto(source);
-    await expect(page.locator('.personal-list-toolbar > p')).toContainText('จาก 125');
+    await expect(page.locator(source.startsWith('/favorites') ? '.room-card' : '.my-listing')).toHaveCount(source.startsWith('/favorites') ? 12 : 10);
+    await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
     const openEditor = async () => {
       if(source.startsWith('/favorites')) {
         await page.locator('.room-card-link').first().click();
@@ -154,7 +158,8 @@ test('edit back/cancel/save preserve the source query, including favorites → d
     await titleInput(page).fill((await titleInput(page).inputValue())+' edited');
     await page.getByRole('button',{name:'บันทึกการแก้ไข',exact:true}).click();
     await expect(page).toHaveURL(new URL(source,environment.baseURL).href);
-    await expect(page.locator('.personal-list-toolbar > p')).toContainText('จาก 125');
+    await expect(page.locator(source.startsWith('/favorites') ? '.room-card' : '.my-listing')).toHaveCount(source.startsWith('/favorites') ? 12 : 10);
+    await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
   }
 });
 
@@ -166,12 +171,14 @@ test('My Listings status mutation clamps a filtered last page and then shows zer
   await page.goto('/my-listings?q=Private+pagination&status=available&page=2');
   await expect(page.locator('.my-listing')).toHaveCount(1);
   await page.getByRole('button',{name:'พักประกาศ',exact:true}).click();
-  await expect(page.locator('.personal-list-toolbar > p')).toHaveText('แสดง 1–10 จาก 10 ประกาศ');
+  await expect(page.locator('.my-listing')).toHaveCount(10);
+  await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
   expect(new URL(page.url()).searchParams.has('page')).toBe(false);
   const remaining=await db.prepare("SELECT room_id FROM ROOM WHERE description LIKE 'Private pagination%' AND status='available' ORDER BY room_id LIMIT 1").get();
   await db.prepare("UPDATE ROOM SET status='inactive' WHERE description LIKE 'Private pagination%' AND room_id!=?").run(remaining.room_id);
   await page.reload(); await expect(page.locator('.my-listing')).toHaveCount(1);
   await page.getByRole('button',{name:'พักประกาศ',exact:true}).click();
-  await expect(page.locator('.personal-list-toolbar > p')).toHaveText('พบ 0 ประกาศ');
+  await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
+  await expect(page.locator('.skeleton-region')).toHaveCount(0);
   await expect(page.locator('.empty-state')).toBeVisible();
 });

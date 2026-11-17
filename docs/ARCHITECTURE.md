@@ -166,6 +166,10 @@ router state (including reload). Edit back/cancel/save return to that URL, with
 safe default `/my-listings` for direct edit links; the unsaved-change guard remains
 in effect. No schema change is required.
 
+Rooms displays the filtered total once as “พบ X ห้อง”. Favorites and My Listings
+omit item counts/ranges, including zero results; their existing empty states
+remain. API totals and pagination metadata are unchanged.
+
 Only an explicit number/previous/next action creates a one-use list-scroll intent.
 After that exact request succeeds and renders the selected page, the shared hook
 scrolls the window (mobile) or workspace (desktop) to the list toolbar, with 16px

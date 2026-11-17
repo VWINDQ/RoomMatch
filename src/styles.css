@@ -791,7 +791,7 @@ p,.description,.field-hint,.field-error,input,textarea,select { font-family: 'Fr
 .room-pagination [aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
 .room-pagination [aria-current="page"] { background: var(--primary-soft); color: var(--primary); opacity: 1; }
 .pagination-mobile { display: none; color: var(--text-secondary); font-size: .85rem; }
-.personal-list-toolbar { margin-top: 28px; align-items: center; flex-wrap: wrap; }
+.personal-list-toolbar { margin-top: 20px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
 .personal-list-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 @media (max-width: 640px) {
   .room-pagination { gap: 8px; justify-content: space-between; }

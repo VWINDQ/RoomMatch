@@ -76,9 +76,7 @@ for (const item of personalCases) {
         expect(body.rooms).toHaveLength(expected);
         expect(body.rooms.length).toBeLessThanOrEqual(item.size);
         await expect(page.locator(item.selector)).toHaveCount(expected);
-        await expect(page.locator('.personal-list-toolbar > p')).toHaveText(count
-          ? `แสดง ${(pageNumber-1)*item.size+1}–${(pageNumber-1)*item.size+expected} จาก ${count} ${item.unit}`
-          : `พบ 0 ${item.unit}`);
+        await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
         const domIds = await page.locator(item.selector).evaluateAll((cards, favorites) => cards.map(card => favorites
           ? card.querySelector('.room-card-link').id.replace('room-card-','') : card.id.replace('listing-','')), item.path==='/favorites');
         expect(domIds).toEqual(body.rooms.map(room=>String(room.roomId)));
