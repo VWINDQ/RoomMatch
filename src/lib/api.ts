@@ -252,6 +252,10 @@ export const api = {
   async login(payload: { email: string; password: string }) { return parseAuthSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) })); },
   async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
   async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
+  async roomsPage(params: URLSearchParams) {
+    const result = await request<{ rooms: unknown[]; total: number; page: number; totalPages: number }>(`/rooms?${params}`);
+    return { ...result, rooms: list(result, 'rooms').map(normalizeRoom) };
+  },
   async rooms(params: URLSearchParams) { return list(await request(`/rooms${params.size ? `?${params}` : ''}`), 'rooms').map(normalizeRoom); },
   async room(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}`); return normalizeRoom(result.room); },
   async myRooms() { return list(await request('/my/rooms'), 'rooms').map(normalizeRoom); },

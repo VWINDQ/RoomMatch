@@ -783,3 +783,16 @@ p,.description,.field-hint,.field-error,input,textarea,select { font-family: 'Fr
     pointer-events: none;
   }
 }
+
+.room-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 28px; padding-bottom: 24px; }
+.pagination-desktop { display: flex; align-items: center; gap: 8px; }
+.pagination-desktop .button { min-width: 46px; }
+.room-pagination .button-secondary { background: var(--surface); }
+.room-pagination [aria-current="page"] { background: var(--primary-soft); color: var(--primary); opacity: 1; }
+.pagination-mobile { display: none; color: var(--text-secondary); font-size: .85rem; }
+@media (max-width: 640px) {
+  .room-pagination { gap: 8px; justify-content: space-between; }
+  .room-pagination > .button { padding-inline: 12px; }
+  .pagination-desktop { display: none; }
+  .pagination-mobile { display: inline; }
+}
