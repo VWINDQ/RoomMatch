@@ -1,4 +1,5 @@
 import { Button } from './UI';
+import type { Ref } from 'react';
 
 export function Pagination({ page, totalPages, busy, onChange, label = 'แบ่งหน้ารายการห้อง' }: {
   page: number; totalPages: number; busy: boolean; onChange: (page: number) => void; label?: string;
@@ -7,13 +8,14 @@ export function Pagination({ page, totalPages, busy, onChange, label = 'แบ�
   const visible = [...new Set([1, totalPages, page - 1, page, page + 1])]
     .filter(number => number >= 1 && number <= totalPages).sort((a, b) => a - b);
   return <nav className="room-pagination" aria-label={label} aria-busy={busy}>
-    <Button variant="secondary" disabled={busy || page <= 1} onClick={() => onChange(page - 1)}>ก่อนหน้า</Button>
+    {/* aria-disabled keeps the initiating control focused while its page loads. */}
+    <Button variant="secondary" aria-disabled={busy || page <= 1} onClick={() => { if (!busy && page > 1) onChange(page - 1); }}>ก่อนหน้า</Button>
     <span className="pagination-mobile">หน้า {page} จาก {totalPages}</span>
     <div className="pagination-desktop">{visible.flatMap((number, index) => [
       ...(index > 0 && number - visible[index - 1] > 1 ? [<span key={`gap-${number}`} aria-hidden="true">…</span>] : []),
-      <Button key={number} variant="secondary" aria-label={`หน้า ${number}`} aria-current={number === page ? 'page' : undefined} disabled={busy || number === page} onClick={() => onChange(number)}>{number}</Button>,
+      <Button key={number} variant="secondary" aria-label={`หน้า ${number}`} aria-current={number === page ? 'page' : undefined} aria-disabled={busy || number === page} onClick={() => { if (!busy && number !== page) onChange(number); }}>{number}</Button>,
     ])}</div>
-    <Button variant="secondary" disabled={busy || page >= totalPages} onClick={() => onChange(page + 1)}>ถัดไป</Button>
+    <Button variant="secondary" aria-disabled={busy || page >= totalPages} onClick={() => { if (!busy && page < totalPages) onChange(page + 1); }}>ถัดไป</Button>
   </nav>;
 }
 
@@ -21,10 +23,10 @@ export function pageRange(page: number, pageSize: number, count: number, total: 
   return total ? `แสดง ${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + count} จาก ${total} ${unit}` : `พบ 0 ${unit}`;
 }
 
-export function PersonalListToolbar({ count, status, sort, favorites, onChange }: {
-  count: string; status: string; sort: string; favorites?: boolean; onChange: (changes: Record<string, string>) => void;
+export function PersonalListToolbar({ count, status, sort, favorites, onChange, listStartRef }: {
+  count: string; status: string; sort: string; favorites?: boolean; onChange: (changes: Record<string, string>) => void; listStartRef?: Ref<HTMLDivElement>;
 }) {
-  return <div className="list-toolbar personal-list-toolbar">
+  return <div ref={listStartRef} className="list-toolbar personal-list-toolbar">
     <p aria-live="polite">{count}</p>
     <div className="personal-list-filters">
       <label><span>สถานะ</span><select aria-label="กรองสถานะ" value={status} onChange={event => onChange({ status: event.target.value })}>

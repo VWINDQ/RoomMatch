@@ -166,6 +166,16 @@ router state (including reload). Edit back/cancel/save return to that URL, with
 safe default `/my-listings` for direct edit links; the unsaved-change guard remains
 in effect. No schema change is required.
 
+Only an explicit number/previous/next action creates a one-use list-scroll intent.
+After that exact request succeeds and renders the selected page, the shared hook
+scrolls the window (mobile) or workspace (desktop) to the list toolbar, with 16px
+spacing below any visible sticky/fixed compact header. Reduced motion uses an
+instant scroll; otherwise it is smooth. Controls use aria-disabled plus click
+guards to preserve keyboard focus while loading without allowing duplicate actions.
+Filtering, refresh/retry, mutations, automatic page corrections, detail returns
+and browser Back/Forward do not create this intent. Failed/stale responses cannot
+consume it as a successful scroll. Favorite focus restoration uses preventScroll.
+
 See [personal pagination reproduction and checks](PERSONAL_PAGINATION_QA.md) for
 the stale development API incident, exact boundary matrix and runtime safeguards.
 

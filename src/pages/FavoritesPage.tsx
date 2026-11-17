@@ -10,7 +10,7 @@ import { useRoomPagination } from '../lib/useRoomPagination';
 
 export function FavoritesPage() {
   const navigate = useNavigate();
-  const { rooms, page: currentPage, total, totalPages, params, loading, error, refresh, changeParams } = useRoomPagination(api.favoritesPage, 12);
+  const { rooms, page: currentPage, total, totalPages, params, loading, error, refresh, changeParams, changePage, listStartRef } = useRoomPagination(api.favoritesPage, 12);
   const restoreFavoriteFocus = useRef(false);
   const page = useRef<HTMLDivElement>(null);
   const filtered = ['status', 'q', 'minPrice', 'maxPrice', 'minSlots', 'priceBasis'].some(key => Boolean(params.get(key)));
@@ -19,7 +19,7 @@ export function FavoritesPage() {
     if (loading || !restoreFavoriteFocus.current) return;
     restoreFavoriteFocus.current = false;
     const target = page.current?.querySelector<HTMLElement>('.favorite-button') || page.current?.querySelector<HTMLElement>('h1');
-    if (target) { if (target.tagName === 'H1') target.tabIndex = -1; target.focus(); }
+    if (target) { if (target.tagName === 'H1') target.tabIndex = -1; target.focus({ preventScroll: true }); }
   }, [loading]);
   const handleFavoriteChange = (_roomId: string, isFavorite: boolean) => {
     if (!isFavorite) { restoreFavoriteFocus.current = true; refresh(); }
@@ -32,7 +32,7 @@ export function FavoritesPage() {
         subtitle="ห้องที่คุณบันทึกไว้"
       />
 
-      <PersonalListToolbar count={loading ? 'กำลังค้นหา…' : error ? 'ยังโหลดจำนวนห้องไม่ได้' : pageRange(currentPage, 12, rooms.length, total)} status={params.get('status') || ''} sort={params.get('sort') || 'saved'} favorites onChange={changeParams}/>
+      <PersonalListToolbar listStartRef={listStartRef} count={loading ? 'กำลังค้นหา…' : error ? 'ยังโหลดจำนวนห้องไม่ได้' : pageRange(currentPage, 12, rooms.length, total)} status={params.get('status') || ''} sort={params.get('sort') || 'saved'} favorites onChange={changeParams}/>
       {loading ? (
         <SkeletonGrid />
       ) : error ? (
@@ -60,7 +60,7 @@ export function FavoritesPage() {
           }
         />
       )}
-      {!error && <Pagination page={currentPage} totalPages={totalPages} busy={loading} onChange={number => changeParams({ page: String(number) })}/>}
+      {!error && <Pagination page={currentPage} totalPages={totalPages} busy={loading} onChange={changePage}/>}
     </div>
   );
 }
