@@ -44,6 +44,7 @@ test('RM-12 PostgreSQL pagination counts, filters, orders and clamps beyond 100 
   assert.equal((await get('page=1&minSlots=4')).total, 0);
   assert.equal((await get('page=1&sort=toString')).status, 400);
   assert.equal((await get('limit=10&offset=100')).rooms.length, 10);
+  assert.equal((await get('limit=1e2')).rooms.length, 100); // Preserve numeric forms accepted by the legacy API.
   assert.equal((await get()).rooms.length, 100); // Existing callers keep the rooms array contract.
   const empty = await get('page=9&pageSize=12&minPrice=99999');
   assert.equal(empty.total, 0); assert.equal(empty.totalPages, 0); assert.equal(empty.page, 1); assert.deepEqual(empty.rooms, []);
