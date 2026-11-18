@@ -36,8 +36,11 @@ Repository: <https://github.com/VWINDQ/RoomMatch>
 หน้าหาเพื่อนและเพื่อนร่วมห้องมีปุ่มคัดลอก LINE และเปิด Instagram ในแท็บใหม่
 หาก browser ไม่อนุญาตให้คัดลอก จะมีช่องข้อความให้เลือกคัดลอกเอง โดยใช้ข้อมูลติดต่อที่ API อนุญาตเดิม
 
+หน้าโปรไฟล์กรอกวันเกิดเป็น `วว/ดด/ปปปป` โดยใช้ปี ค.ศ. และเบอร์โทรต้องเป็นตัวเลขครบ 10 หลัก (ตรวจทั้งตอนสมัครและแก้ไขโปรไฟล์)
+
 ### อัปโหลดรูปจากเครื่อง
 
+- เปลี่ยนรูปโปรไฟล์ได้ทั้งวาง URL รูปหรือเลือกไฟล์จากเครื่อง การกดยกเลิกจะคืนรูปที่บันทึกไว้เดิม
 - หน้าโปรไฟล์ → แก้ไขโปรไฟล์ → เลือก/เปลี่ยนรูปจากเครื่อง → บันทึก
 - หน้าลงประกาศ/แก้ไขประกาศ → เลือกรูปห้องได้สูงสุด 12 รูป จัดลำดับและลบได้ รูปแรกเป็นรูปปก
 - รองรับภาพนิ่ง JPG, PNG และ WebP ไม่เกิน 5 MB และ 25 ล้านพิกเซลต่อรูป
@@ -137,6 +140,37 @@ API อยู่ที่ **http://127.0.0.1:3001** และ Vite ส่งค�
 หากใช้ฐานข้อมูลที่ไม่มีเดโม ให้กด **สมัครสมาชิก** สร้างบัญชีเอง
 ทดลองสองบัญชีพร้อมกันด้วย browser คนละ profile หรือหน้าต่าง private
 แท็บปกติใน browser profile เดียวกันใช้ token ใน localStorage ร่วมกัน
+
+### การสมัครสมาชิกและเข้าสู่ระบบ
+
+- เปิด `/register` เพื่อสมัคร หรือ `/login` เพื่อเข้าสู่ระบบด้วยอีเมลและรหัสผ่าน
+- สมัครสมาชิกต้องกรอก **ชื่อ นามสกุล เบอร์โทรศัพท์ อีเมล และรหัสผ่าน**
+  เบอร์โทรต้องเป็นตัวเลข 10 หลัก รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร
+  API ตัดช่องว่างหัวท้ายก่อนตรวจสอบและบันทึกข้อมูล รวมถึงรหัสผ่าน
+- เพศ วันเกิด และมหาวิทยาลัยไม่บังคับ หากกรอกวันเกิดให้ใช้ `วว/ดด/ปปปป`
+  ปี ค.ศ. ต้องเป็นวันที่มีอยู่จริงและไม่ใช่วันในอนาคต
+- อีเมลไม่จำกัดเฉพาะมหาวิทยาลัย และถือว่าอักษรใหญ่/เล็กเป็นอีเมลเดียวกัน
+  เช่น `Student@example.com` กับ `student@example.com` สมัครซ้ำไม่ได้
+
+เมื่อกดส่งฟอร์ม จะตรวจสอบและแจ้งเตือนดังนี้:
+
+| กรณี | สิ่งที่ผู้ใช้เห็น |
+| --- | --- |
+| ช่องบังคับว่าง อีเมลผิดรูปแบบ หรือรหัสผ่านสั้นกว่า 8 ตัวอักษร | ข้อความเตือนของ browser ที่ช่องแรกที่ไม่ผ่าน และยังไม่ส่งฟอร์ม ภาษาขึ้นกับ browser |
+| เข้าสู่ระบบด้วยอีเมลหรือรหัสผ่านผิด | `อีเมลหรือรหัสผ่านไม่ถูกต้อง` ในฟอร์ม |
+| สมัครด้วยอีเมลที่มีบัญชีแล้ว | `อีเมลนี้มีบัญชีแล้ว กรุณาเข้าสู่ระบบหรือใช้อีเมลอื่น` ในฟอร์ม |
+| เบอร์โทรไม่ครบ 10 หลัก | `กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก` ในฟอร์ม |
+| ติดต่อ API ไม่ได้ | `เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง` ในฟอร์ม |
+
+สมัครสำเร็จจะเข้าสู่ระบบให้อัตโนมัติ ทั้งสมัครและ login สำเร็จจะไปหน้า `/rooms`
+หรือกลับหน้าที่พยายามเปิดก่อนถูกส่งมา login จึงสามารถเปิด `/profile`
+เพื่อเติมข้อมูลได้ภายหลัง ไม่ได้บังคับเปิดหน้าโปรไฟล์หลังสมัคร
+
+Refresh แล้วยังอยู่ในระบบ โดยตรวจ token กับ API อีกครั้ง Token มีอายุ 7 วันนับจากที่ออก
+เมื่อหมดอายุหรือใช้ไม่ได้ ระบบจะให้เข้าสู่ระบบใหม่ แท็บปกติที่เปิดเว็บ origin เดียวกัน
+ใน browser profile เดียวกันจะเปลี่ยนบัญชีและออกจากระบบตามกัน
+กด **ออกจากระบบ** ได้จากหน้าโปรไฟล์ หรือแถบเมนูด้านข้างบน desktop
+การออกจากระบบล้าง token ใน browser แต่ยังไม่เพิกถอน token ฝั่งเซิร์ฟเวอร์
 
 ### ลองใช้งานตั้งแต่ต้นจนจบ
 
@@ -414,9 +448,10 @@ matches. Reaching capacity marks the room `full`.
 
 ## Database and tests
 
-- Schema migrations: `database/migrations/001_initial_schema.sql` and the
-  legacy seed repair in `database/migrations/002_repair_room_description_newlines.sql`
-- Development seed: `database/seed.sql`
+- Active PostgreSQL migrations: `database/postgresql/migrations/`
+- Development seed: `database/postgresql/seed.sql`
+- Legacy SQLite migrations and seed: `database/migrations/` and `database/seed.sql`
+  (retained for migration checks; not used by the running API)
 - Database invariants: [`database/README.md`](database/README.md)
 - Architecture/API contract: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
@@ -427,7 +462,10 @@ npm test
 npm run build
 ```
 
-The tests use isolated in-memory and temporary on-disk databases. The end-to-end test starts the API
-on an ephemeral localhost port and covers registration, room creation and
-browsing, self-request rejection, join request approval, full-room protection,
-membership, matching, and request rejection.
+API integration tests, including login and registration, use isolated schemas in
+the dedicated PostgreSQL database configured by `TEST_DATABASE_URL`; its name
+must end in `_test`. They never fall back to `DATABASE_URL`. Legacy SQLite tests
+still use in-memory or temporary on-disk databases to check the original schema
+and imports. API tests start the server on an ephemeral localhost port and cover
+registration, authentication, room creation and browsing, self-request rejection,
+join request approval, full-room protection, membership, matching, and request rejection.

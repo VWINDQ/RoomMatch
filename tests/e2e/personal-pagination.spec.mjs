@@ -131,15 +131,20 @@ for (const [path, endpoint, size, actor, selector] of [
   });
 }
 
-test('edit back/cancel/save preserve the source query, including favorites → detail → edit', async ({ page,environment }) => {
+test('edit back/cancel/save preserve the source query for Rooms, Favorites and My Listings', async ({ page,environment }) => {
   await signIn(page,environment,'owner');
-  for(const source of ['/my-listings?q=Private+pagination&sort=price_asc&page=2','/favorites?q=Private+pagination&sort=price_asc&page=2']) {
-    if(source.startsWith('/favorites')) await environment.db.prepare("INSERT INTO ROOM_FAVORITE(user_id,room_id) SELECT 1,room_id FROM ROOM WHERE description LIKE 'Private pagination%' ON CONFLICT DO NOTHING").run();
+  for (const [path, selector, count, backName] of [
+    ['/my-listings', '.my-listing', 10, 'กลับไปประกาศของฉัน'],
+    ['/favorites', '.room-card', 12, 'กลับไปห้องโปรด'],
+    ['/rooms', '.room-card', 12, 'กลับไปดูห้องทั้งหมด'],
+  ]) {
+    const source = `${path}?q=Private+pagination&sort=price_asc&page=2`;
+    if(path === '/favorites') await environment.db.prepare("INSERT INTO ROOM_FAVORITE(user_id,room_id) SELECT 1,room_id FROM ROOM WHERE description LIKE 'Private pagination%' ON CONFLICT DO NOTHING").run();
     await page.goto(source);
-    await expect(page.locator(source.startsWith('/favorites') ? '.room-card' : '.my-listing')).toHaveCount(source.startsWith('/favorites') ? 12 : 10);
+    await expect(page.locator(selector)).toHaveCount(count);
     await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
     const openEditor = async () => {
-      if(source.startsWith('/favorites')) {
+      if(path !== '/my-listings') {
         await page.locator('.room-card-link').first().click();
         await page.getByRole('button',{name:'แก้ไขประกาศของฉัน',exact:true}).click();
       } else await page.locator('.my-listing').first().getByRole('button',{name:'แก้ไข',exact:true}).click();
@@ -147,7 +152,6 @@ test('edit back/cancel/save preserve the source query, including favorites → d
     };
     await openEditor();
     await expect(titleInput(page)).toBeVisible(); await page.reload();
-    const backName=source.startsWith('/favorites')?'กลับไปห้องโปรด':'กลับไปประกาศของฉัน';
     await page.getByRole('button',{name:backName,exact:true}).click();
     await expect(page).toHaveURL(new URL(source,environment.baseURL).href);
     await openEditor();
@@ -158,7 +162,7 @@ test('edit back/cancel/save preserve the source query, including favorites → d
     await titleInput(page).fill((await titleInput(page).inputValue())+' edited');
     await page.getByRole('button',{name:'บันทึกการแก้ไข',exact:true}).click();
     await expect(page).toHaveURL(new URL(source,environment.baseURL).href);
-    await expect(page.locator(source.startsWith('/favorites') ? '.room-card' : '.my-listing')).toHaveCount(source.startsWith('/favorites') ? 12 : 10);
+    await expect(page.locator(selector)).toHaveCount(count);
     await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
   }
 });

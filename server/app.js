@@ -64,6 +64,14 @@ function text(value, field, { required = false, max = 255 } = {}) {
   return trimmed || null;
 }
 
+function phoneNumber(value) {
+  const parsed = text(value, 'phone', { required: true, max: 30 });
+  if (!/^\d{10}$/.test(parsed)) {
+    throw new HttpError(400, 'phone must contain exactly 10 digits', { phone: 'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก' });
+  }
+  return parsed;
+}
+
 function integer(value, field, { min, max, required = false } = {}) {
   if (value === undefined || value === null || value === '') {
     assert(!required, 400, `${field} is required`);
@@ -525,7 +533,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const body = await readJson(request);
         const firstName = text(body.firstName, 'firstName', { required: true, max: 100 });
         const lastName = text(body.lastName, 'lastName', { required: true, max: 100 });
-        const phone = text(body.phone, 'phone', { required: true, max: 30 });
+        const phone = phoneNumber(body.phone);
         const email = text(body.email, 'email', { required: true, max: 320 }).toLowerCase();
         assert(EMAIL_PATTERN.test(email), 400, 'email must be valid');
         const password = text(body.password, 'password', { required: true, max: 256 });
@@ -598,7 +606,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const fields = [
           ['firstName', 'first_name', (value) => text(value, 'firstName', { required: true, max: 100 })],
           ['lastName', 'last_name', (value) => text(value, 'lastName', { required: true, max: 100 })],
-          ['phone', 'phone', (value) => text(value, 'phone', { required: true, max: 30 })],
+          ['phone', 'phone', phoneNumber],
           ['gender', 'gender', (value) => text(value, 'gender', { max: 50 })],
           ['dateOfBirth', 'date_of_birth', (value) => isoDate(value, 'dateOfBirth')],
           ['university', 'university', (value) => text(value, 'university', { max: 255 })],
@@ -616,7 +624,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           }
         }
         assert(updates.length > 0, 400, 'No editable profile fields were provided');
-        const lifestyleName = Object.hasOwn(body, 'lifestyleName') ? text(body.lifestyleName, 'lifestyleName', { required: true, max: 255 }) : null;
+        const lifestyleName = Object.hasOwn(body, 'lifestyleName') ? text(body.lifestyleName, 'lifestyleName', { required: true, max: 400 }) : null;
         const preferenceValues = Object.hasOwn(body, 'preference') ? parsePreference(body.preference) : null;
         updates.push('updated_at = CURRENT_TIMESTAMP');
         await db.exec('BEGIN');
@@ -644,7 +652,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (request.method === 'PUT' && pathname === '/api/lifestyle') {
         const user = await authenticate(db, request);
         const body = await readJson(request);
-        const lifestyleName = text(body.lifestyleName, 'lifestyleName', { required: true, max: 255 });
+        const lifestyleName = text(body.lifestyleName, 'lifestyleName', { required: true, max: 400 });
         await db.prepare(`
           INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)
           ON CONFLICT(user_id) DO UPDATE SET lifestyle_name = excluded.lifestyle_name

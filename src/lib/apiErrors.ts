@@ -5,6 +5,7 @@ const messages: Record<string, string> = {
   'Invalid or expired authentication token': 'การเข้าสู่ระบบหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง',
   'password must be at least 8 characters': 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร',
   'email must be valid': 'กรุณากรอกอีเมลให้ถูกต้อง',
+  'phone must contain exactly 10 digits': 'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก',
   'This room has no available place': 'ห้องเต็มแล้ว จึงส่งคำขอใหม่ไม่ได้ กรุณาเลือกห้องอื่น',
   'This room has reached capacity': 'ห้องเต็มแล้ว กรุณาตรวจสอบรายการล่าสุด',
   'A pending request already exists': 'คุณส่งคำขอห้องนี้ไว้แล้ว ดูสถานะได้ที่คำขอที่ฉันส่ง',

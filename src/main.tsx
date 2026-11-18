@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import App from './App';
 import './styles.css';
 import './ux.css';
+import './micro-interactions.css';
 
 // Keep the existing descendant routes; a data router supports navigation blockers.
 const router = createBrowserRouter([{ path: '*', element: <App/> }]);
