@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
 import { startRoomMatchServer } from './app.js';
-import { openDatabase } from './database.js';
+import { openDatabase } from '../tests/support/postgres.mjs';
 
-const database = openDatabase({ filename: ':memory:' });
+const database = await openDatabase({ filename: ':memory:' });
 let application;
 let baseUrl;
 
@@ -21,7 +21,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((resolve) => application.server.close(resolve));
-  database.close();
+  await database.close();
 });
 
 async function api(path, options = {}) {
@@ -88,9 +88,9 @@ test('register, authenticate, and update one-to-one profile data', async () => {
   const bundled = { firstName: 'Atomic', lifestyleName: 'เงียบ', preference: { budgetMin: 0, budgetMax: 5000 } };
   const invalidBundle = await api('/api/profile', { method: 'PATCH', headers, body: JSON.stringify({ ...bundled, preference: { budgetMin: 6000, budgetMax: 5000 } }) });
   assert.equal(invalidBundle.response.status, 400);
-  assert.equal(database.prepare('SELECT first_name FROM USER WHERE email = ?').get('new.student@example.test').first_name, 'New');
+  assert.equal((await database.prepare('SELECT first_name FROM USER WHERE email = ?').get('new.student@example.test')).first_name, 'New');
   // Force a database failure after USER was updated, not merely a rejected request.
-  database.exec(`CREATE TRIGGER audit_preference_failure BEFORE UPDATE ON PREFERENCE BEGIN SELECT RAISE(ABORT, 'audit failure'); END`);
+  await database.exec(`CREATE FUNCTION audit_preference_failure_fn() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'audit failure'; END $$; CREATE TRIGGER audit_preference_failure BEFORE UPDATE ON PREFERENCE FOR EACH ROW EXECUTE FUNCTION audit_preference_failure_fn();`);
   try {
     const failed = await api('/api/profile', { method: 'PATCH', headers, body: JSON.stringify(bundled) });
     assert.equal(failed.response.status, 500);
@@ -98,7 +98,7 @@ test('register, authenticate, and update one-to-one profile data', async () => {
     assert.equal(unchanged.body.user.firstName, 'New');
     assert.equal(unchanged.body.lifestyle.lifestyleName, 'ตื่นเช้า • ไม่สูบบุหรี่');
     assert.equal(unchanged.body.preference.budgetMax, 7000);
-  } finally { database.exec('DROP TRIGGER audit_preference_failure'); }
+  } finally { await database.exec('DROP TRIGGER audit_preference_failure ON PREFERENCE; DROP FUNCTION audit_preference_failure_fn()'); }
   const saved = await api('/api/profile', { method: 'PATCH', headers, body: JSON.stringify(bundled) });
   assert.equal(saved.response.status, 200);
   assert.equal(saved.body.user.firstName, 'Atomic');
@@ -153,7 +153,7 @@ test('room writes enforce ownership and title convention', async () => {
     body: JSON.stringify({
       title: 'Test room',
       description: 'Persisted in the description body.',
-      googleMapsUrl: 'https://maps.google.com/?q=13.7,100.5',
+      priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.7,100.5',
       price: 5000,
       capacity: 2,
       images: ['https://images.example.test/room.jpg'],
@@ -183,7 +183,7 @@ test('room writes enforce ownership and title convention', async () => {
   assert.equal(ownerDelete.body.success, true);
   const deletedRoom = await api(`/api/rooms/${created.body.room.roomId}`, { headers });
   assert.equal(deletedRoom.response.status, 404);
-  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM ROOM_IMAGE WHERE room_id = ?').get(created.body.room.roomId).count, 0);
+  assert.equal((await database.prepare('SELECT COUNT(*) AS count FROM ROOM_IMAGE WHERE room_id = ?').get(created.body.room.roomId)).count, 0);
 });
 
 test('serves the built single-page app without masking unknown API routes', async () => {

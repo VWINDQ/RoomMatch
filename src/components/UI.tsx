@@ -16,7 +16,7 @@ export function Button({ variant = 'primary', loading, className = '', children,
 type FieldProps = InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; hint?: string };
 export function Input({ label, error, hint, className = '', ...props }: FieldProps) {
   const descriptionId = useId();
-  return <label className={`field ${className}`}><span className="field-label">{label}</span><input className={error ? 'has-error' : ''} aria-invalid={error ? true : undefined} aria-describedby={error || hint ? descriptionId : undefined} {...props} />{error ? <span id={descriptionId} className="field-error">{error}</span> : hint ? <span id={descriptionId} className="field-hint">{hint}</span> : null}</label>;
+  return <label className={`field ${className}`}><span className="field-label">{label.endsWith(" *") ? <>{label.slice(0, -1)}<span className="required-marker" aria-hidden="true">*</span></> : label}</span><input className={error ? 'has-error' : ''} aria-invalid={error ? true : undefined} aria-describedby={error || hint ? descriptionId : undefined} {...props} />{error ? <span id={descriptionId} className="field-error">{error}</span> : hint ? <span id={descriptionId} className="field-hint">{hint}</span> : null}</label>;
 }
 
 type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; error?: string };
@@ -30,7 +30,7 @@ export function Chip({ children, selected = false, onClick }: { children: ReactN
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  const labels: Record<string,string> = { available: 'ว่าง', full: 'เต็มแล้ว', inactive: 'ปิดประกาศ', pending: 'รอพิจารณา', approved: 'อนุมัติแล้ว', rejected: 'ไม่อนุมัติ' };
+  const labels: Record<string,string> = { available: 'ว่าง', full: 'เต็มแล้ว', inactive: 'พักประกาศ', pending: 'รอเจ้าของพิจารณา', approved: 'อนุมัติแล้ว', rejected: 'ไม่อนุมัติ', cancelled: 'ถอนคำขอแล้ว' };
   return <span className={`status ${status === 'available' || status === 'approved' ? 'available' : status === 'pending' ? 'pending' : 'unavailable'}`}><i />{labels[status] || status}</span>;
 }
 

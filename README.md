@@ -2,7 +2,7 @@
 
 เว็บแอปสำหรับนักศึกษาที่ต้องการ **หาห้องพักและหาเพื่อนร่วมห้อง** เลือกได้ทั้ง
 “หาห้องก่อน” และ “หาเพื่อนก่อน แล้วค่อยเลือกห้องด้วยกัน” ข้อมูลหลักบันทึกจริงผ่าน
-API และ SQLite ไม่ใช่เพียงหน้าเว็บจำลอง
+API และ PostgreSQL ไม่ใช่เพียงหน้าเว็บจำลอง
 
 Repository: <https://github.com/VWINDQ/RoomMatch>
 
@@ -11,8 +11,8 @@ Repository: <https://github.com/VWINDQ/RoomMatch>
 | ส่วนของระบบ | สิ่งที่ผู้ใช้ทำได้ |
 | --- | --- |
 | บัญชี | สมัครสมาชิก เข้าสู่ระบบ และออกจากระบบ |
-| โปรไฟล์ | แก้ไขข้อมูลส่วนตัว รูปแบบ URL คำแนะนำตัว และช่องทางติดต่อ |
-| ไลฟ์สไตล์/ความต้องการ | ระบุไลฟ์สไตล์ งบ เพศและช่วงอายุที่ต้องการแชร์ห้อง |
+| โปรไฟล์ | แก้ไขข้อมูลส่วนตัว อัปโหลดรูปโปรไฟล์ คำแนะนำตัว และช่องทางติดต่อ พร้อมแสดงวันเกิดและอายุเต็มปีที่คำนวณจากวันเกิด |
+| ไลฟ์สไตล์/ความต้องการ | ระบุไลฟ์สไตล์ได้สูงสุด 400 ตัวอักษร งบ เพศและช่วงอายุที่ต้องการแชร์ห้อง |
 | ค้นหาห้อง | ค้นหาชื่อ/รายละเอียด กรองราคาและสถานะ เรียงราคาหรือล่าสุด |
 | รายละเอียดห้อง | ดูรูปภาพ ราคา แผนที่ ความจุ และจำนวนที่ว่าง |
 | ประกาศของฉัน | สร้าง แก้ไข พัก/เปิด และลบประกาศของตัวเอง |
@@ -22,6 +22,34 @@ Repository: <https://github.com/VWINDQ/RoomMatch>
 
 หน้าจอเป็น Claymorphism โทน navy/pastel ใช้ Fredoka และ Prompt
 รองรับ desktop, tablet และ mobile
+
+เมนู **คำขอเข้าพัก** มีจุดสีแดงเมื่อมีคำขอ `pending` สำหรับห้องของตัวเอง
+ทั้ง desktop และ mobile จุดจะหายเมื่ออนุมัติ/ปฏิเสธครบ ไม่หายเพียงเพราะเปิดอ่าน
+ระบบตรวจใหม่ทุก 30 วินาทีขณะเปิดแท็บ รวมถึงเมื่อกลับมาที่แท็บหรือเปลี่ยนหน้า
+ใช้ API และข้อมูลคำขอเดิม ไม่ต้องเพิ่มตารางแจ้งเตือน
+
+หน้าคำขอแยก **คำขอถึงฉัน / คำขอที่ฉันส่ง** หากมีคำขอรอพิจารณาจะเปิดแท็บคำขอถึงฉันก่อน
+รายการรอพิจารณาอยู่เหนือประวัติ และต้องยืนยันก่อนอนุมัติ/ปฏิเสธ โดยการอนุมัติจะแสดงที่ว่างล่าสุด
+หน้าหาเพื่อนเก็บการ์ดคำชวนที่ส่งแล้วพร้อมสถานะรอตอบรับและปุ่มดูคำชวนไว้ แม้ค้นชื่อเดิมหรือ refresh
+
+แท็บคำชวนแยก **รอฉันตอบ / รอเพื่อนตอบ / ประวัติ** พร้อมจำนวนและวันที่
+หน้าหาเพื่อนและเพื่อนร่วมห้องมีปุ่มคัดลอก LINE และเปิด Instagram ในแท็บใหม่
+หาก browser ไม่อนุญาตให้คัดลอก จะมีช่องข้อความให้เลือกคัดลอกเอง โดยใช้ข้อมูลติดต่อที่ API อนุญาตเดิม
+
+### อัปโหลดรูปจากเครื่อง
+
+- หน้าโปรไฟล์ → แก้ไขโปรไฟล์ → เลือก/เปลี่ยนรูปจากเครื่อง → บันทึก
+- หน้าลงประกาศ/แก้ไขประกาศ → เลือกรูปห้องได้สูงสุด 12 รูป จัดลำดับและลบได้ รูปแรกเป็นรูปปก
+- รองรับภาพนิ่ง JPG, PNG และ WebP ไม่เกิน 5 MB และ 25 ล้านพิกเซลต่อรูป
+- API ตรวจเนื้อหารูป ย่อด้านยาวไม่เกิน 1600px และแปลงเป็น WebP โดยไม่เก็บ EXIF/GPS
+- รูปเดิมที่เป็น URL ยังแสดงและบันทึกต่อได้ ไม่มีการเปลี่ยน schema ฐานข้อมูล
+- รูปใหม่เก็บใน `storage/uploads/` หรือ `ROOMMATCH_UPLOAD_DIR` และไม่เข้า Git
+- เพื่อนต้องรัน `npm ci` หลังดึงงานนี้ และเริ่ม `npm run dev` ใหม่ทั้ง API/Vite
+- เมื่อนำขึ้นเซิร์ฟเวอร์ ต้องมี persistent disk และสำรองทั้ง PostgreSQL กับโฟลเดอร์รูป
+
+รายละเอียด API ข้อจำกัด และวิธีทดสอบ: [คู่มืออัปโหลดรูป](docs/UPLOADS.md)
+
+รายงานสิ่งที่ยังขาดก่อนเปิดใช้งานจริง: [Production readiness](docs/PRODUCTION_READINESS.md)
 
 ### เส้นทางการใช้งาน
 
@@ -35,10 +63,14 @@ Repository: <https://github.com/VWINDQ/RoomMatch>
 ผู้ใช้คนเดียวเป็นได้ทั้งผู้หาห้องและเจ้าของประกาศ ไม่ต้องแยกบัญชี
 ความจุห้อง **นับรวมเจ้าของ** เช่น ห้องจุ 3 คน รับเพื่อนเพิ่มได้ 2 คน
 
+หน้า **รวมประกาศห้อง** แสดงเฉพาะห้องสถานะ `available` ทั้งการค้นหา กรองราคา และเรียงลำดับ
+เมื่อห้องเต็มจะไม่แสดงในรายการนี้เมื่อโหลดใหม่ แต่ข้อมูลประกาศยังอยู่ในประกาศของเจ้าของ
+หน้ารายละเอียด และสมาชิก/แมตช์ตามสิทธิ์เดิม หากเปิดรับและมีที่ว่างอีกจะกลับมาแสดงได้
+
 ## ติดตั้งและเปิดเว็บสำหรับเพื่อนร่วมทีม
 
-ต้องมี Git, **Node.js 26.x** และ npm เพราะ backend ใช้ `node:sqlite`
-ไม่ต้องติดตั้ง MySQL หรือเซิร์ฟเวอร์ฐานข้อมูลแยก
+ต้องมี Git, **Node.js 26.x**, npm และ **PostgreSQL** (ใช้ Docker Compose ที่ให้มาได้)
+คู่มือครบทั้งการติดตั้งและย้ายข้อมูลเดิม: [PostgreSQL](database/POSTGRESQL.md)
 
 ```bash
 git clone https://github.com/VWINDQ/RoomMatch.git
@@ -69,9 +101,17 @@ node --input-type=module -e "import { randomBytes } from 'node:crypto'; console.
 อย่าแชร์หรือ commit `.env` หากยังใช้ค่าตัวอย่าง ใน development ระบบจะใช้คีย์สุ่ม
 ชั่วคราวและต้องล็อกอินใหม่เมื่อ API restart; production จะไม่เริ่มด้วยคีย์ที่ไม่ถูกต้อง
 
+ตั้ง `PGPASSWORD` และใส่รหัสเดียวกันใน `DATABASE_URL` / `TEST_DATABASE_URL`
+ตาม `.env.example` แล้วเริ่มฐานข้อมูล (สร้าง test database ครั้งแรกเท่านั้น):
+
 ```bash
+npm run db:up
+docker compose exec postgres createdb -U roommatch roommatch_test
 npm run dev
 ```
+
+**ถ้ามีข้อมูล SQLite เดิม:** ตั้ง `ROOMMATCH_SEED=false` และนำเข้าข้อมูลก่อนเปิดเว็บ
+ตาม [วิธีย้ายข้อมูล](database/POSTGRESQL.md#import-existing-sqlite-data) อย่าลบไฟล์เดิม
 
 เปิด URL ที่ Vite แสดงใน Terminal ปกติคือ **http://localhost:5173**
 API อยู่ที่ **http://127.0.0.1:3001** และ Vite ส่งคำขอ `/api` ไปให้ API
@@ -99,6 +139,15 @@ API อยู่ที่ **http://127.0.0.1:3001** และ Vite ส่งค�
 แท็บปกติใน browser profile เดียวกันใช้ token ใน localStorage ร่วมกัน
 
 ### ลองใช้งานตั้งแต่ต้นจนจบ
+
+รายละเอียด API และ checklist งานขอเข้าพักของคนที่ 3:
+[คู่มือฟีเจอร์ขอเข้าพัก](docs/REQUESTS.md)
+
+รายละเอียด API และ checklist งานสมาชิกห้อง/แมตช์ของคนที่ 3:
+[คู่มือสมาชิกห้องและแมตช์](docs/MATCHES.md)
+
+รายละเอียด API และ checklist งานหาเพื่อนก่อนหาห้องของคนที่ 3:
+[คู่มือหาเพื่อนและคำชวน](docs/FRIENDS.md)
 
 1. บัญชี A เติมโปรไฟล์และลงประกาศห้องที่มีที่ว่าง
 2. บัญชี B เปิดประกาศของ A แล้วกดขอเข้าพัก
@@ -146,7 +195,7 @@ git push -u origin feature/profile-update
 ### ข้อมูลที่แชร์และไม่แชร์
 
 - แชร์ source code, `package-lock.json`, migrations, seed และเอกสารผ่าน Git
-- **แต่ละเครื่องมี SQLite ของตัวเอง** ข้อมูลในเครื่อง A ไม่ปรากฏในเครื่อง B
+- **แต่ละเครื่องมี PostgreSQL ของตัวเอง** ข้อมูลในเครื่อง A ไม่ปรากฏในเครื่อง B
   เพียงเพราะ clone หรือ pull repository เดียวกัน
 - หากต้องการข้อมูลร่วมกัน ต้องมี backend/ฐานข้อมูลกลางที่ตั้งค่าอย่างปลอดภัย
   ซึ่งยังไม่ได้ deploy ให้โดยการอัปโค้ดนี้
@@ -167,10 +216,11 @@ src/styles.css         ดีไซน์และ responsive
 server/app.js          HTTP API และ business logic ของห้อง
 server/friends.js      คำชวนหาเพื่อน
 server/auth.js         password hash และ token
-server/database.js     เปิด SQLite, migrations และ seed
+server/database.js     PostgreSQL pool, migrations และ seed
 server/index.mjs       จุดเริ่มต้น API
-database/migrations/   schema และข้อบังคับของข้อมูล
-database/seed.sql      ข้อมูลเดโม
+database/postgresql/  schema, migrations และข้อมูลเดโม PostgreSQL
+database/migrations/  ประวัติ migrations SQLite เดิม
+scripts/import-sqlite.mjs  นำเข้าข้อมูล SQLite แบบอ่านต้นฉบับอย่างเดียว
 tests/                 regression/integration tests
 scripts/dev.mjs        ตัวเปิด frontend และ API
 docs/                  architecture, friend workflow และ audit
@@ -181,39 +231,41 @@ docs/                  architecture, friend workflow และ audit
 | อาการ | สิ่งที่ควรตรวจ |
 | --- | --- |
 | `npm run dev` ไม่ทำงาน | อยู่ในโฟลเดอร์ที่มี `package.json`, ใช้ Node 26 และรัน `npm ci` แล้ว |
-| ไม่พบ `node:sqlite` | ตรวจ `node --version` แล้วใช้ Node 26.x |
+| `DATABASE_URL is required` / เชื่อมต่อฐานข้อมูลไม่ได้ | ตั้ง `.env` และเริ่ม PostgreSQL ด้วย `npm run db:up` |
 | เว็บเปิดได้แต่โหลดข้อมูล/ล็อกอินไม่ได้ | ต้องเปิด API ด้วย ไม่ใช่เปิดเฉพาะ Vite หรือไฟล์ HTML |
 | `EADDRINUSE` | หยุด API ที่เปิดซ้ำ หรือเปลี่ยน `ROOMMATCH_PORT` ใน `.env` แล้ว restart dev ทั้งชุด |
 | URL ไม่ใช่ 5173 | ใช้ URL ที่ Vite พิมพ์จริง พอร์ตเดิมอาจถูกใช้อยู่ |
 | เดโมล็อกอินไม่ได้ | ตรวจว่าเป็น development DB ที่มี seed หรือสมัครบัญชีใหม่ |
 | ต้องล็อกอินใหม่หลัง restart API | ตั้ง secret สุ่มแบบคงที่ใน `.env` ของเครื่องตัวเอง |
-| เพื่อน pull แล้วไม่เห็นข้อมูลที่สร้าง | SQLite เป็นคนละไฟล์ในแต่ละเครื่อง ไม่ใช่ฐานข้อมูลร่วม |
+| เพื่อน pull แล้วไม่เห็นข้อมูลที่สร้าง | PostgreSQL เป็นคนละฐานในแต่ละเครื่อง ไม่ใช่ฐานข้อมูลร่วม |
 
 ## สิ่งที่ยังไม่มี / ก่อนเปิดใช้งานจริง
 
 - ยังไม่มี Like/Pass หรือ mutual-like matching ปัจจุบันใช้คำชวนแล้วตอบรับ
-- ยังไม่มีแชต การจองห้องเป็นกลุ่ม หรืออัปโหลดไฟล์รูปโดยตรง รูปใช้ URL
-- Favorites, tags และ amenities ยังไม่ใช่ฟีเจอร์ที่บันทึกได้ใน ER ปัจจุบัน
-- ยังไม่มี rate limiting, server-side token revocation และ pagination
+- ยังไม่มีแชตหรือการจองห้องเป็นกลุ่ม รูปโปรไฟล์และรูปห้องอัปโหลดจากเครื่องได้
+- Favorites บันทึกได้ผ่าน ROOM_FAVORITE (migration 004); tags และ amenities ยังไม่ใช่ฟีเจอร์ที่บันทึกได้
+- Rate limiting มีเฉพาะอัปโหลดรูป ยังไม่มีสำหรับ login/register หรือ write APIs อื่น ๆ
+- ยังไม่มี server-side token revocation และ pagination UI (rooms API มี limit/offset แล้ว)
 - Logout ล้าง session ฝั่ง browser แต่ token ที่คัดลอกไปยังใช้ได้จนหมดอายุ
 - ก่อน public deployment ต้องตั้ง `NODE_ENV=production`, secret ที่ปลอดภัย,
   HTTPS และฐานข้อมูลใหม่ที่ไม่มีเดโม พร้อมจัดการข้อจำกัดใน [Audit](docs/AUDIT.md)
 - ยังไม่มี lint script; ใช้ `npm test`, `npm run build` และทดสอบจริงใน browser
 
-**การ push ขึ้น GitHub คือการแชร์โค้ด ไม่ได้ทำให้เว็บ Node.js/SQLite ออนไลน์ทันที**
+**การ push ขึ้น GitHub คือการแชร์โค้ด ไม่ได้ทำให้เว็บ Node.js/PostgreSQL ออนไลน์ทันที**
 GitHub Pages อย่างเดียวไม่สามารถรัน backend ของโปรเจกต์นี้ได้
 
 ## Technical reference (English)
 
 ROOMMATCH is a student roommate and room-listing application built with React,
-TypeScript, Vite, Node.js, and SQLite. The existing Claymorphism interface is
+TypeScript, Vite, Node.js, and PostgreSQL. The existing Claymorphism interface is
 backed by a real API for accounts, profiles, preferences, rooms, join requests,
 memberships, and matches.
 
 ## Requirements
 
 - macOS
-- Node.js 26 (the backend uses the built-in `node:sqlite` module)
+- Node.js 26
+- PostgreSQL (tested on 18; Docker Compose provided)
 - npm
 
 ## Run locally on macOS
@@ -225,6 +277,9 @@ cd RoomMatch
 node --version
 npm ci
 cp -n .env.example .env
+# Configure PostgreSQL credentials and URLs in .env first (see database/POSTGRESQL.md)
+npm run db:up
+docker compose exec postgres createdb -U roommatch roommatch_test
 npm run dev
 ```
 
@@ -236,12 +291,12 @@ refuses to start with a missing, short, or example key. `npm run dev`
 starts the API on `http://127.0.0.1:3001` and Vite on the URL printed in the
 terminal, normally `http://localhost:5173`. Vite proxies `/api` to the API.
 
-The SQLite file is created at `database/roommatch.sqlite` by default. On the
-first empty database start, migrations run in numeric order and realistic demo
-data is loaded automatically in development only. Production does not seed demo
-accounts; existing demo accounts are not automatically removed, so use a fresh
-production database. To use a different location, change
-`ROOMMATCH_DB_PATH` in `.env`.
+The API requires `DATABASE_URL`. PostgreSQL migrations run automatically;
+empty development databases receive demo data unless `ROOMMATCH_SEED=false`.
+Production defaults to no seed. Use a fresh production database without demo
+accounts. Existing SQLite files are retained and can be imported explicitly;
+see [PostgreSQL setup and migration](database/POSTGRESQL.md).
+`npm test` uses `TEST_DATABASE_URL`, a separate database ending in `_test`.
 
 Useful commands:
 
@@ -290,9 +345,14 @@ limitations. Friend invitations are not a Like/Pass or mutual-like system.
 - On approval, create membership and match records atomically.
 - View room members and matches involving the authenticated user.
 
+Latest usability improvements: withdraw a pending request, leave a joined room
+with capacity/privacy updates, specify room price units/location/additional costs,
+and preserve search/filter/tab context. See [UX changes and verification](docs/UX_FIXES.md)
+for migration `005`, API additions, teammate integration notes, and browser QA.
+
 ## ER model
 
-The original room workflow retains its eight ER tables unchanged:
+The original room workflow uses these eight ER tables:
 
 1. `USER`
 2. `LIFESTYLE`
@@ -324,7 +384,7 @@ The implemented relationships are:
 The source ER diagram defines lifestyle as 1:1. Consequently, each lifestyle
 row belongs to only one user; it is not a reusable category. A reusable
 lifestyle catalogue would require an explicit ER change and a junction table.
-Amenities and favorites are not persisted because they are absent from this ER.
+Favorites are persisted through the ROOM_FAVORITE extension (migration 004). Amenities and tags remain outside the implemented schema.
 
 The diagram has no room-title attribute. ROOMMATCH stores the display title as
 the first line of `ROOM.description` and the description body on following
@@ -341,7 +401,7 @@ capacity - 1 - approved member count
 
 The approval API checks ownership, room activity, duplicates, self-matches, and
 remaining capacity. It then updates the request, inserts `ROOM_MEMBER`, and
-inserts `MATCHES` in one SQLite transaction. Database constraints and triggers
+inserts `MATCHES` in one PostgreSQL transaction. Database constraints and triggers
 also reject self-requests, duplicate pending requests, membership without an
 approved request, capacity overflow, invalid request transitions, and invalid
 matches. Reaching capacity marks the room `full`.

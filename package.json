@@ -3,7 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "engines": { "node": ">=26" },
+  "engines": {
+    "node": ">=26"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:client": "vite",
@@ -11,20 +13,26 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "start": "node server/index.mjs",
-    "test": "node --test server/api.test.mjs tests/*.test.mjs"
+    "test": "node scripts/test.mjs",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose stop",
+    "db:import:sqlite": "node scripts/import-sqlite.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
+    "pg": "^8.23.1",
     "react": "latest",
     "react-dom": "latest",
     "react-router-dom": "latest",
+    "sharp": "^0.35.5",
     "vite": "latest"
   },
   "devDependencies": {
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "autoprefixer": "latest",
+    "jsdom": "^31.0.1",
     "postcss": "latest",
     "tailwindcss": "^3.4.17",
     "typescript": "latest"

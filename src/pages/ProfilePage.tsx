@@ -1,5 +1,5 @@
 import { AtSign, HeartHandshake, LogOut, Mail, MessageCircle, Pencil, Phone, RefreshCw, UserRound } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
@@ -8,15 +8,24 @@ import { Button, EmptyState, Input, Textarea } from '../components/UI';
 import { api } from '../lib/api';
 import { calculateAge } from '../lib/age';
 import type { ProfileBundle } from '../types';
+import { BirthDateInput } from '../components/BirthDateInput';
+import { formatBirthDate, parseBirthDate } from '../lib/birthDate';
 
 export function ProfilePage() {
   const navigate = useNavigate(); const { refreshUser, notify, logout } = useApp(); const [profile, setProfile] = useState<ProfileBundle | null>(null); const [editing, setEditing] = useState(false); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [reload, setReload] = useState(0);
-  useEffect(() => { let active = true; setLoading(true); setError(''); api.profile().then(value => active && setProfile(value)).catch(caught => active && setError(caught instanceof Error ? caught.message : 'โหลดโปรไฟล์ไม่สำเร็จ')).finally(() => active && setLoading(false)); return () => { active = false; }; }, [reload]);
+  const [images, setImages] = useState<SelectedImage[]>([]);
+  const [checkingImages, setCheckingImages] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const summaryRef = useFormFeedback(errors, formRef);
+  useEffect(() => { let active = true; setLoading(true); setError(''); api.profile().then(value => { if (active) { setProfile(value); setImages(savedImages([value.user.profileImage])); } }).catch(caught => active && setError(caught instanceof Error ? caught.message : 'โหลดโปรไฟล์ไม่สำเร็จ')).finally(() => active && setLoading(false)); return () => { active = false; }; }, [reload]);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); if (!profile) return; const data = new FormData(event.currentTarget); const required = ['firstName', 'lastName', 'phone'] as const; const nextErrors: Record<string, string> = {}; required.forEach(name => { if (!String(data.get(name)).trim()) nextErrors[name] = 'กรุณากรอกข้อมูลนี้'; });
+    event.preventDefault(); if (!profile || checkingImages) return; const data = new FormData(event.currentTarget); const required = ['firstName', 'lastName', 'phone'] as const; const nextErrors: Record<string, string> = {}; required.forEach(name => { if (!String(data.get(name)).trim()) nextErrors[name] = 'กรุณากรอกข้อมูลนี้'; });
+    let dateOfBirth = '';
+    try { dateOfBirth = parseBirthDate(String(data.get('dateOfBirth') ?? '')); }
+    catch (caught) { nextErrors.dateOfBirth = caught instanceof Error ? caught.message : 'วันเกิดไม่ถูกต้อง'; }
     const ageMinRaw = String(data.get('preferredAgeMin') || ''); const ageMaxRaw = String(data.get('preferredAgeMax') || ''); const budgetMinRaw = String(data.get('budgetMin') || ''); const budgetMaxRaw = String(data.get('budgetMax') || '');
-    const ageMin = Number(ageMinRaw || 0); const ageMax = Number(ageMaxRaw || 0); const budgetMin = Number(budgetMinRaw || 0); const budgetMax = Number(budgetMaxRaw || 0); const profileImage = String(data.get('profileImage')).trim();
-    if (ageMinRaw && (!Number.isInteger(ageMin) || ageMin < 18 || ageMin > 120)) nextErrors.preferredAgeMin = 'กรอกอายุ 18–120 ปี'; if (ageMaxRaw && (!Number.isInteger(ageMax) || ageMax < 18 || ageMax > 120)) nextErrors.preferredAgeMax = 'กรอกอายุ 18–120 ปี'; if (ageMin && ageMax && ageMin > ageMax) nextErrors.preferredAgeMax = 'อายุสูงสุดต้องไม่น้อยกว่าอายุต่ำสุด'; if (budgetMin < 0) nextErrors.budgetMin = 'งบประมาณต้องไม่ติดลบ'; if (budgetMax < 0 || (budgetMin && budgetMax && budgetMin > budgetMax)) nextErrors.budgetMax = budgetMax < 0 ? 'งบประมาณต้องไม่ติดลบ' : 'งบสูงสุดต้องไม่น้อยกว่างบต่ำสุด'; if (profileImage && !/^https?:\/\//i.test(profileImage)) nextErrors.profileImage = 'URL ต้องขึ้นต้นด้วย http:// หรือ https://'; setErrors(nextErrors); if (Object.keys(nextErrors).length) return;
+    const ageMin = Number(ageMinRaw || 0); const ageMax = Number(ageMaxRaw || 0); const budgetMin = Number(budgetMinRaw || 0); const budgetMax = Number(budgetMaxRaw || 0);
+    if (ageMinRaw && (!Number.isInteger(ageMin) || ageMin < 18 || ageMin > 120)) nextErrors.preferredAgeMin = 'กรอกอายุ 18–120 ปี'; if (ageMaxRaw && (!Number.isInteger(ageMax) || ageMax < 18 || ageMax > 120)) nextErrors.preferredAgeMax = 'กรอกอายุ 18–120 ปี'; if (ageMin && ageMax && ageMin > ageMax) nextErrors.preferredAgeMax = 'อายุสูงสุดต้องไม่น้อยกว่าอายุต่ำสุด'; if (budgetMin < 0) nextErrors.budgetMin = 'งบประมาณต้องไม่ติดลบ'; if (budgetMax < 0 || (budgetMin && budgetMax && budgetMin > budgetMax)) nextErrors.budgetMax = budgetMax < 0 ? 'งบประมาณต้องไม่ติดลบ' : 'งบสูงสุดต้องไม่น้อยกว่างบต่ำสุด'; setErrors(nextErrors); if (Object.keys(nextErrors).length) return;
     const lifestyleName = String(data.get('lifestyleName') || '').trim();
     if (lifestyle && !lifestyleName) nextErrors.form = 'กรุณาระบุไลฟ์สไตล์ของคุณก่อนบันทึก';
     for (const [name, raw, amount] of [['budgetMin', budgetMinRaw, budgetMin], ['budgetMax', budgetMaxRaw, budgetMax]] as const) {
@@ -26,7 +35,9 @@ export function ProfilePage() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     setSaving(true); try {
-      const updated = await api.updateProfile({ firstName: String(data.get('firstName')).trim(), lastName: String(data.get('lastName')).trim(), phone: String(data.get('phone')).trim(), gender: String(data.get('gender')), dateOfBirth: String(data.get('dateOfBirth')), university: String(data.get('university')).trim(), profileImage, bio: String(data.get('bio')).trim(), instagram: String(data.get('instagram')).trim(), lineId: String(data.get('lineId')).trim(), ...(lifestyleName ? { lifestyleName } : {}), preference: { preferredGender: String(data.get('preferredGender')), preferredAgeMin: ageMinRaw ? ageMin : null, preferredAgeMax: ageMaxRaw ? ageMax : null, budgetMin: budgetMinRaw ? budgetMin : null, budgetMax: budgetMaxRaw ? budgetMax : null } });
+      const imageUrls = await uploadSelectedImages(images, uploaded => setImages(current => current.map(image => image.id === uploaded.id ? uploaded : image)));
+      const profileImage = imageUrls[0] || '';
+      const updated = await api.updateProfile({ firstName: String(data.get('firstName')).trim(), lastName: String(data.get('lastName')).trim(), phone: String(data.get('phone')).trim(), gender: String(data.get('gender')), dateOfBirth, university: String(data.get('university')).trim(), profileImage, bio: String(data.get('bio')).trim(), instagram: String(data.get('instagram')).trim(), lineId: String(data.get('lineId')).trim(), ...(lifestyleName ? { lifestyleName } : {}), preference: { preferredGender: String(data.get('preferredGender')), preferredAgeMin: ageMinRaw ? ageMin : null, preferredAgeMax: ageMaxRaw ? ageMax : null, budgetMin: budgetMinRaw ? budgetMin : null, budgetMax: budgetMaxRaw ? budgetMax : null } });
       setProfile(updated); await refreshUser(updated.user); setEditing(false); notify('บันทึกข้อมูลเรียบร้อยแล้ว');
     } catch (caught) { setErrors({ form: caught instanceof Error ? caught.message : 'บันทึกข้อมูลไม่สำเร็จ' }); } finally { setSaving(false); }
   };
@@ -49,4 +60,17 @@ export function ProfilePage() {
 
 function ProfileCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) { return <section className="profile-info-card"><header><span>{icon}</span><div><h2>{title}</h2></div></header>{children}</section>; }
 function Contact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <div className="profile-contact-item"><span>{icon}</span><div><small>{label}</small><strong className={value ? '' : 'empty-value'}>{value || 'ยังไม่ระบุ'}</strong></div></div>; }
-function genderLabel(value?: string, preference = false) { return ({ male: 'ชาย', female: 'หญิง', non_binary: 'นอนไบนารี', other: 'อื่น ๆ', any: 'ไม่จำกัด' }[value || ''] || (preference ? 'ไม่จำกัด' : 'ยังไม่ระบุ')); }
+function genderLabel(value?: string) { return ({ male: 'ชาย', female: 'หญิง', non_binary: 'นอนไบนารี', other: 'อื่น ๆ', any: 'ไม่จำกัด' }[value || ''] || 'ยังไม่ระบุ'); }
+
+function ageRange(minimum?: number | null, maximum?: number | null) {
+  if (minimum == null && maximum == null) return 'ยังไม่ระบุช่วงอายุ';
+  if (minimum == null) return `ไม่เกิน ${maximum} ปี`;
+  if (maximum == null) return `ตั้งแต่ ${minimum} ปี`;
+  return `${minimum}–${maximum} ปี`;
+}
+function budgetRange(minimum?: number | null, maximum?: number | null) {
+  if (minimum == null && maximum == null) return 'ยังไม่ระบุงบประมาณ';
+  if (minimum == null) return `ไม่เกิน ฿${maximum!.toLocaleString('th-TH')} / เดือน`;
+  if (maximum == null) return `ตั้งแต่ ฿${minimum.toLocaleString('th-TH')} / เดือน`;
+  return `฿${minimum.toLocaleString('th-TH')}–฿${maximum.toLocaleString('th-TH')} / เดือน`;
+}

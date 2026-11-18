@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, ApiError, tokenStorage } from './lib/api';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { api, ApiError, SessionChangedError, subscribeUnauthorized, tokenStorage } from './lib/api';
 import type { User } from './types';
 
 type RegisterPayload = { firstName: string; lastName: string; email: string; password: string; phone: string; gender?: string; dateOfBirth?: string; university?: string };
@@ -17,33 +17,98 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authLoading, setAuthLoading] = useState(Boolean(tokenStorage.get()));
   const [authError, setAuthError] = useState('');
   const [toast, setToast] = useState('');
+  // A newer auth operation takes precedence over any pending account check.
+  const authVersion = useRef(0);
+  // Login and registration share a sequence independent of account refreshes.
+  const signInVersion = useRef(0);
   const notify = useCallback((message: string) => setToast(message), []);
+  const clearSession = useCallback(() => {
+    signInVersion.current += 1;
+    authVersion.current += 1;
+    tokenStorage.clear();
+    setUser(null);
+    setAuthError('');
+    setAuthLoading(false);
+  }, []);
+  const expireSession = useCallback((rejectedToken: string) => {
+    if (tokenStorage.get() !== rejectedToken) return;
+    clearSession();
+    notify('การเข้าสู่ระบบสิ้นสุด กรุณาเข้าสู่ระบบอีกครั้ง');
+  }, [clearSession, notify]);
+
+  useEffect(() => subscribeUnauthorized(expireSession), [expireSession]);
+
   const refreshUser = useCallback(async (updated?: User) => {
     const token = tokenStorage.get();
+    const version = authVersion.current;
     const result = updated ?? await api.me();
-    if (token && token === tokenStorage.get()) setUser(result);
+    if (token && token === tokenStorage.get() && version === authVersion.current) setUser(result);
   }, []);
   const retryAuth = useCallback(async () => {
-    setAuthLoading(true); setAuthError('');
-    try { await refreshUser(); }
-    catch (caught) {
-      if (caught instanceof ApiError && caught.status === 401) { tokenStorage.clear(); setUser(null); }
+    const token = tokenStorage.get();
+    if (!token) {
+      clearSession();
+      return;
+    }
+    const version = ++authVersion.current;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      await refreshUser();
+    } catch (caught) {
+      if (version !== authVersion.current || token !== tokenStorage.get()) return;
+      if (caught instanceof ApiError && caught.status === 401) expireSession(token);
       else setAuthError(caught instanceof Error ? caught.message : 'ตรวจสอบการเข้าสู่ระบบไม่สำเร็จ');
-    } finally { setAuthLoading(false); }
-  }, [refreshUser]);
+    } finally {
+      if (version === authVersion.current && token === tokenStorage.get()) setAuthLoading(false);
+    }
+  }, [clearSession, expireSession, refreshUser]);
+
+  const acceptSession = useCallback((result: { token: string; user: User }) => {
+    authVersion.current += 1;
+    tokenStorage.set(result.token);
+    setUser(result.user);
+    setAuthError('');
+    setAuthLoading(false);
+  }, []);
+
+  const signIn = useCallback(async (request: () => Promise<{ token: string; user: User }>) => {
+    const version = ++signInVersion.current;
+    try {
+      const result = await request();
+      if (version !== signInVersion.current) throw new SessionChangedError();
+      acceptSession(result);
+    } catch (caught) {
+      if (version !== signInVersion.current) throw new SessionChangedError();
+      throw caught;
+    }
+  }, [acceptSession]);
 
   useEffect(() => {
-    if (!tokenStorage.get()) return;
-    retryAuth();
+    const unsubscribe = tokenStorage.subscribe(() => {
+      signInVersion.current += 1;
+      authVersion.current += 1;
+      setUser(null);
+      setAuthError('');
+      setToast('');
+      // Storage already changed in the other tab; do not write it back from here.
+      if (tokenStorage.get()) void retryAuth();
+      else setAuthLoading(false);
+    });
+    if (tokenStorage.get()) void retryAuth();
+    return () => {
+      signInVersion.current += 1;
+      unsubscribe();
+    };
   }, [retryAuth]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 2600); return () => window.clearTimeout(timer); }, [toast]);
 
   const value = useMemo<AppState>(() => ({
     user, authLoading, authError, toast, notify, refreshUser, retryAuth,
-    login: async (email, password) => { const result = await api.login({ email, password }); tokenStorage.set(result.token); setUser(result.user); },
-    register: async payload => { const result = await api.register(payload); tokenStorage.set(result.token); setUser(result.user); },
-    logout: () => { tokenStorage.clear(); setUser(null); },
-  }), [authError, authLoading, notify, refreshUser, retryAuth, toast, user]);
+    login: (email, password) => signIn(() => api.login({ email, password })),
+    register: payload => signIn(() => api.register(payload)),
+    logout: clearSession,
+  }), [authError, authLoading, clearSession, notify, refreshUser, retryAuth, signIn, toast, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

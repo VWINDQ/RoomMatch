@@ -7,10 +7,31 @@ import { bearerToken, createToken, hashPassword, validateAuthConfiguration, veri
 import { assert, HttpError } from './errors.js';
 import { openDatabase } from './database.js';
 import { handleFriendRoutes } from './friends.js';
+import { createRoomRequestHandler } from './requests.js';
+import { canViewRoomMembers, createRoomMatchesHandler, listRoomMembers } from './matches.js';
+import { createImageStorage } from './uploads.js';
+import { validateListing, isWebUrl } from '../shared/listingValidation.js';
+
+function assertListing(body, options) {
+  const fieldErrors = validateListing(body, options);
+  if (Object.keys(fieldErrors).length) throw new HttpError(400, 'Invalid listing fields', fieldErrors);
+}
+
+function listingImages(body, parse) {
+  try {
+    if (Array.isArray(body.images)) for (const value of body.images) {
+      if (typeof value === 'string' && !value.startsWith('/uploads/')) assert(isWebUrl(value.trim()), 400, 'imageUrl must be a valid URL');
+    }
+    return parse(body.images);
+  }
+  catch (error) {
+    if (error instanceof HttpError) error.fieldErrors = { images: 'ตรวจสอบรูปภาพ: ใช้ URL HTTP/HTTPS ที่สมบูรณ์หรือรูปที่คุณอัปโหลดเอง สูงสุด 12 รูป' };
+    throw error;
+  }
+}
 
 const BODY_LIMIT_BYTES = 1_048_576;
 const ROOM_STATUSES = new Set(['available', 'full', 'inactive']);
-const REQUEST_DECISIONS = new Set(['approved', 'rejected']);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DEFAULT_STATIC_DIRECTORY = fileURLToPath(new URL('../dist/', import.meta.url));
 const CONTENT_TYPES = new Map([
@@ -146,8 +167,8 @@ function parsePreference(body) {
   return [preferredGender, preferredAgeMin, preferredAgeMax, budgetMin, budgetMax];
 }
 
-function savePreference(db, userId, values) {
-  db.prepare(`INSERT INTO PREFERENCE (user_id, preferred_gender, preferred_age_min, preferred_age_max, budget_min, budget_max)
+async function savePreference(db, userId, values) {
+  await db.prepare(`INSERT INTO PREFERENCE (user_id, preferred_gender, preferred_age_min, preferred_age_max, budget_min, budget_max)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET preferred_gender = excluded.preferred_gender,
       preferred_age_min = excluded.preferred_age_min, preferred_age_max = excluded.preferred_age_max,
@@ -181,6 +202,9 @@ function roomDto(row, images = [], options = {}) {
     description,
     googleMapsUrl: row.google_maps_url,
     price: row.price,
+    priceBasis: row.price_basis ?? null,
+    locality: row.locality ?? null,
+    costNotes: row.cost_notes ?? null,
     capacity: row.capacity,
     status: row.status,
     createdAt: row.created_at,
@@ -199,9 +223,25 @@ function roomDto(row, images = [], options = {}) {
     memberCount,
     availableSlots: Math.max(0, row.capacity - 1 - memberCount),
     ...(options.currentUserId ? { isOwner: row.owner_id === options.currentUserId } : {}),
+    ...(options.isMember !== undefined ? { isMember: options.isMember } : {}),
+    ...(options.isFavorite !== undefined ? { isFavorite: options.isFavorite } : {}),
     ...(options.requestStatus !== undefined ? { requestStatus: options.requestStatus } : {}),
+    ...(options.pendingRequestId !== undefined ? { pendingRequestId: options.pendingRequestId } : {}),
     ...(options.members ? { members: options.members } : {}),
   };
+}
+
+async function roomDtos(db, rows, optionsForRow) {
+  const rooms = [];
+  // A request retains one PostgreSQL client; await each read before using it again.
+  for (const row of rows) rooms.push(roomDto(row, await imageRows(db, row.room_id), optionsForRow(row)));
+  return rooms;
+}
+
+function parsePriceBasis(value) {
+  if (value == null || value === '') return null;
+  assert(['per_person', 'per_room'].includes(value), 400, 'priceBasis is invalid');
+  return value;
 }
 
 function roomSummary(row) {
@@ -211,27 +251,15 @@ function roomSummary(row) {
   };
 }
 
-function requestDto(row) {
-  return {
-    requestId: row.request_id,
-    status: row.status,
-    requestedAt: row.requested_at,
-    respondedAt: row.responded_at,
-    room: roomSummary(row),
-    requester: {
-      userId: row.requester_user_id,
-      firstName: row.requester_first_name,
-      lastName: row.requester_last_name,
-      profileImage: row.requester_profile_image,
-    },
-  };
-}
-
 function matchDto(row, authenticatedUserId) {
   const userIsInitiator = row.initiator_user_id === authenticatedUserId;
+  const lineId = userIsInitiator ? row.completer_line_id : row.initiator_line_id;
+  const instagram = userIsInitiator ? row.completer_instagram : row.initiator_instagram;
+  const phone = userIsInitiator ? row.completer_phone : row.initiator_phone;
   return {
     matchId: row.match_id,
     matchedAt: row.matched_at,
+    otherRole: userIsInitiator ? 'member' : 'owner',
     room: roomSummary(row),
     otherUser: {
       userId: userIsInitiator ? row.completer_user_id : row.initiator_user_id,
@@ -239,24 +267,26 @@ function matchDto(row, authenticatedUserId) {
       lastName: userIsInitiator ? row.completer_last_name : row.initiator_last_name,
       profileImage: userIsInitiator ? row.completer_profile_image : row.initiator_profile_image,
       bio: userIsInitiator ? row.completer_bio : row.initiator_bio,
-      lineId: userIsInitiator ? row.completer_line_id : row.initiator_line_id,
-      instagram: userIsInitiator ? row.completer_instagram : row.initiator_instagram,
+      lineId,
+      instagram,
+      // Minimize contact exposure: phone is a fallback for matched participants only.
+      ...(!lineId?.trim() && !instagram?.trim() && phone?.trim() ? { phone: phone.trim() } : {}),
     },
   };
 }
 
-function queryUser(db, userId) {
-  return db.prepare('SELECT * FROM USER WHERE user_id = ?').get(userId);
+async function queryUser(db, userId) {
+  return await db.prepare('SELECT * FROM USER WHERE user_id = ?').get(userId);
 }
 
-function authenticate(db, request, { optional = false } = {}) {
+async function authenticate(db, request, { optional = false } = {}) {
   const token = bearerToken(request);
   if (!token) {
     if (optional) return null;
     throw new HttpError(401, 'Authentication required');
   }
   const userId = verifyToken(token);
-  const user = queryUser(db, userId);
+  const user = await queryUser(db, userId);
   assert(user && user.is_active, 401, 'Authentication required');
   return user;
 }
@@ -285,8 +315,8 @@ async function readJson(request) {
   }
 }
 
-function imageRows(db, roomId) {
-  return db.prepare('SELECT * FROM ROOM_IMAGE WHERE room_id = ? ORDER BY image_order, image_id').all(roomId);
+async function imageRows(db, roomId) {
+  return await db.prepare('SELECT * FROM ROOM_IMAGE WHERE room_id = ? ORDER BY image_order, image_id').all(roomId);
 }
 
 const ROOM_SELECT = `
@@ -301,40 +331,26 @@ const ROOM_SELECT = `
   JOIN USER owner ON owner.user_id = r.owner_id
 `;
 
-function getRoomRow(db, roomId) {
-  return db.prepare(`${ROOM_SELECT} WHERE r.room_id = ?`).get(roomId);
+async function getRoomRow(db, roomId, { lock = false } = {}) {
+  if (lock) await db.prepare('SELECT room_id FROM ROOM WHERE room_id = ? FOR UPDATE').get(roomId);
+  return await db.prepare(`${ROOM_SELECT} WHERE r.room_id = ?`).get(roomId);
 }
 
-function parseImages(value, { required = false } = {}) {
+function parseImages(value, { required = false, imageUrl = (value, field) => webUrl(value, field, { required: true }) } = {}) {
   if (value === undefined) {
     assert(!required, 400, 'images is required');
     return null;
   }
   assert(Array.isArray(value), 400, 'images must be an array');
   assert(value.length <= 12, 400, 'images cannot contain more than 12 items');
-  return value.map((url, index) => ({ imageUrl: webUrl(url, `images[${index}]`, { required: true }), imageOrder: index }));
+  return value.map((url, index) => ({ imageUrl: imageUrl(url, `images[${index}]`), imageOrder: index }));
 }
 
-function insertImages(db, roomId, images, startingOrder = 0) {
-  const insert = db.prepare('INSERT INTO ROOM_IMAGE (room_id, image_url, image_order) VALUES (?, ?, ?)');
+async function insertImages(db, roomId, images, startingOrder = 0) {
+  const insert = db.prepare('INSERT INTO ROOM_IMAGE (room_id, image_url, image_order) VALUES (?, ?, ?) RETURNING image_id');
   for (const [index, image] of images.entries()) {
-    insert.run(roomId, image.imageUrl, startingOrder + (image.imageOrder ?? index));
+    await insert.run(roomId, image.imageUrl, startingOrder + (image.imageOrder ?? index));
   }
-}
-
-function requestSelect(whereClause) {
-  return `
-    SELECT rr.*,
-      room.description AS room_description,
-      requester.user_id AS requester_user_id,
-      requester.first_name AS requester_first_name,
-      requester.last_name AS requester_last_name,
-      requester.profile_image AS requester_profile_image
-    FROM ROOM_REQUEST rr
-    JOIN ROOM room ON room.room_id = rr.room_id
-    JOIN USER requester ON requester.user_id = rr.user_id
-    ${whereClause}
-  `;
 }
 
 function matchSelect() {
@@ -346,12 +362,14 @@ function matchSelect() {
       initiator.bio AS initiator_bio,
       initiator.line_id AS initiator_line_id,
       initiator.instagram AS initiator_instagram,
+      initiator.phone AS initiator_phone,
       completer.first_name AS completer_first_name,
       completer.last_name AS completer_last_name,
       completer.profile_image AS completer_profile_image,
       completer.bio AS completer_bio,
       completer.line_id AS completer_line_id,
-      completer.instagram AS completer_instagram
+      completer.instagram AS completer_instagram,
+      completer.phone AS completer_phone
     FROM MATCHES m
     JOIN ROOM room ON room.room_id = m.room_id
     JOIN USER initiator ON initiator.user_id = m.initiator_user_id
@@ -428,8 +446,16 @@ function matchPath(pathname, pattern) {
   return match ? match.slice(1).map((value) => decodeURIComponent(value)) : null;
 }
 
-export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY } = {}) {
-  return async function requestHandler(request, response) {
+export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY, uploadDirectory } = {}) {
+  const imageStorage = createImageStorage({ directory: uploadDirectory, db });
+  const imageUrl = (value, userId, field) => imageStorage.validateUrl(value, userId, url => webUrl(url, field, { required: true }));
+  const handleRoomRequest = createRoomRequestHandler(db, {
+    authenticate, readJson, sendJson, getRoomRow, roomSummary, matchSelect, matchDto,
+  });
+  const handleRoomMatches = createRoomMatchesHandler(db, {
+    authenticate, sendJson, getRoomRow, userDto, matchSelect, matchDto,
+  });
+  async function handleRequest(request, response) {
     const url = new URL(request.url, 'http://localhost');
     const { pathname } = url;
     try {
@@ -452,6 +478,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         return;
       }
 
+      if (request.method === 'POST' && pathname === '/api/uploads/images') {
+        const user = await authenticate(db, request);
+        const imageUrl = await imageStorage.upload(request, user.user_id);
+        sendJson(response, 201, { imageUrl }, request);
+        return;
+      }
+
       if (request.method === 'POST' && pathname === '/api/auth/register') {
         const body = await readJson(request);
         const firstName = text(body.firstName, 'firstName', { required: true, max: 100 });
@@ -461,16 +494,16 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         assert(EMAIL_PATTERN.test(email), 400, 'email must be valid');
         const password = text(body.password, 'password', { required: true, max: 256 });
         assert(password.length >= 8, 400, 'password must be at least 8 characters');
-        assert(!db.prepare('SELECT 1 FROM USER WHERE email = ? COLLATE NOCASE').get(email), 409, 'Email is already registered');
+        assert(!(await db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email)), 409, 'Email is already registered');
 
         const passwordHash = await hashPassword(password);
         let result;
         try {
-          result = db.prepare(`
+          result = await db.prepare(`
             INSERT INTO USER (
               first_name, last_name, phone, gender, date_of_birth, password_hash,
               university, profile_image, bio, email, instagram, line_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING user_id
           `).run(
             firstName,
             lastName,
@@ -486,10 +519,10 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
             text(body.lineId, 'lineId', { max: 100 }),
           );
         } catch (error) {
-          if (String(error.message).includes('UNIQUE')) throw new HttpError(409, 'Email is already registered');
+          if (error.code === '23505') throw new HttpError(409, 'Email is already registered');
           throw error;
         }
-        const user = queryUser(db, Number(result.lastInsertRowid));
+        const user = await queryUser(db, Number(result.insertId));
         sendJson(response, 201, { token: createToken(user.user_id), user: userDto(user, { privateFields: true }) }, request);
         return;
       }
@@ -498,7 +531,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const body = await readJson(request);
         const email = text(body.email, 'email', { required: true, max: 320 }).toLowerCase();
         const password = text(body.password, 'password', { required: true, max: 256 });
-        const user = db.prepare('SELECT * FROM USER WHERE email = ? COLLATE NOCASE').get(email);
+        const user = await db.prepare('SELECT * FROM USER WHERE lower(email) = lower(?)').get(email);
         const valid = user ? await verifyPassword(password, user.password_hash) : false;
         assert(valid && user.is_active, 401, 'Invalid email or password');
         sendJson(response, 200, { token: createToken(user.user_id), user: userDto(user, { privateFields: true }) }, request);
@@ -506,15 +539,15 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'GET' && pathname === '/api/auth/me') {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         sendJson(response, 200, { user: userDto(user, { privateFields: true }) }, request);
         return;
       }
 
       if (request.method === 'GET' && pathname === '/api/profile') {
-        const user = authenticate(db, request);
-        const lifestyle = db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id);
-        const preference = db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id);
+        const user = await authenticate(db, request);
+        const lifestyle = await db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id);
+        const preference = await db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id);
         sendJson(response, 200, {
           user: userDto(user, { privateFields: true }),
           lifestyle: lifestyleDto(lifestyle),
@@ -524,7 +557,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'PATCH' && pathname === '/api/profile') {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         const body = await readJson(request);
         const fields = [
           ['firstName', 'first_name', (value) => text(value, 'firstName', { required: true, max: 100 })],
@@ -533,7 +566,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           ['gender', 'gender', (value) => text(value, 'gender', { max: 50 })],
           ['dateOfBirth', 'date_of_birth', (value) => isoDate(value, 'dateOfBirth')],
           ['university', 'university', (value) => text(value, 'university', { max: 255 })],
-          ['profileImage', 'profile_image', (value) => nullableWebUrl(value, 'profileImage')],
+          ['profileImage', 'profile_image', (value) => value === '' || value == null ? null : imageUrl(value, user.user_id, 'profileImage')],
           ['bio', 'bio', (value) => text(value, 'bio', { max: 1_000 })],
           ['instagram', 'instagram', (value) => text(value, 'instagram', { max: 100 })],
           ['lineId', 'line_id', (value) => text(value, 'lineId', { max: 100 })],
@@ -550,20 +583,20 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const lifestyleName = Object.hasOwn(body, 'lifestyleName') ? text(body.lifestyleName, 'lifestyleName', { required: true, max: 400 }) : null;
         const preferenceValues = Object.hasOwn(body, 'preference') ? parsePreference(body.preference) : null;
         updates.push('updated_at = CURRENT_TIMESTAMP');
-        db.exec('BEGIN IMMEDIATE');
+        await db.exec('BEGIN');
         try {
-          db.prepare(`UPDATE USER SET ${updates.join(', ')} WHERE user_id = ?`).run(...values, user.user_id);
-          if (lifestyleName !== null) db.prepare(`INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)
+          await db.prepare(`UPDATE USER SET ${updates.join(', ')} WHERE user_id = ?`).run(...values, user.user_id);
+          if (lifestyleName !== null) await db.prepare(`INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)
             ON CONFLICT(user_id) DO UPDATE SET lifestyle_name = excluded.lifestyle_name`).run(user.user_id, lifestyleName);
-          if (preferenceValues) savePreference(db, user.user_id, preferenceValues);
-          db.exec('COMMIT');
+          if (preferenceValues) await savePreference(db, user.user_id, preferenceValues);
+          await db.exec('COMMIT');
         } catch (error) {
-          db.exec('ROLLBACK');
+          await db.exec('ROLLBACK');
           throw error;
         }
-        const updatedUser = queryUser(db, user.user_id);
-        const lifestyle = db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id);
-        const preference = db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id);
+        const updatedUser = await queryUser(db, user.user_id);
+        const lifestyle = await db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id);
+        const preference = await db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id);
         sendJson(response, 200, {
           user: userDto(updatedUser, { privateFields: true }),
           lifestyle: lifestyleDto(lifestyle),
@@ -573,40 +606,64 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'PUT' && pathname === '/api/lifestyle') {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         const body = await readJson(request);
         const lifestyleName = text(body.lifestyleName, 'lifestyleName', { required: true, max: 400 });
         db.prepare(`
           INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)
           ON CONFLICT(user_id) DO UPDATE SET lifestyle_name = excluded.lifestyle_name
         `).run(user.user_id, lifestyleName);
-        sendJson(response, 200, { lifestyle: lifestyleDto(db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id)) }, request);
+        sendJson(response, 200, { lifestyle: lifestyleDto(await db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id)) }, request);
         return;
       }
 
       if (request.method === 'PUT' && pathname === '/api/preference') {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         const body = await readJson(request);
-        savePreference(db, user.user_id, parsePreference(body));
-        sendJson(response, 200, { preference: preferenceDto(db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id)) }, request);
+        await savePreference(db, user.user_id, parsePreference(body));
+        sendJson(response, 200, { preference: preferenceDto(await db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id)) }, request);
         return;
       }
 
       if (request.method === 'GET' && pathname === '/api/rooms') {
+        const currentUser = await authenticate(db, request, { optional: true });
         const conditions = [];
         const parameters = [];
         const search = url.searchParams.get('q')?.trim();
         if (search) {
           assert(search.length <= 200, 400, 'q is too long');
-          conditions.push('(r.description LIKE ? ESCAPE \'\\\' OR owner.first_name LIKE ? ESCAPE \'\\\' OR owner.last_name LIKE ? ESCAPE \'\\\')');
+          conditions.push("(r.description ILIKE ? ESCAPE '\\' OR owner.first_name ILIKE ? ESCAPE '\\' OR owner.last_name ILIKE ? ESCAPE '\\' OR r.locality ILIKE ? ESCAPE '\\')");
           const escaped = `%${search.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
-          parameters.push(escaped, escaped, escaped);
+          parameters.push(escaped, escaped, escaped, escaped);
         }
         const minPrice = money(url.searchParams.get('minPrice'), 'minPrice');
         const maxPrice = money(url.searchParams.get('maxPrice'), 'maxPrice');
         if (minPrice !== null) { conditions.push('r.price >= ?'); parameters.push(minPrice); }
         if (maxPrice !== null) { conditions.push('r.price <= ?'); parameters.push(maxPrice); }
         assert(minPrice === null || maxPrice === null || minPrice <= maxPrice, 400, 'minPrice cannot exceed maxPrice');
+        const minSlots = integer(url.searchParams.get('minSlots'), 'minSlots', { min: 1, max: 100 });
+        if (minSlots !== null) {
+          conditions.push("r.capacity - 1 - (SELECT COUNT(*) FROM ROOM_MEMBER slots WHERE slots.room_id = r.room_id AND slots.status = 'approved') >= ?");
+          parameters.push(minSlots);
+        }
+        const priceBasis = url.searchParams.get('priceBasis');
+        if (priceBasis) {
+          assert(['per_room', 'per_person'].includes(priceBasis), 400, 'priceBasis is invalid');
+          conditions.push('r.price_basis = ?'); parameters.push(priceBasis);
+        }
+        const friendId = integer(url.searchParams.get('withFriend'), 'withFriend', { min: 1 });
+        if (friendId !== null) {
+          const viewer = await authenticate(db, request);
+          assert(Number.isSafeInteger(friendId) && friendId !== viewer.user_id, 400, 'withFriend is invalid');
+          assert(await db.prepare(`SELECT 1 FROM FRIEND_CONNECTION f JOIN USER other ON other.user_id = ? AND other.is_active = 1
+            WHERE f.status = 'accepted' AND ((f.sender_id = ? AND f.recipient_id = ?) OR (f.sender_id = ? AND f.recipient_id = ?))`)
+            .get(friendId, viewer.user_id, friendId, friendId, viewer.user_id), 403, 'Accepted friendship is required');
+          // Existing owners/members do not consume a second vacancy when searching together.
+          conditions.push(`r.capacity - 1 - (SELECT COUNT(*) FROM ROOM_MEMBER occupants WHERE occupants.room_id = r.room_id AND occupants.status = 'approved')
+            >= 2 - CASE WHEN r.owner_id IN (?, ?) THEN 1 ELSE 0 END
+              - (SELECT COUNT(*) FROM ROOM_MEMBER existing WHERE existing.room_id = r.room_id AND existing.status = 'approved' AND existing.user_id IN (?, ?))`);
+          parameters.push(viewer.user_id, friendId, viewer.user_id, friendId);
+        }
         const status = url.searchParams.get('status');
         if (status) {
           assert(ROOM_STATUSES.has(status), 400, 'status is invalid');
@@ -626,13 +683,24 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const limit = integer(url.searchParams.get('limit') ?? 100, 'limit', { min: 1, max: 100 });
         const offset = integer(url.searchParams.get('offset') ?? 0, 'offset', { min: 0 });
         parameters.push(limit, offset);
-        const rows = db.prepare(`
+        const rows = await db.prepare(`
           ${ROOM_SELECT}
           ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
           ORDER BY ${sortMap[sort]}
           LIMIT ? OFFSET ?
         `).all(...parameters);
-        const rooms = rows.map((row) => roomDto(row, imageRows(db, row.room_id)));
+        const favoriteRoomIds = new Set(
+          currentUser
+            ? (await db
+                .prepare('SELECT room_id FROM ROOM_FAVORITE WHERE user_id = ?')
+                .all(currentUser.user_id))
+                .map((favorite) => Number(favorite.room_id))
+            : [],
+        );
+
+        const rooms = await roomDtos(db, rows, row => ({
+          isFavorite: favoriteRoomIds.has(Number(row.room_id)),
+        }));
         sendJson(response, 200, { rooms }, request);
         return;
       }
@@ -640,297 +708,277 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       let pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)$/);
       if (request.method === 'GET' && pathMatch) {
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = getRoomRow(db, roomId);
+        const room = await getRoomRow(db, roomId);
         assert(room, 404, 'Room not found');
-        const currentUser = authenticate(db, request, { optional: true });
+        const currentUser = await authenticate(db, request, { optional: true });
         let requestStatus;
+        let pendingRequestId;
+        let isFavorite = false;
         if (currentUser) {
-          requestStatus = db.prepare(`
-            SELECT status FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? ORDER BY request_id DESC LIMIT 1
-          `).get(roomId, currentUser.user_id)?.status ?? null;
+          const ownRequest = await db.prepare(`
+            SELECT request_id, status FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? ORDER BY request_id DESC LIMIT 1
+          `).get(roomId, currentUser.user_id);
+          requestStatus = ownRequest?.status ?? null;
+          pendingRequestId = ownRequest?.status === 'pending' ? ownRequest.request_id : null;
+          isFavorite = Boolean(await db.prepare('SELECT 1 FROM ROOM_FAVORITE WHERE user_id = ? AND room_id = ?').get(currentUser.user_id, roomId));
         }
-        const members = db.prepare(`
-          SELECT u.user_id, u.first_name, u.last_name, u.profile_image, rm.status, rm.joined_at
-          FROM ROOM_MEMBER rm JOIN USER u ON u.user_id = rm.user_id
-          WHERE rm.room_id = ? AND rm.status = 'approved' ORDER BY rm.joined_at
-        `).all(roomId).map((member) => ({
-          userId: member.user_id,
-          firstName: member.first_name,
-          lastName: member.last_name,
-          profileImage: member.profile_image,
-          status: member.status,
-          joinedAt: member.joined_at,
-        }));
+        const isMember = Boolean(currentUser && await db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, currentUser.user_id));
+        const members = await canViewRoomMembers(db, room, currentUser?.user_id)
+          ? (await listRoomMembers(db, roomId, userDto)).filter(member => member.status !== 'owner')
+          : [];
         sendJson(response, 200, {
-          room: roomDto(room, imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, members }),
+          room: roomDto(room, await imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, pendingRequestId, members, isMember, isFavorite }),
         }, request);
         return;
       }
 
       if (request.method === 'POST' && pathname === '/api/rooms') {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         const body = await readJson(request);
+        assertListing(body);
         const title = text(body.title, 'title', { required: true, max: 200 });
         const description = text(body.description, 'description', { max: 5_000 }) ?? '';
         const googleMapsUrl = webUrl(body.googleMapsUrl, 'googleMapsUrl', { required: true });
         const price = money(body.price, 'price', { required: true });
         const capacity = integer(body.capacity, 'capacity', { required: true, min: 1, max: 100 });
+        const priceBasis = parsePriceBasis(body.priceBasis);
+        const locality = text(body.locality, 'locality', { max: 200 });
+        const costNotes = text(body.costNotes, 'costNotes', { max: 1000 });
         const requestedStatus = body.status ?? 'available';
         assert(ROOM_STATUSES.has(requestedStatus), 400, 'status is invalid');
         const status = requestedStatus === 'inactive' ? 'inactive' : capacity === 1 ? 'full' : 'available';
-        const images = parseImages(body.images) ?? [];
+        const images = listingImages(body, value => parseImages(value, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) })) ?? [];
 
-        db.exec('BEGIN IMMEDIATE');
+        await db.exec('BEGIN');
         try {
-          const result = db.prepare(`
-            INSERT INTO ROOM (owner_id, google_maps_url, price, capacity, description, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).run(user.user_id, googleMapsUrl, price, capacity, joinStoredDescription(title, description), status);
-          const roomId = Number(result.lastInsertRowid);
-          insertImages(db, roomId, images);
-          db.exec('COMMIT');
-          sendJson(response, 201, { room: roomDto(getRoomRow(db, roomId), imageRows(db, roomId), { currentUserId: user.user_id }) }, request);
+          const result = await db.prepare(`
+            INSERT INTO ROOM (owner_id, google_maps_url, price, capacity, description, status, price_basis, locality, cost_notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING room_id
+          `).run(user.user_id, googleMapsUrl, price, capacity, joinStoredDescription(title, description), status, priceBasis, locality, costNotes);
+          const roomId = Number(result.insertId);
+          await insertImages(db, roomId, images);
+          await db.exec('COMMIT');
+          sendJson(response, 201, { room: roomDto(await getRoomRow(db, roomId), await imageRows(db, roomId), { currentUserId: user.user_id }) }, request);
         } catch (error) {
-          db.exec('ROLLBACK');
+          await db.exec('ROLLBACK');
           throw error;
         }
         return;
       }
 
       if (request.method === 'PATCH' && pathMatch) {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const existing = getRoomRow(db, roomId);
+        let existing = await getRoomRow(db, roomId);
         assert(existing, 404, 'Room not found');
         assert(existing.owner_id === user.user_id, 403, 'Only the room owner can update this room');
         const body = await readJson(request);
-        const stored = splitStoredDescription(existing.description);
-        const title = Object.hasOwn(body, 'title') ? text(body.title, 'title', { required: true, max: 200 }) : stored.title;
-        const description = Object.hasOwn(body, 'description') ? (text(body.description, 'description', { max: 5_000 }) ?? '') : stored.description;
-        const googleMapsUrl = Object.hasOwn(body, 'googleMapsUrl') ? webUrl(body.googleMapsUrl, 'googleMapsUrl', { required: true }) : existing.google_maps_url;
-        const price = Object.hasOwn(body, 'price') ? money(body.price, 'price', { required: true }) : existing.price;
-        const capacity = Object.hasOwn(body, 'capacity') ? integer(body.capacity, 'capacity', { required: true, min: 1, max: 100 }) : existing.capacity;
-        const memberCount = Number(existing.member_count);
-        assert(capacity >= memberCount + 1, 409, 'capacity cannot be lower than current occupancy');
-        let status = Object.hasOwn(body, 'status') ? body.status : existing.status;
-        assert(ROOM_STATUSES.has(status), 400, 'status is invalid');
-        if (status !== 'inactive') status = capacity <= memberCount + 1 ? 'full' : 'available';
-        const images = parseImages(body.images);
-
-        db.exec('BEGIN IMMEDIATE');
-        try {
-          db.prepare(`
-            UPDATE ROOM SET google_maps_url = ?, price = ?, capacity = ?, description = ?, status = ? WHERE room_id = ?
-          `).run(googleMapsUrl, price, capacity, joinStoredDescription(title, description), status, roomId);
-          if (images) {
-            db.prepare('DELETE FROM ROOM_IMAGE WHERE room_id = ?').run(roomId);
-            insertImages(db, roomId, images);
+        const statusOnly = Object.hasOwn(body, 'status') && Object.keys(body).every(field => field === 'status');
+        if (statusOnly) {
+          assertListing(body, { partial: true });
+          assert(ROOM_STATUSES.has(body.status), 400, 'status is invalid');
+          await db.exec('BEGIN');
+          try {
+            const latest = await getRoomRow(db, roomId, { lock: true });
+            assert(latest, 404, 'Room not found');
+            assert(latest.owner_id === user.user_id, 403, 'Only the room owner can update this room');
+            const status = body.status === 'inactive' ? 'inactive'
+              : latest.capacity <= Number(latest.member_count) + 1 ? 'full' : 'available';
+            await db.prepare('UPDATE ROOM SET status = ? WHERE room_id = ?').run(status, roomId);
+            await db.exec('COMMIT');
+          } catch (error) {
+            await db.exec('ROLLBACK');
+            throw error;
           }
-          db.exec('COMMIT');
+          sendJson(response, 200, { room: roomDto(await getRoomRow(db, roomId), await imageRows(db, roomId), { currentUserId: user.user_id }) }, request);
+          return;
+        }
+        // Lock before re-reading occupancy and applying a listing edit.
+        await db.exec('BEGIN');
+        try {
+          existing = await getRoomRow(db, roomId, { lock: true });
+          assert(existing, 404, 'Room not found');
+          assertListing({
+            ...body,
+            priceBasis: Object.hasOwn(body, 'priceBasis') ? body.priceBasis : existing.price_basis,
+            locality: Object.hasOwn(body, 'locality') ? body.locality : existing.locality,
+            images: Object.hasOwn(body, 'images') ? body.images : (await imageRows(db, roomId)).map(image => image.image_url),
+          }, { partial: true });
+          const stored = splitStoredDescription(existing.description);
+          const title = Object.hasOwn(body, 'title') ? text(body.title, 'title', { required: true, max: 200 }) : stored.title;
+          const description = Object.hasOwn(body, 'description') ? (text(body.description, 'description', { max: 5_000 }) ?? '') : stored.description;
+          const googleMapsUrl = Object.hasOwn(body, 'googleMapsUrl') ? webUrl(body.googleMapsUrl, 'googleMapsUrl', { required: true }) : existing.google_maps_url;
+          const price = Object.hasOwn(body, 'price') ? money(body.price, 'price', { required: true }) : existing.price;
+          const capacity = Object.hasOwn(body, 'capacity') ? integer(body.capacity, 'capacity', { required: true, min: 1, max: 100 }) : existing.capacity;
+          const priceBasis = Object.hasOwn(body, 'priceBasis') ? parsePriceBasis(body.priceBasis) : existing.price_basis;
+          const locality = Object.hasOwn(body, 'locality') ? text(body.locality, 'locality', { max: 200 }) : existing.locality;
+          const costNotes = Object.hasOwn(body, 'costNotes') ? text(body.costNotes, 'costNotes', { max: 1000 }) : existing.cost_notes;
+          const memberCount = Number(existing.member_count);
+          if (capacity < memberCount + 1) throw new HttpError(409, 'capacity cannot be lower than current occupancy', validateListing({ capacity }, { partial: true, minimumCapacity: memberCount + 1 }));
+          let status = Object.hasOwn(body, 'status') ? body.status : existing.status;
+          assert(ROOM_STATUSES.has(status), 400, 'status is invalid');
+          if (status !== 'inactive') status = capacity <= memberCount + 1 ? 'full' : 'available';
+          const images = listingImages(body, value => parseImages(value, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) }));
+
+          await db.prepare(`
+            UPDATE ROOM SET google_maps_url = ?, price = ?, capacity = ?, description = ?, status = ?, price_basis = ?, locality = ?, cost_notes = ? WHERE room_id = ?
+          `).run(googleMapsUrl, price, capacity, joinStoredDescription(title, description), status, priceBasis, locality, costNotes, roomId);
+          if (images) {
+            await db.prepare('DELETE FROM ROOM_IMAGE WHERE room_id = ?').run(roomId);
+            await insertImages(db, roomId, images);
+          }
+          await db.exec('COMMIT');
         } catch (error) {
-          db.exec('ROLLBACK');
+          await db.exec('ROLLBACK');
           throw error;
         }
-        sendJson(response, 200, { room: roomDto(getRoomRow(db, roomId), imageRows(db, roomId), { currentUserId: user.user_id }) }, request);
+        sendJson(response, 200, { room: roomDto(await getRoomRow(db, roomId), await imageRows(db, roomId), { currentUserId: user.user_id }) }, request);
         return;
       }
 
       if (request.method === 'DELETE' && pathMatch) {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = getRoomRow(db, roomId);
+        const room = await getRoomRow(db, roomId);
         assert(room, 404, 'Room not found');
         assert(room.owner_id === user.user_id, 403, 'Only the room owner can delete this room');
-        db.prepare('DELETE FROM ROOM WHERE room_id = ?').run(roomId);
+        await db.prepare('DELETE FROM ROOM WHERE room_id = ?').run(roomId);
         sendJson(response, 200, { success: true }, request);
         return;
       }
 
       pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)\/images$/);
       if (request.method === 'POST' && pathMatch) {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = getRoomRow(db, roomId);
+        const room = await getRoomRow(db, roomId);
         assert(room, 404, 'Room not found');
         assert(room.owner_id === user.user_id, 403, 'Only the room owner can add images');
         const body = await readJson(request);
-        const imageUrl = webUrl(body.imageUrl, 'imageUrl', { required: true });
-        const count = db.prepare('SELECT COUNT(*) AS count FROM ROOM_IMAGE WHERE room_id = ?').get(roomId).count;
+        const storedImageUrl = imageUrl(body.imageUrl, user.user_id, 'imageUrl');
+        const count = (await db.prepare('SELECT COUNT(*) AS count FROM ROOM_IMAGE WHERE room_id = ?').get(roomId)).count;
         assert(count < 12, 409, 'A room cannot have more than 12 images');
         const imageOrder = body.imageOrder === undefined
-          ? Number(db.prepare('SELECT COALESCE(MAX(image_order), -1) + 1 AS next_order FROM ROOM_IMAGE WHERE room_id = ?').get(roomId).next_order)
+          ? Number((await db.prepare('SELECT COALESCE(MAX(image_order), -1) + 1 AS next_order FROM ROOM_IMAGE WHERE room_id = ?').get(roomId)).next_order)
           : integer(body.imageOrder, 'imageOrder', { min: 0, max: 11 });
-        const result = db.prepare('INSERT INTO ROOM_IMAGE (room_id, image_url, image_order) VALUES (?, ?, ?)').run(roomId, imageUrl, imageOrder);
-        sendJson(response, 201, { image: { imageId: Number(result.lastInsertRowid), imageUrl, imageOrder } }, request);
+        const result = await db.prepare('INSERT INTO ROOM_IMAGE (room_id, image_url, image_order) VALUES (?, ?, ?) RETURNING image_id').run(roomId, storedImageUrl, imageOrder);
+        sendJson(response, 201, { image: { imageId: Number(result.insertId), imageUrl: storedImageUrl, imageOrder } }, request);
         return;
       }
 
       pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)\/images\/(\d+)$/);
       if (request.method === 'DELETE' && pathMatch) {
-        const user = authenticate(db, request);
+        const user = await authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
         const imageId = integer(pathMatch[1], 'imageId', { required: true, min: 1 });
-        const room = getRoomRow(db, roomId);
+        const room = await getRoomRow(db, roomId);
         assert(room, 404, 'Room not found');
         assert(room.owner_id === user.user_id, 403, 'Only the room owner can remove images');
-        const result = db.prepare('DELETE FROM ROOM_IMAGE WHERE image_id = ? AND room_id = ?').run(imageId, roomId);
+        const currentImages = await imageRows(db, roomId);
+        assert(currentImages.some(image => image.image_id === imageId), 404, 'Image not found');
+        assertListing({ images: currentImages.filter(image => image.image_id !== imageId).map(image => image.image_url) }, { partial: true });
+        const result = await db.prepare('DELETE FROM ROOM_IMAGE WHERE image_id = ? AND room_id = ?').run(imageId, roomId);
         assert(result.changes > 0, 404, 'Image not found');
         sendJson(response, 200, { success: true }, request);
         return;
       }
 
       if (request.method === 'GET' && pathname === '/api/my/rooms') {
-        const user = authenticate(db, request);
-        const rows = db.prepare(`${ROOM_SELECT} WHERE r.owner_id = ? ORDER BY r.created_at DESC, r.room_id DESC`).all(user.user_id);
-        sendJson(response, 200, { rooms: rows.map((row) => roomDto(row, imageRows(db, row.room_id), { currentUserId: user.user_id })) }, request);
+        const user = await authenticate(db, request);
+        const rows = await db.prepare(`${ROOM_SELECT} WHERE r.owner_id = ? ORDER BY r.created_at DESC, r.room_id DESC`).all(user.user_id);
+        sendJson(response, 200, { rooms: await roomDtos(db, rows, () => ({ currentUserId: user.user_id })) }, request);
         return;
       }
 
-      pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)\/requests$/);
-      if (request.method === 'POST' && pathMatch) {
-        const user = authenticate(db, request);
-        const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = getRoomRow(db, roomId);
-        assert(room, 404, 'Room not found');
-        assert(room.owner_id !== user.user_id, 409, 'You cannot request to join your own room');
-        assert(room.status === 'available' && room.capacity > Number(room.member_count) + 1, 409, 'This room has no available place');
-        assert(!db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, user.user_id), 409, 'You are already a member of this room');
-        assert(!db.prepare("SELECT 1 FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? AND status = 'pending'").get(roomId, user.user_id), 409, 'A pending request already exists');
-        const result = db.prepare("INSERT INTO ROOM_REQUEST (user_id, room_id, status) VALUES (?, ?, 'pending')").run(user.user_id, roomId);
-        const row = db.prepare(requestSelect('WHERE rr.request_id = ?')).get(Number(result.lastInsertRowid));
-        sendJson(response, 201, { request: requestDto(row) }, request);
-        return;
-      }
+      if (request.method === 'GET' && pathname === '/api/favorites') {
+        const user = await authenticate(db, request);
+        const rows = await db.prepare(`
+          ${ROOM_SELECT}
+          JOIN ROOM_FAVORITE favorite ON favorite.room_id = r.room_id
+          WHERE favorite.user_id = ?
+          ORDER BY favorite.created_at DESC, r.room_id DESC
+        `).all(user.user_id);
 
-      if (request.method === 'GET' && pathname === '/api/requests/mine') {
-        const user = authenticate(db, request);
-        const rows = db.prepare(`${requestSelect('WHERE rr.user_id = ?')} ORDER BY rr.requested_at DESC, rr.request_id DESC`).all(user.user_id);
-        sendJson(response, 200, { requests: rows.map(requestDto) }, request);
-        return;
-      }
-
-      if (request.method === 'GET' && pathname === '/api/owner/requests') {
-        const user = authenticate(db, request);
-        const rows = db.prepare(`${requestSelect('WHERE room.owner_id = ?')} ORDER BY rr.requested_at DESC, rr.request_id DESC`).all(user.user_id);
-        sendJson(response, 200, { requests: rows.map(requestDto) }, request);
-        return;
-      }
-
-      pathMatch = matchPath(pathname, /^\/api\/requests\/(\d+)$/);
-      if (request.method === 'PATCH' && pathMatch) {
-        const owner = authenticate(db, request);
-        const requestId = integer(pathMatch[0], 'requestId', { required: true, min: 1 });
-        const body = await readJson(request);
-        assert(REQUEST_DECISIONS.has(body.status), 400, 'status must be approved or rejected');
-        let createdMatch = null;
-
-        db.exec('BEGIN IMMEDIATE');
-        try {
-          const joinRequest = db.prepare(`
-            SELECT rr.*, room.owner_id, room.capacity, room.status AS room_status,
-              (SELECT COUNT(*) FROM ROOM_MEMBER rm WHERE rm.room_id = room.room_id AND rm.status = 'approved') AS member_count
-            FROM ROOM_REQUEST rr JOIN ROOM room ON room.room_id = rr.room_id WHERE rr.request_id = ?
-          `).get(requestId);
-          assert(joinRequest, 404, 'Request not found');
-          assert(joinRequest.owner_id === owner.user_id, 403, 'Only the room owner can respond to this request');
-          assert(joinRequest.status === 'pending', 409, 'This request has already been handled');
-
-          if (body.status === 'rejected') {
-            db.prepare("UPDATE ROOM_REQUEST SET status = 'rejected', responded_at = CURRENT_TIMESTAMP WHERE request_id = ? AND status = 'pending'").run(requestId);
-          } else {
-            assert(joinRequest.user_id !== owner.user_id, 409, 'A room owner cannot match with themselves');
-            assert(joinRequest.room_status !== 'inactive', 409, 'Inactive rooms cannot accept requests');
-            assert(Number(joinRequest.member_count) + 1 < joinRequest.capacity, 409, 'This room has reached capacity');
-            assert(!db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(joinRequest.room_id, joinRequest.user_id), 409, 'The requester is already a room member');
-            assert(!db.prepare('SELECT 1 FROM MATCHES WHERE room_id = ? AND ((initiator_user_id = ? AND completer_user_id = ?) OR (initiator_user_id = ? AND completer_user_id = ?))').get(
-              joinRequest.room_id, joinRequest.user_id, owner.user_id, owner.user_id, joinRequest.user_id,
-            ), 409, 'A match already exists for these users and room');
-
-            const changed = db.prepare("UPDATE ROOM_REQUEST SET status = 'approved', responded_at = CURRENT_TIMESTAMP WHERE request_id = ? AND status = 'pending'").run(requestId);
-            assert(changed.changes === 1, 409, 'This request has already been handled');
-            db.prepare("INSERT INTO ROOM_MEMBER (user_id, room_id, status) VALUES (?, ?, 'approved')").run(joinRequest.user_id, joinRequest.room_id);
-            const matchResult = db.prepare('INSERT INTO MATCHES (initiator_user_id, completer_user_id, room_id) VALUES (?, ?, ?)').run(owner.user_id, joinRequest.user_id, joinRequest.room_id);
-            const occupancy = Number(joinRequest.member_count) + 2;
-            if (occupancy >= joinRequest.capacity) {
-              db.prepare("UPDATE ROOM SET status = 'full' WHERE room_id = ?").run(joinRequest.room_id);
-            }
-            createdMatch = db.prepare(`${matchSelect()} WHERE m.match_id = ?`).get(Number(matchResult.lastInsertRowid));
-          }
-          db.exec('COMMIT');
-        } catch (error) {
-          db.exec('ROLLBACK');
-          throw error;
-        }
-
-        const updatedRequest = db.prepare(requestSelect('WHERE rr.request_id = ?')).get(requestId);
-        sendJson(response, 200, {
-          request: requestDto(updatedRequest),
-          ...(createdMatch ? { match: matchDto(createdMatch, owner.user_id) } : {}),
-        }, request);
-        return;
-      }
-
-      pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)\/members$/);
-      if (request.method === 'GET' && pathMatch) {
-        const user = authenticate(db, request);
-        const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = getRoomRow(db, roomId);
-        assert(room, 404, 'Room not found');
-        const isMember = db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, user.user_id);
-        assert(room.owner_id === user.user_id || isMember, 403, 'Only the room owner or a member can view members');
-        const memberRows = db.prepare(`
-          SELECT u.*, 'owner' AS membership_status, room.created_at AS joined_at
-          FROM ROOM room JOIN USER u ON u.user_id = room.owner_id WHERE room.room_id = ?
-          UNION ALL
-          SELECT u.*, rm.status AS membership_status, rm.joined_at
-          FROM ROOM_MEMBER rm JOIN USER u ON u.user_id = rm.user_id
-          WHERE rm.room_id = ? AND rm.status = 'approved'
-          ORDER BY joined_at
-        `).all(roomId, roomId);
-        const members = memberRows.map((row) => ({
-          ...userDto(row),
-          status: row.membership_status,
-          joinedAt: row.joined_at,
+        const rooms = await roomDtos(db, rows, () => ({
+          currentUserId: user.user_id, isFavorite: true,
         }));
-        sendJson(response, 200, { members }, request);
+
+        sendJson(response, 200, { rooms }, request);
         return;
       }
 
-      if (request.method === 'GET' && pathname === '/api/matches') {
-        const user = authenticate(db, request);
-        const rows = db.prepare(`
-          ${matchSelect()}
-          WHERE m.initiator_user_id = ? OR m.completer_user_id = ?
-          ORDER BY m.matched_at DESC, m.match_id DESC
-        `).all(user.user_id, user.user_id);
-        sendJson(response, 200, { matches: rows.map((row) => matchDto(row, user.user_id)) }, request);
+      pathMatch = matchPath(pathname, /^\/api\/rooms\/(\d+)\/favorite$/);
+
+      if (request.method === 'PUT' && pathMatch) {
+        const user = await authenticate(db, request);
+        const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
+        const room = await getRoomRow(db, roomId);
+        assert(room, 404, 'Room not found');
+
+        await db.prepare(`
+          INSERT INTO ROOM_FAVORITE (user_id, room_id)
+          VALUES (?, ?) ON CONFLICT (user_id, room_id) DO NOTHING
+        `).run(user.user_id, roomId);
+
+        sendJson(response, 200, { success: true }, request);
         return;
       }
+
+      if (request.method === 'DELETE' && pathMatch) {
+        const user = await authenticate(db, request);
+        const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
+        const room = await getRoomRow(db, roomId);
+        assert(room, 404, 'Room not found');
+
+        await db.prepare(`
+          DELETE FROM ROOM_FAVORITE
+          WHERE user_id = ? AND room_id = ?
+        `).run(user.user_id, roomId);
+
+        sendJson(response, 200, { success: true }, request);
+        return;
+      }
+
+      if (await handleRoomRequest(request, response, url)) return;
+
+      if (await handleRoomMatches(request, response, url)) return;
 
       if (pathname === '/api/friends' || pathname.startsWith('/api/friends/')) {
-        await handleFriendRoutes({ db, request, response, url, user: authenticate(db, request), readJson, sendJson });
+        await handleFriendRoutes({ db, request, response, url, user: await authenticate(db, request), readJson, sendJson });
         return;
       }
       if (pathname.startsWith('/api/')) throw new HttpError(404, 'Endpoint not found');
+      if (imageStorage.serve(request, response, pathname)) return;
       if (sendStatic(response, request, pathname, staticDirectory)) return;
       throw new HttpError(404, 'Page not found');
     } catch (error) {
       if (error instanceof HttpError) {
-        sendJson(response, error.status, { error: error.message }, request);
+        sendJson(response, error.status, { error: error.message, ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}) }, request);
         return;
       }
       logger.error?.(error);
       sendJson(response, 500, { error: 'Internal server error' }, request);
     }
+  }
+  return (request, response) => {
+    // Keep the SPA and preflight available during a database outage so the UI
+    // can display its normal connection-error and retry states.
+    const usesDatabase = request.method !== 'OPTIONS' && new URL(request.url, 'http://localhost').pathname.startsWith('/api/');
+    const handling = usesDatabase ? db.withConnection(() => handleRequest(request, response)) : handleRequest(request, response);
+    return handling.catch(error => {
+      logger.error?.(error);
+      if (!response.headersSent) sendJson(response, 500, { error: 'Internal server error' }, request);
+      else response.destroy();
+    });
   };
 }
 
-export function createRoomMatchServer(options = {}) {
+export async function createRoomMatchServer(options = {}) {
   validateAuthConfiguration();
-  const db = options.db ?? openDatabase(options.database);
+  const db = options.db ?? await openDatabase(options.database);
   const server = createServer(createRequestHandler(db, options));
-  server.on('close', () => {
-    if (!options.db) db.close();
+  server.on('close', async () => {
+    if (!options.db) await db.close();
   });
   return { server, db };
 }
@@ -938,7 +986,7 @@ export function createRoomMatchServer(options = {}) {
 export async function startRoomMatchServer(options = {}) {
   const host = options.host ?? process.env.ROOMMATCH_HOST ?? process.env.HOST ?? '127.0.0.1';
   const port = options.port ?? Number(process.env.ROOMMATCH_PORT ?? process.env.PORT ?? 3001);
-  const application = createRoomMatchServer(options);
+  const application = await createRoomMatchServer(options);
   await new Promise((resolve, reject) => {
     application.server.once('error', reject);
     application.server.listen(port, host, resolve);

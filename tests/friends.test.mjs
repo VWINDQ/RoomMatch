@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
-import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
-import { startRoomMatchServer } from '../server/app.js';
-import { openDatabase, runMigrations } from '../server/database.js';
 
-const db = openDatabase({ filename: ':memory:' });
+import { startRoomMatchServer } from '../server/app.js';
+import { openDatabase } from './support/postgres.mjs';
+
+const db = await openDatabase({ filename: ':memory:' });
 let application, baseUrl;
 before(async () => {
   application = await startRoomMatchServer({ db, host: '127.0.0.1', port: 0 });
   baseUrl = `http://127.0.0.1:${application.server.address().port}`;
 });
-after(async () => { await new Promise(resolve => application.server.close(resolve)); db.close(); });
+after(async () => { await new Promise(resolve => application.server.close(resolve)); await db.close(); });
 
 async function api(path, token, method = 'GET', payload) {
   const response = await fetch(`${baseUrl}/api${path}`, { method,
@@ -27,35 +26,13 @@ async function account(name) {
   return { token: result.body.token, id: result.body.user.userId };
 }
 
-test('additive migration preserves every original table row and schema', () => {
-  const legacy = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
-  try {
-    legacy.exec(readFileSync('database/migrations/001_initial_schema.sql', 'utf8'));
-    legacy.exec(readFileSync('database/migrations/002_repair_room_description_newlines.sql', 'utf8'));
-    legacy.exec(readFileSync('database/seed.sql', 'utf8'));
-    legacy.exec('PRAGMA user_version = 2');
-    const tables = ['USER', 'LIFESTYLE', 'PREFERENCE', 'ROOM', 'ROOM_IMAGE', 'ROOM_MEMBER', 'ROOM_REQUEST', 'MATCHES'];
-    const snapshot = () => tables.map(table => ({
-      table, schema: legacy.prepare('SELECT sql FROM sqlite_schema WHERE name = ?').get(table).sql,
-      rows: legacy.prepare(`SELECT * FROM ${table}`).all(),
-    }));
-    const original = snapshot();
-    runMigrations(legacy);
-    assert.deepEqual(snapshot(), original);
-    assert.equal(legacy.prepare('SELECT COUNT(*) AS count FROM FRIEND_CONNECTION').get().count, 0);
-    runMigrations(legacy);
-    assert.deepEqual(snapshot(), original);
-    assert.deepEqual(legacy.prepare('PRAGMA foreign_key_check').all(), []);
-  } finally { legacy.close(); }
-});
-
 test('friend invitation → consent → shared contacts without changing room matches', async () => {
   const alice = await account('Alice');
   const bob = await account('Bob');
   const outsider = await account('Outsider');
   const roomTables = ['ROOM', 'ROOM_IMAGE', 'ROOM_REQUEST', 'ROOM_MEMBER', 'MATCHES'];
-  const snapshot = () => roomTables.map(table => db.prepare(`SELECT * FROM ${table}`).all());
-  const beforeRooms = snapshot();
+  const snapshot = async () => await Promise.all(roomTables.map(async table => await db.prepare(`SELECT * FROM ${table}`).all()));
+  const beforeRooms = await snapshot();
   assert.equal((await api('/friends')).status, 401);
   const discover = await api('/friends?q=Bob', alice.token);
   assert.equal(discover.status, 200);
@@ -82,12 +59,12 @@ test('friend invitation → consent → shared contacts without changing room ma
   assert.equal((await api('/friends/connections', alice.token)).body.connections[0].person.email, 'bob@friend.test');
   assert.equal((await api('/friends/connections', outsider.token)).body.connections.length, 0);
   assert.equal((await api(`/friends/connections/${id}`, bob.token, 'PATCH', { status: 'declined' })).status, 409);
-  assert.deepEqual(snapshot(), beforeRooms);
+  assert.deepEqual(await snapshot(), beforeRooms);
 
   const declinedInvite = await api('/friends/connections', outsider.token, 'POST', { recipientId: bob.id });
   const declined = await api(`/friends/connections/${declinedInvite.body.connection.connectionId}`, bob.token, 'PATCH', { status: 'declined' });
   assert.equal(declined.status, 200);
   assert.equal('email' in declined.body.connection.person, false);
-  assert.throws(() => db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?)').run(bob.id, alice.id), /UNIQUE/);
-  assert.throws(() => db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?)').run(bob.id, bob.id), /CHECK/);
+  await assert.rejects(async () => await db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?)').run(bob.id, alice.id), /unique/i);
+  await assert.rejects(async () => await db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?)').run(bob.id, bob.id), /check/i);
 });

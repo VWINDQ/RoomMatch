@@ -1,24 +1,22 @@
 # RoomMatch database
 
 This directory contains the eight original ER entities, the separately requested
-`FRIEND_CONNECTION` extension, and realistic local-development seed data.
+`FRIEND_CONNECTION` and `ROOM_FAVORITE` extensions, and realistic local-development seed data.
 
-## Files and order
+## Current engine: PostgreSQL
 
-1. Run every file in `migrations/` in lexical order. Migration `001` creates the
-   schema; migration `002` repairs literal `\\n` title separators created by an
-   early development seed without changing descriptions that already contain
-   real line feeds.
-   Migration `003` only adds friend invitations and their constraints/indexes;
-   it does not update or rebuild any existing table.
-2. Run `seed.sql` when demo data is wanted. The seed uses stable IDs,
-   conflict-safe inserts, and existence guards, so it can be applied repeatedly
-   without duplicating rows or overwriting data changed during a local session.
+Setup, safe SQLite import, environment variables, tests and deployment:
+[PostgreSQL guide](POSTGRESQL.md).
 
-Every SQLite connection must execute `PRAGMA foreign_keys = ON`; the migration
-and seed do this for their own connection, but the pragma is connection-local.
-The schema uses SQLite `STRICT` tables and therefore requires a modern SQLite
-runtime. The project targets Node.js 26 and its built-in `node:sqlite` module.
+- `postgresql/migrations/` is the active schema. The asynchronous application
+  runner applies migrations atomically and verifies applied checksums.
+- `postgresql/seed.sql` contains development demo data. The runner seeds only an
+  empty USER table, so restarting preserves existing records.
+- `migrations/` and `seed.sql` retain historical SQLite files unchanged. They are
+  used by legacy tests/import fixtures, not the current server.
+- PostgreSQL uses `"USER"` for the reserved entity name; other table names fold
+  to lowercase. BIGINT identities replace SQLite row IDs. Event times use
+  TIMESTAMPTZ, dates use DATE, and foreign keys are always enforced.
 
 ## Tables and relationships
 
@@ -30,17 +28,27 @@ runtime. The project targets Node.js 26 and its built-in `node:sqlite` module.
 - `ROOM_IMAGE.room_id` owns ordered images; `(room_id, image_order)` is unique.
 - `ROOM_MEMBER` is the user-room junction and has the composite primary key
   `(user_id, room_id)`.
+- `ROOM_FAVORITE` stores saved rooms with the composite primary key
+  `(user_id, room_id)` and cascades when either parent is deleted.
 - `ROOM_REQUEST` stores pending and final join decisions.
 - `MATCHES` records the owner as `initiator_user_id`, the approved member as
   `completer_user_id`, and the room that brought them together.
 - `FRIEND_CONNECTION.sender_id` and `recipient_id` reference `USER`. An unordered
   pair is unique; self-invitations are forbidden. Only a pending invitation can
-  transition to accepted/declined, with a response timestamp.
+  transition to accepted/declined/cancelled, with a response timestamp. Cancelled
+  invitations remain in history and do not grant contact access. The existing
+  one-invitation-per-pair rule is unchanged; this migration does not enable re-sending.
 
 Deleting a user or room cascades to dependent rows. Frequently queried foreign
 keys, statuses, price, image order, and match roles are indexed. A partial unique
 index allows historical rejected/approved requests while permitting only one
 pending request for a user-room pair.
+
+`ROOM.price_basis` is `per_room`, `per_person`, or NULL for unknown legacy data;
+`locality` and `cost_notes` hold owner-provided location/cost information.
+`ROOM_REQUEST.cancelled` records withdrawal with `responded_at`, preserving history.
+`ROOM_MEMBER.left` releases capacity and revokes member/match visibility; reapproval
+reactivates the existing member/match rows with fresh joining timestamps.
 
 ## ER conflict and consequence
 
@@ -52,8 +60,9 @@ lifestyle description rather than a reusable catalogue item.
 
 If product requirements later need reusable lifestyle categories, the ER model
 must change to a category-style `LIFESTYLE` table plus a `USER_LIFESTYLE`
-junction table. That category entity is deliberately not added here. Amenities and
-favorites are likewise absent because they are not present in the current ER.
+junction table. That category entity is deliberately not added here. Amenities
+are not implemented in this schema. Favorites use the separately added
+`ROOM_FAVORITE` junction table (migration 004).
 
 ## Data invariants
 
@@ -65,7 +74,7 @@ favorites are likewise absent because they are not present in the current ER.
   room.
 - A request cannot target the requester's own room, an already joined room, or
   a non-available room. Only `pending` requests can transition to `approved` or
-  `rejected`; final decisions cannot be changed.
+  `rejected` or `cancelled`; final decisions cannot be changed.
 - `responded_at` is null only for pending requests and required for final ones.
 - A match cannot be a self-match. Its initiator must own the room and its
   completer must be an approved member of that room.

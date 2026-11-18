@@ -1,10 +1,37 @@
 import type { FriendConnection, FriendProfile, JoinRequest, Lifestyle, Match, Preference, ProfileBundle, Room, RoomMember, User } from '../types';
+import { friendlyApiError } from './apiErrors';
 
 const TOKEN_KEY = 'roommatch:token';
+let tokenRevision = 0;
+let observedToken: string | null | undefined;
+const tokenChangeListeners = new Set<() => void>();
 type JsonObject = Record<string, unknown>;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message); this.name = 'ApiError'; }
+  constructor(message: string, public status: number, public fieldErrors: Record<string, string> = {}) { super(status === 0 ? message : friendlyApiError(message, status)); this.name = 'ApiError'; }
+}
+
+export class SessionChangedError extends Error {
+  constructor() { super('The active account has been changed; please try again.'); this.name = 'SessionChangedError'; }
+}
+
+export class InvalidAuthResponseError extends Error {
+  constructor() {
+    super('The server sent incomplete or incorrect account information. Please try again.');
+    this.name = 'InvalidAuthResponseError';
+  }
+}
+
+function synchronizeToken() {
+  // Read the latest value: a queued storage event may describe an older change.
+  observedToken = localStorage.getItem(TOKEN_KEY);
+  tokenRevision += 1;
+  for (const listener of tokenChangeListeners) listener();
+}
+
+function handleTokenStorage(event: StorageEvent) {
+  if (event.storageArea !== localStorage || (event.key !== TOKEN_KEY && event.key !== null)) return;
+  synchronizeToken();
 }
 
 const object = (value: unknown): JsonObject => value && typeof value === 'object' ? value as JsonObject : {};
@@ -28,6 +55,43 @@ export function normalizeUser(value: unknown): User {
   };
 }
 
+const isJsonObject = (value: unknown): value is JsonObject => value !== null && typeof value === 'object' && !Array.isArray(value);
+const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
+function parseAuthenticatedUser(value: unknown): User {
+  if (!isJsonObject(value)) throw new InvalidAuthResponseError();
+  const userId = pick(value, 'userId', 'user_id', 'id');
+  const validId = typeof userId === 'number'
+    ? Number.isSafeInteger(userId) && userId > 0
+    : typeof userId === 'string' && /^[1-9]\d*$/.test(userId) && Number.isSafeInteger(Number(userId));
+  const firstName = pick(value, 'firstName', 'first_name');
+  const lastName = pick(value, 'lastName', 'last_name');
+  const email = value.email;
+  const active = value.isActive !== undefined ? value.isActive : value.is_active;
+  if (!validId || !isNonEmptyString(firstName) || !isNonEmptyString(lastName)
+    || !isNonEmptyString(email) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    || (active !== undefined && active !== true && active !== 1)) {
+    throw new InvalidAuthResponseError();
+  }
+  const optionalTextFields = [
+    ['phone'], ['gender'], ['dateOfBirth', 'date_of_birth'], ['university'],
+    ['profileImage', 'profile_image'], ['bio'], ['instagram'], ['lineId', 'line_id'],
+  ];
+  if (optionalTextFields.some(keys => {
+    const field = pick(value, ...keys);
+    return field !== undefined && typeof field !== 'string';
+  })) throw new InvalidAuthResponseError();
+  // Validate before normalization can turn missing fields or wrong types into strings.
+  return normalizeUser(value);
+}
+
+function parseAuthSession(value: unknown) {
+  if (!isJsonObject(value) || typeof value.token !== 'string' || !/^[\x21-\x7e]+$/.test(value.token)) {
+    throw new InvalidAuthResponseError();
+  }
+  return { token: value.token, user: parseAuthenticatedUser(value.user) };
+}
+
 function normalizeRoom(value: unknown): Room {
   const source = object(value);
   const images = list(pick(source, 'images', 'roomImages', 'room_images')).map((item, index) => {
@@ -38,10 +102,12 @@ function normalizeRoom(value: unknown): Room {
   return {
     roomId: text(source, 'roomId', 'room_id', 'id'), ownerId: text(source, 'ownerId', 'owner_id'), title: text(source, 'title'), description: text(source, 'description'),
     googleMapsUrl: text(source, 'googleMapsUrl', 'google_maps_url', 'mapUrl'), price: numeric(source, 'price', 'monthlyPrice'), capacity: numeric(source, 'capacity') || 1,
+    priceBasis: (pick(source, 'priceBasis', 'price_basis') ?? null) as Room['priceBasis'], locality: text(source, 'locality'), costNotes: text(source, 'costNotes', 'cost_notes'), isMember: Boolean(source.isMember),
     status: (text(source, 'status') || 'available') as Room['status'], createdAt: text(source, 'createdAt', 'created_at'), owner: source.owner ? normalizeUser(source.owner) : undefined,
     images, members: Array.isArray(rawMembers) ? rawMembers.map(normalizeMember) : undefined, memberCount: numeric(source, 'memberCount', 'member_count'),
-    availableSlots: numeric(source, 'availableSlots', 'available_slots'), isOwner: Boolean(source.isOwner ?? source.is_owner),
+    availableSlots: numeric(source, 'availableSlots', 'available_slots'), isOwner: Boolean(source.isOwner ?? source.is_owner), isFavorite: Boolean(source.isFavorite ?? source.is_favorite),
     requestStatus: (pick(source, 'requestStatus', 'request_status') ?? null) as Room['requestStatus'],
+    pendingRequestId: text(source, 'pendingRequestId', 'pending_request_id') || null,
   };
 }
 
@@ -53,7 +119,7 @@ function normalizeMember(value: unknown): RoomMember {
 function normalizeRequest(value: unknown): JoinRequest {
   const source = object(value); const room = source.room ? normalizeRoom(source.room) : undefined;
   return { requestId: text(source, 'requestId', 'request_id', 'id'), roomId: text(source, 'roomId', 'room_id') || room?.roomId, userId: text(source, 'userId', 'user_id'),
-    status: (text(source, 'status') || 'pending') as JoinRequest['status'], requestedAt: text(source, 'requestedAt', 'requested_at'), respondedAt: text(source, 'respondedAt', 'responded_at'),
+    status: (text(source, 'status') || 'pending') as JoinRequest['status'], membershipActive: typeof source.membershipActive === 'boolean' ? source.membershipActive : undefined, requestedAt: text(source, 'requestedAt', 'requested_at'), respondedAt: text(source, 'respondedAt', 'responded_at'),
     room, requester: source.requester ? normalizeUser(source.requester) : undefined };
 }
 
@@ -68,19 +134,75 @@ function normalizeProfile(value: unknown): ProfileBundle {
   return { user: normalizeUser(source.user), lifestyle: source.lifestyle ? { lifestyleId: text(lifestyle, 'lifestyleId', 'lifestyle_id'), lifestyleName: text(lifestyle, 'lifestyleName', 'lifestyle_name') } : null, preference: source.preference ? normalizePreference(source.preference) : null };
 }
 
+const unauthorizedListeners = new Set<(token: string) => void>();
+
+export function subscribeUnauthorized(listener: (token: string) => void) {
+  unauthorizedListeners.add(listener);
+  return () => { unauthorizedListeners.delete(listener); };
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers); const token = tokenStorage.get();
+  const sessionToken = tokenStorage.get();
+  if (tokenChangeListeners.size && sessionToken !== observedToken) {
+    // Do not send an old screen's action under a new account before its storage event arrives.
+    synchronizeToken();
+    throw new SessionChangedError();
+  }
+  const headers = new Headers(options.headers);
+  const isSignInRequest = path === '/auth/login' || path === '/auth/register';
+  const token = isSignInRequest ? null : sessionToken;
+  const revision = tokenRevision;
+  const assertCurrentSession = () => {
+    if (revision !== tokenRevision || sessionToken !== tokenStorage.get()) throw new SessionChangedError();
+  };
   if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let response: Response;
   try { response = await fetch(`/api${path}`, { ...options, headers }); }
-  catch { throw new ApiError('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง', 0); }
+  catch {
+    assertCurrentSession();
+    throw new ApiError('Unable to connect to the server. Please try again.', 0);
+  }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
-  if (!response.ok) throw new ApiError(text(object(payload), 'error', 'message') || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', response.status);
+  assertCurrentSession();
+  if (!response.ok) {
+    // A late failure must not invalidate a newer login, even if its token is identical.
+    if (response.status === 401 && token && token === tokenStorage.get() && revision === tokenRevision) {
+      for (const listener of unauthorizedListeners) listener(token);
+    }
+    const fieldErrors = Object.fromEntries(Object.entries(object(object(payload).fieldErrors)).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+    throw new ApiError(text(object(payload), 'error', 'message') || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', response.status, fieldErrors);
+  }
+
   return payload as T;
 }
 
-export const tokenStorage = { get: () => localStorage.getItem(TOKEN_KEY), set: (token: string) => localStorage.setItem(TOKEN_KEY, token), clear: () => localStorage.removeItem(TOKEN_KEY) };
+export const tokenStorage = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (token: string) => {
+    localStorage.setItem(TOKEN_KEY, token);
+    observedToken = token;
+    tokenRevision += 1;
+  },
+  clear: () => {
+    localStorage.removeItem(TOKEN_KEY);
+    observedToken = null;
+    tokenRevision += 1;
+  },
+  subscribe: (listener: () => void) => {
+    if (!tokenChangeListeners.size) {
+      const token = tokenStorage.get();
+      if (observedToken !== token) tokenRevision += 1;
+      observedToken = token;
+      window.addEventListener('storage', handleTokenStorage);
+    }
+    tokenChangeListeners.add(listener);
+    return () => {
+      tokenChangeListeners.delete(listener);
+      if (!tokenChangeListeners.size) window.removeEventListener('storage', handleTokenStorage);
+    };
+  },
+};
 
 function normalizeFriend(value: unknown): FriendProfile {
   const source = object(value);
@@ -98,25 +220,45 @@ function normalizeConnection(value: unknown): FriendConnection {
 }
 
 export const api = {
+  async uploadImage(file: File) {
+    try {
+      const result = await request<JsonObject>('/uploads/images', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+      return text(result, 'imageUrl');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 500) throw new ApiError('อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', error.status);
+      throw error;
+    }
+  },
   async friends(query = '') { return list(await request(`/friends?q=${encodeURIComponent(query)}`), 'people').map(normalizeFriend); },
   async friendConnections() { return list(await request('/friends/connections'), 'connections').map(normalizeConnection); },
   async inviteFriend(recipientId: string) { const result = await request<JsonObject>('/friends/connections', { method: 'POST', body: JSON.stringify({ recipientId: Number(recipientId) }) }); return normalizeConnection(result.connection); },
   async decideFriend(connectionId: string, status: 'accepted' | 'declined') { const result = await request<JsonObject>(`/friends/connections/${connectionId}`, { method: 'PATCH', body: JSON.stringify({ status }) }); return normalizeConnection(result.connection); },
-  async login(payload: { email: string; password: string }) { const result = await request<JsonObject>('/auth/login', { method: 'POST', body: JSON.stringify(payload) }); return { token: text(result, 'token'), user: normalizeUser(result.user) }; },
-  async register(payload: JsonObject) { const result = await request<JsonObject>('/auth/register', { method: 'POST', body: JSON.stringify(payload) }); return { token: text(result, 'token'), user: normalizeUser(result.user) }; },
-  async me() { const result = await request<JsonObject>('/auth/me'); return normalizeUser(result.user); },
+  async cancelFriendInvitation(connectionId: string) { const result = await request<JsonObject>(`/friends/connections/${encodeURIComponent(connectionId)}/cancel`, { method: 'POST' }); return normalizeConnection(result.connection); },
+  async login(payload: { email: string; password: string }) { return parseAuthSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) })); },
+  async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
+  async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
   async rooms(params: URLSearchParams) { return list(await request(`/rooms${params.size ? `?${params}` : ''}`), 'rooms').map(normalizeRoom); },
   async room(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}`); return normalizeRoom(result.room); },
   async myRooms() { return list(await request('/my/rooms'), 'rooms').map(normalizeRoom); },
+  async favorites() {
+    return list(await request('/favorites'), 'rooms').map(normalizeRoom);
+  },
+  addFavorite: (roomId: string) =>
+    request<void>(`/rooms/${roomId}/favorite`, { method: 'PUT' }),
+  removeFavorite: (roomId: string) =>
+    request<void>(`/rooms/${roomId}/favorite`, { method: 'DELETE' }),
   async createRoom(payload: JsonObject) { const result = await request<JsonObject>('/rooms', { method: 'POST', body: JSON.stringify(payload) }); return normalizeRoom(result.room); },
   async updateRoom(roomId: string, payload: JsonObject) { const result = await request<JsonObject>(`/rooms/${roomId}`, { method: 'PATCH', body: JSON.stringify(payload) }); return normalizeRoom(result.room); },
   deleteRoom: (roomId: string) => request<void>(`/rooms/${roomId}`, { method: 'DELETE' }),
   async createJoinRequest(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}/requests`, { method: 'POST' }); return normalizeRequest(result.request); },
+  async cancelRequest(requestId: string) { const result = await request<JsonObject>(`/requests/${requestId}/cancel`, { method: 'POST' }); return normalizeRequest(result.request); },
+  leaveRoom: (roomId: string) => request<void>(`/rooms/${roomId}/members/me`, { method: 'DELETE' }),
   async mineRequests() { return list(await request('/requests/mine'), 'requests').map(normalizeRequest); },
   async ownerRequests() { return list(await request('/owner/requests'), 'requests').map(normalizeRequest); },
+  async requesterProfile(requestId: string) { const result = await request<JsonObject>(`/requests/${encodeURIComponent(requestId)}/profile`); return normalizeFriend(result.profile); },
   async decideRequest(requestId: string, status: 'approved' | 'rejected') { const result = await request<JsonObject>(`/requests/${requestId}`, { method: 'PATCH', body: JSON.stringify({ status }) }); return normalizeRequest(result.request); },
   async roomMembers(roomId: string) { return list(await request(`/rooms/${roomId}/members`), 'members').map(normalizeMember); },
-  async matches() { return list(await request('/matches'), 'matches').map(item => { const source = object(item); return { matchId: text(source, 'matchId', 'match_id'), matchedAt: text(source, 'matchedAt', 'matched_at'), room: source.room ? normalizeRoom(source.room) : undefined, otherUser: source.otherUser ? normalizeUser(source.otherUser) : undefined } satisfies Match; }); },
+  async matches() { return list(await request('/matches'), 'matches').map(item => { const source = object(item); return { matchId: text(source, 'matchId', 'match_id'), matchedAt: text(source, 'matchedAt', 'matched_at'), otherRole: text(source, 'otherRole') as Match['otherRole'], room: source.room ? normalizeRoom(source.room) : undefined, otherUser: source.otherUser ? normalizeUser(source.otherUser) : undefined } satisfies Match; }); },
   async profile() { return normalizeProfile(await request('/profile')); },
   async updateProfile(payload: JsonObject) { return normalizeProfile(await request('/profile', { method: 'PATCH', body: JSON.stringify(payload) })); },
   updateLifestyle: (payload: Lifestyle) => request('/lifestyle', { method: 'PUT', body: JSON.stringify(payload) }),

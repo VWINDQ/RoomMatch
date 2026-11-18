@@ -1,0 +1,7 @@
+.matches-page .member-load-status { display: grid; gap: 8px; align-content: start; }
+.matches-page .member-load-status p { margin: 0; color: var(--text-secondary); font-size: .76rem; line-height: 1.7; overflow-wrap: anywhere; }
+.matches-page .member-load-status p[role="status"] { display: flex; align-items: center; gap: 8px; }
+.matches-page .member-load-status .member-load-title { color: var(--primary); font-weight: 600; }
+.matches-page .member-load-status .button { justify-self: start; min-height: 44px; padding: 8px 12px; font-size: .76rem; }
+.matches-page .match-access-note { margin: 14px 0; color: var(--text-secondary); font-size: .76rem; line-height: 1.7; }
+.matches-page .member-strip:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; border-radius: 8px; }
