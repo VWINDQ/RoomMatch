@@ -28,13 +28,16 @@ export function RoomDetailPage() {
   };
   useEffect(() => { if (requestError && !sending) requestFeedback.current?.focus(); }, [requestError, sending]);
   const [savingFavorite, setSavingFavorite] = useState(false);
+  const [favoriteFeedback, setFavoriteFeedback] = useState(false);
   const toggleFavorite = async () => {
     if (!room || savingFavorite) return;
     const wasFavorite = Boolean(room.isFavorite);
+    setFavoriteFeedback(false);
     setSavingFavorite(true);
     try {
       if (wasFavorite) await api.removeFavorite(room.roomId); else await api.addFavorite(room.roomId);
       setRoom(current => current?.roomId === room.roomId ? { ...current, isFavorite: !wasFavorite } : current);
+      setFavoriteFeedback(!wasFavorite);
       notify(wasFavorite ? 'เอาห้องออกจากรายการโปรดแล้ว' : 'บันทึกห้องโปรดแล้ว');
     } catch (caught) { notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ'); }
     finally { setSavingFavorite(false); }
@@ -103,7 +106,7 @@ export function RoomDetailPage() {
       <section className="capacity-note"><ShieldCheck/><div><h2>จำนวนผู้พักคิดรวมเจ้าของห้อง</h2><p>เมื่อห้องเต็ม ระบบจะหยุดรับคำขอใหม่โดยอัตโนมัติ</p></div></section>
       <section><h2>สมาชิกห้อง</h2><div className="detail-member-list"><Member person={room.owner} label="เจ้าของห้อง"/>{room.members?.map(member => <Member key={member.userId} person={member.user} label="สมาชิก"/>)}</div>{!room.isOwner && !room.isMember && <p className="field-hint">รายชื่อสมาชิกคนอื่นจะแสดงเมื่อเจ้าของอนุมัติให้คุณเข้าพักแล้ว</p>}</section>
       {room.googleMapsUrl && <section className="map-preview"><div><MapPin/><span><strong>ตำแหน่งห้อง</strong><small>เปิด Google Maps ในแท็บใหม่</small></span></div><a className="button button-secondary" href={room.googleMapsUrl} target="_blank" rel="noreferrer">ดูบนแผนที่ <ExternalLink size={16}/></a></section>}
-    </div><aside ref={requestPanel} tabIndex={-1} className="detail-sidebar" aria-label="คำขอเข้าพักและเจ้าของห้อง"><Price amount={room.price} basis={room.priceBasis}/><StatusBadge status={room.status}/><Button variant="secondary" className="w-full" aria-label={room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} aria-pressed={Boolean(room.isFavorite)} loading={savingFavorite} onClick={toggleFavorite}><Heart size={17} fill={room.isFavorite ? 'currentColor' : 'none'}/>{room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}</Button><hr/><h2>เจ้าของประกาศ</h2><div className="owner-mini"><span><ProfilePhoto src={room.owner?.profileImage || ''} fallback={room.owner?.firstName?.charAt(0) || 'R'}/></span><div><strong>{room.owner ? `${room.owner.firstName} ${room.owner.lastName}` : 'สมาชิก RoomMatch'}</strong><small>{room.owner?.university || 'ผู้ลงประกาศ'}</small></div></div>
+    </div><aside ref={requestPanel} tabIndex={-1} className="detail-sidebar" aria-label="คำขอเข้าพักและเจ้าของห้อง"><Price amount={room.price} basis={room.priceBasis}/><StatusBadge status={room.status}/><Button variant="secondary" className={`w-full ${favoriteFeedback ? 'has-favorite-feedback' : ''}`} onAnimationEnd={() => setFavoriteFeedback(false)} aria-label={room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} aria-pressed={Boolean(room.isFavorite)} loading={savingFavorite} onClick={toggleFavorite}><Heart size={17} fill={room.isFavorite ? 'currentColor' : 'none'}/>{room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}</Button><hr/><h2>เจ้าของประกาศ</h2><div className="owner-mini"><span><ProfilePhoto src={room.owner?.profileImage || ''} fallback={room.owner?.firstName?.charAt(0) || 'R'}/></span><div><strong>{room.owner ? `${room.owner.firstName} ${room.owner.lastName}` : 'สมาชิก RoomMatch'}</strong><small>{room.owner?.university || 'ผู้ลงประกาศ'}</small></div></div>
       {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`)}>แก้ไขประกาศของฉัน</Button> : <Button className="w-full" loading={sending} disabled={requestNeedsRefresh || room.requestStatus === 'pending' || room.isMember || room.status !== 'available' || room.availableSlots < 1} onClick={requestRoom}>{requestLabel}</Button>}
       {!room.isOwner && room.requestStatus === 'pending' && <Button variant="quiet" className="w-full" onClick={() => { setRequestError(''); setWithdrawError(''); setWithdrawOpen(true); }}>ถอนคำขอ</Button>}
       {room.requestStatus === 'cancelled' && <p ref={cancelledNote} tabIndex={-1} className="inline-note" role="status">คุณถอนคำขอแล้ว ประวัติยังอยู่ และส่งคำขอใหม่ได้เมื่อห้องเปิดรับและมีที่ว่าง</p>}

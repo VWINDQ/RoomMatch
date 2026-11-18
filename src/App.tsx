@@ -27,6 +27,8 @@ function ScrollToTop() {
     const focus = (fallback = false) => {
       const target = (restoreId ? document.getElementById(restoreId) : null) || ((!restoreId || fallback) ? document.querySelector<HTMLElement>('main h1, main h2') : null);
       if (!target || finished) return;
+      // A dialog opened during loading now owns focus, including its return target.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) { finished = true; return; }
       target.tabIndex = target.matches('a, button, input') ? target.tabIndex : -1;
       target.focus({ preventScroll: true });
       if (restoreId && target.id === restoreId) target.scrollIntoView({ block: 'center', behavior: 'instant' });

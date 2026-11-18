@@ -17,15 +17,18 @@ export function RoomCard({ room, onFavoriteChange }: { room: Room; onFavoriteCha
   const { notify } = useApp();
   const [isFavorite, setIsFavorite] = useState(Boolean(room.isFavorite));
   const [saving, setSaving] = useState(false);
+  const [favoriteFeedback, setFavoriteFeedback] = useState(false);
   const id = `room-card-${room.roomId}`;
 
   useEffect(() => { setIsFavorite(Boolean(room.isFavorite)); }, [room.isFavorite]);
   const toggleFavorite = async () => {
     if (saving) return;
+    setFavoriteFeedback(false);
     setSaving(true);
     try {
       if (isFavorite) await api.removeFavorite(room.roomId); else await api.addFavorite(room.roomId);
       setIsFavorite(!isFavorite);
+      setFavoriteFeedback(!isFavorite);
       onFavoriteChange?.(room.roomId, !isFavorite);
       notify(isFavorite ? 'เอาห้องออกจากรายการโปรดแล้ว' : 'บันทึกห้องโปรดแล้ว');
     } catch (caught) { notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ'); }
@@ -41,7 +44,7 @@ export function RoomCard({ room, onFavoriteChange }: { room: Room; onFavoriteCha
       </div>
     </Link>
     {/* Keep the favorite control outside the native room link for mouse and keyboard use. */}
-    <button type="button" className={`favorite-button ${isFavorite ? 'is-favorite' : ''}`} aria-label={isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} aria-pressed={isFavorite} disabled={saving} onClick={toggleFavorite}><Heart size={19} fill={isFavorite ? 'currentColor' : 'none'}/></button>
+    <button type="button" className={`favorite-button ${isFavorite ? 'is-favorite' : ''} ${favoriteFeedback ? 'has-favorite-feedback' : ''}`} aria-label={isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} aria-pressed={isFavorite} disabled={saving} onClick={toggleFavorite} onAnimationEnd={() => setFavoriteFeedback(false)}><Heart size={19} fill={isFavorite ? 'currentColor' : 'none'}/></button>
   </article>;
 }
 
