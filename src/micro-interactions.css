@@ -1,0 +1,73 @@
+/* Motion answers an action; pages and room lists stay still while browsing. */
+:root {
+  --motion-press: 120ms;
+  --motion-reveal: 220ms;
+  --motion-soft: cubic-bezier(.2, .8, .2, 1);
+}
+
+.favorite-button {
+  box-shadow: 3px 4px 9px rgba(39,35,32,.15), inset 0 2px 0 rgba(255,255,255,.85);
+}
+.favorite-button.is-favorite { background: var(--danger-bg); }
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(.button, .icon-button, .favorite-button, .create-shortcut, .select-chip, .status-toggle, .delete-action),
+  :is(.request-tabs, .friend-tabs, .invitation-filters, .status-choice) button {
+    transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease,
+      box-shadow 160ms ease, transform var(--motion-press) var(--motion-soft);
+  }
+
+  :is(.button, .icon-button, .favorite-button, .create-shortcut, .select-chip, .status-toggle, .delete-action):active:not(:disabled),
+  :is(.request-tabs, .friend-tabs, .invitation-filters, .status-choice) button:active:not(:disabled) {
+    transform: translateY(1px) scale(.97);
+    box-shadow: inset 3px 3px 6px rgba(29,49,84,.16), inset -2px -2px 4px rgba(255,255,255,.4);
+  }
+
+  .has-favorite-feedback .lucide-heart {
+    transform-origin: center;
+    animation: roommatch-heart-pop 380ms var(--motion-soft);
+  }
+
+  .modal-scrim, .filter-scrim { animation: roommatch-scrim-in 160ms ease-out; }
+  .modal-card { animation: roommatch-dialog-in var(--motion-reveal) var(--motion-soft); }
+  .filter-sheet { animation: roommatch-filter-in var(--motion-reveal) var(--motion-soft); }
+  .toast { animation: roommatch-toast-in 180ms var(--motion-soft); }
+
+  @media (max-width: 700px) {
+    .filter-sheet { animation-name: roommatch-filter-up; }
+  }
+}
+
+@keyframes roommatch-heart-pop {
+  0%, 100% { transform: scale(1); }
+  40% { transform: scale(1.24) rotate(-8deg); }
+  70% { transform: scale(.94); }
+}
+@keyframes roommatch-scrim-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes roommatch-dialog-in {
+  from { opacity: .5; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes roommatch-filter-in {
+  from { opacity: .5; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes roommatch-filter-up {
+  from { opacity: .5; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes roommatch-toast-in {
+  from { opacity: .5; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translateX(-50%); }
+}
+
+/* Touch browsers can retain :hover after a tap; keep cards and navigation steady. */
+@media (hover: none), (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .room-card:hover, .nav-link:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.button, .icon-button, .favorite-button, .create-shortcut, .select-chip, .status-toggle, .delete-action):active:not(:disabled),
+  :is(.request-tabs, .friend-tabs, .invitation-filters, .status-choice) button:active:not(:disabled) {
+    transform: none;
+  }
+}
