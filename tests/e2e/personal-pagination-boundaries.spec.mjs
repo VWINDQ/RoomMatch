@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { test, expect, signIn, noOverflow, reachable, capture } from './fixtures.mjs';
+import { test, expect, signIn, noOverflow, reachable, capture, selectPersonalListFilter } from './fixtures.mjs';
 import { seedPersonalPagination } from '../support/personal-pagination-fixture.mjs';
 import { hashPassword, createToken } from '../../server/auth.js';
 
@@ -31,7 +31,7 @@ for (const item of personalCases) {
     const {rooms,headers}=await prepare(page,environment,testInfo,count);
     await page.goto(`${item.path}?page=3`);
     await expect(page.locator(item.selector)).toHaveCount(1);
-    await page.getByRole('combobox',{name:'กรองสถานะ'}).selectOption('available');
+    await selectPersonalListFilter(page, 'กรองสถานะ', 'available');
     const expected=rooms.filter(room=>room.status==='available').length;
     await expect(page.locator(item.selector)).toHaveCount(expected);
     await expect(page.locator('.room-pagination')).toHaveCount(0);
@@ -46,6 +46,17 @@ for (const item of personalCases) {
     await expect(page.locator('.room-pagination')).toHaveCount(1);
     await page.goForward();await expect(page.locator(item.selector)).toHaveCount(expected);
     await expect(page.locator('.room-pagination')).toHaveCount(0);
+
+    await page.goBack();
+    await expect(page.locator('.room-pagination')).toHaveCount(1);
+    await environment.db.prepare("DELETE FROM ROOM WHERE owner_id=? AND status='inactive'").run(testInfo.boundaryOwnerId);
+    await selectPersonalListFilter(page, 'กรองสถานะ', 'inactive');
+    await expect(page).toHaveURL(new URL(`${item.path}?status=inactive`, environment.baseURL).href);
+    await expect(page.locator('.empty-state')).toBeVisible();
+    await expect(page.locator(item.selector)).toHaveCount(0);
+    await expect(page.locator('.room-pagination')).toHaveCount(0);
+    const emptyResponse = await page.request.get(`${item.endpoint}?page=1&pageSize=${item.size}&status=inactive`, { headers });
+    expect(await emptyResponse.json()).toMatchObject({ total: 0, totalPages: 0, rooms: [] });
   });
   test(`${item.path} rejects a pageSize above its fixed personal-list maximum`, async ({ page,environment },testInfo) => {
     const { headers }=await prepare(page,environment,testInfo,item.size+1);

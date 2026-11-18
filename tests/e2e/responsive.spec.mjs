@@ -31,7 +31,7 @@ test('navigation and create-listing controls are usable', async ({ page, environ
     await expect(page).toHaveURL(new RegExp(`${path}(\\?|$)`));
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   }
-  const create = page.getByRole('button', { name: 'ลงประกาศใหม่', exact: true }).filter({ visible: true }).first();
+  const create = page.getByRole('button', { name: /^ลงประกาศ(ใหม่)?$/ });
   await reachable(create); await create.click();
   await expect(page).toHaveURL(/\/my-listings\/new$/);
   await reachable(page.getByRole('button', { name: 'สร้างประกาศ', exact: true }));

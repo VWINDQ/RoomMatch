@@ -19,17 +19,23 @@ export function Pagination({ page, totalPages, busy, onChange, label = 'แบ�
   </nav>;
 }
 
-export function PersonalListToolbar({ status, sort, favorites, onChange, listStartRef }: {
-  status: string; sort: string; favorites?: boolean; onChange: (changes: Record<string, string>) => void; listStartRef?: Ref<HTMLDivElement>;
-}) {
+type PersonalListFieldsProps = {
+  status: string; sort: string; favorites?: boolean; onChange: (changes: Record<string, string>) => void;
+};
+
+export function PersonalListToolbar({ listStartRef, ...fields }: PersonalListFieldsProps & { listStartRef?: Ref<HTMLDivElement> }) {
   return <div ref={listStartRef} className="list-toolbar personal-list-toolbar">
-    <div className="personal-list-filters">
+    <div className="personal-list-filters"><PersonalListFields {...fields}/></div>
+  </div>;
+}
+
+export function PersonalListFields({ status, sort, favorites, onChange }: PersonalListFieldsProps) {
+  return <>
       <label><span>สถานะ</span><select aria-label="กรองสถานะ" value={status} onChange={event => onChange({ status: event.target.value })}>
         <option value="">ทั้งหมด</option><option value="available">ว่าง</option><option value="full">เต็มแล้ว</option><option value="inactive">พักประกาศ</option>
       </select></label>
       <label><span>เรียงตาม</span><select aria-label="เรียงตาม" value={sort} onChange={event => onChange({ sort: event.target.value })}>
         {favorites && <option value="saved">บันทึกล่าสุด</option>}<option value="newest">ประกาศล่าสุด</option><option value="price_asc">ราคาต่ำ → สูง</option><option value="price_desc">ราคาสูง → ต่ำ</option>
       </select></label>
-    </div>
-  </div>;
+  </>;
 }

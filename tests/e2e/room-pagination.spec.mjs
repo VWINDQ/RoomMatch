@@ -24,8 +24,16 @@ test('pagination URL, refresh, detail return, history and responsive controls', 
   const previous = nav.getByRole('button', { name: 'ก่อนหน้า', exact: true });
   const next = nav.getByRole('button', { name: 'ถัดไป', exact: true });
   await expect(previous).toBeDisabled();
+  const pageTwoResponse = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/rooms' && url.searchParams.get('page') === '2';
+  });
   await reachable(next); await next.focus(); await page.keyboard.press('Enter');
   await ready(page, 2); await expect(page).toHaveURL(/page=2/);
+  const pageTwo = await (await pageTwoResponse).json();
+  expect(pageTwo).toMatchObject({ page: 2, pageSize: 12, total: 125, totalPages: 11 });
+  expect(await page.locator('.room-card-link').evaluateAll(links => links.map(link => link.getAttribute('href'))))
+    .toEqual(pageTwo.rooms.map(room => `/rooms/${room.roomId}`));
   await page.reload(); await ready(page, 2);
   const link = page.locator('.room-card-link').first();
   const title = await link.getAttribute('aria-label');

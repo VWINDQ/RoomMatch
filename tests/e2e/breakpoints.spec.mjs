@@ -30,7 +30,9 @@ for (const width of breakpointWidths) {
 }
 
 for (const [width, height, sidebar] of [
+  [320, 800, false],
   [390, 844, false],
+  [768, 1024, false],
   [1023, 800, false],
   [1024, 800, true],
   [1024, 390, true],
@@ -40,9 +42,9 @@ for (const [width, height, sidebar] of [
     await page.setViewportSize({ width, height });
     await openRoute(page, environment, routes.find(route => route.name === 'my-listings'));
 
-    const create = page.getByRole('button', { name: 'ลงประกาศใหม่', exact: true });
+    const create = page.getByRole('button', { name: /^ลงประกาศ(ใหม่)?$/ });
     const sidebarCreate = page.locator('.desktop-rail .create-shortcut');
-    const pageCreate = page.locator('.my-listings-header .page-actions button');
+    const pageCreate = page.locator('.my-listings-actions button').first();
     await expect(create).toHaveCount(1);
     await expect(sidebar ? sidebarCreate : pageCreate).toBeVisible();
     await expect(sidebar ? pageCreate : sidebarCreate).toBeHidden();
@@ -52,24 +54,34 @@ for (const [width, height, sidebar] of [
       return document.activeElement === button;
     })).toBe(false);
 
-    const header = await page.locator('.my-listings-header .page-header').boundingBox();
+    const header = await page.locator('.my-listings-heading').boundingBox();
+    const heading = await page.getByRole('heading', { name: 'ประกาศของฉัน', exact: true }).boundingBox();
     const subtitle = await page.getByText('ดูแลข้อมูล ราคา และสถานะห้องที่คุณลงประกาศ', { exact: true }).boundingBox();
-    const filters = await page.locator('.my-listings-header .personal-list-filters').boundingBox();
-    const status = await page.getByRole('combobox', { name: 'กรองสถานะ' }).boundingBox();
-    const sort = await page.getByRole('combobox', { name: 'เรียงตาม' }).boundingBox();
+    const filterGroup = page.locator('.my-listings-header .personal-list-filters');
+    const trigger = page.getByRole('button', { name: 'ตัวกรอง', exact: true });
     const listing = await page.locator('.my-listing').first().boundingBox();
-    expect(status.x + status.width).toBeLessThan(sort.x);
-    expect(listing.y).toBeGreaterThan(filters.y + filters.height);
     if (sidebar) {
+      await expect(trigger).toHaveCount(0);
+      const filters = await filterGroup.boundingBox();
+      expect(filters.x + filters.width).toBeCloseTo(listing.x + listing.width, 0);
+      expect(listing.y).toBeGreaterThan(filters.y + filters.height);
       expect(header.x + header.width).toBeLessThan(filters.x);
       expect(Math.abs(subtitle.y + subtitle.height - filters.y - filters.height)).toBeLessThanOrEqual(2);
-      expect(Math.abs(filters.x + filters.width - listing.x - listing.width)).toBeLessThanOrEqual(2);
       const nav = await page.locator('.desktop-rail nav').boundingBox();
       const shortcut = await sidebarCreate.boundingBox();
       expect(nav.y + nav.height).toBeLessThanOrEqual(shortcut.y + 1);
       expect(shortcut.y + shortcut.height).toBeLessThan(height);
     } else {
-      expect(header.y + header.height).toBeLessThan(filters.y);
+      await expect(filterGroup).toBeHidden();
+      const button = await pageCreate.boundingBox();
+      const filters = await trigger.boundingBox();
+      expect(heading.y + heading.height).toBeLessThan(subtitle.y);
+      expect(subtitle.y + subtitle.height).toBeLessThan(button.y);
+      expect(button.x).toBeCloseTo(heading.x, 0);
+      expect(button.x + button.width).toBeLessThan(filters.x);
+      expect(filters.y).toBeCloseTo(button.y, 0);
+      expect(filters.x + filters.width).toBeCloseTo(listing.x + listing.width, 0);
+      expect(listing.y - (button.y + button.height)).toBeCloseTo(12, 0);
     }
     await noOverflow(page);
     await capture(page, testInfo, `my-listings-${width}x${height}`);

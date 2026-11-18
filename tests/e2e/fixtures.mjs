@@ -83,6 +83,18 @@ export async function openRoute(page, environment, route) {
   await page.evaluate(() => document.fonts.ready);
 }
 
+export async function selectPersonalListFilter(page, name, value) {
+  const trigger = page.getByRole('button', { name: /^ตัวกรอง/ });
+  if (await trigger.isVisible()) {
+    await trigger.click();
+    const sheet = page.getByRole('dialog', { name: 'ตัวกรองประกาศของฉัน' });
+    await sheet.getByRole('combobox', { name, exact: true }).selectOption(value);
+    await sheet.getByRole('button', { name: 'ใช้ตัวกรอง' }).click();
+  } else {
+    await page.getByRole('combobox', { name, exact: true }).selectOption(value);
+  }
+}
+
 export async function noOverflow(page) {
   const widths = await page.evaluate(() => {
     const workspace = document.querySelector('.workspace');

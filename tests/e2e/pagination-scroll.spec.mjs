@@ -1,4 +1,4 @@
-import { test, expect, signIn, capture } from './fixtures.mjs';
+import { test, expect, signIn, capture, selectPersonalListFilter } from './fixtures.mjs';
 import { seedPersonalPagination } from '../support/personal-pagination-fixture.mjs';
 
 const cases = [
@@ -33,13 +33,14 @@ const clearScroll = page => page.evaluate(() => { window.__listScrollCalls = [];
 const calls = page => page.evaluate(() => window.__listScrollCalls);
 const next = page => page.locator('.room-pagination').getByRole('button', { name: 'ถัดไป', exact: true });
 const previous = page => page.locator('.room-pagination').getByRole('button', { name: 'ก่อนหน้า', exact: true });
+const listStart = page => page.locator('.my-listings-header > div, .list-toolbar:visible:not(.my-listings-header *)');
 async function bottom(page) {
   await next(page).scrollIntoViewIfNeeded();
-  expect((await page.locator('.list-toolbar').boundingBox()).y).toBeLessThan(-50);
+  expect((await listStart(page).boundingBox()).y).toBeLessThan(-50);
   await clearScroll(page);
 }
 async function atListStart(page) {
-  await expect.poll(() => page.locator('.list-toolbar').evaluate(node => {
+  await expect.poll(() => listStart(page).evaluate(node => {
     const header = document.querySelector('.compact-header');
     const covered = header && /fixed|sticky/.test(getComputedStyle(header).position) ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
     return Math.abs(node.getBoundingClientRect().top - covered - 16);
@@ -104,7 +105,7 @@ for (const [path, endpoint, actor, selector, size] of cases) {
 
     // Filter changes reset page, but are not pagination actions.
     if (path !== '/rooms') {
-      await page.getByRole('combobox', { name: 'เรียงตาม', exact: true }).selectOption('price_asc');
+      await selectPersonalListFilter(page, 'เรียงตาม', 'price_asc');
       await expect(page).not.toHaveURL(/page=/);
       await ready(page,selector,size);
       expect(await calls(page)).toEqual([]);

@@ -112,7 +112,7 @@ for (const editing of [false, true]) {
 
 test('RM-13 browser Back and Forward can stay or proceed to their original history entries', async ({ page }) => {
   await page.goto('/my-listings');
-  await page.getByRole('button', { name: /ลงประกาศใหม่/ }).first().click();
+  await page.getByRole('button', { name: /^ลงประกาศ(ใหม่)?$/ }).click();
   await expect(titleInput(page)).toBeVisible();
   await menu(page, '/rooms').click();
   await expect(page).toHaveURL(/\/rooms$/);

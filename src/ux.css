@@ -37,6 +37,7 @@
 .profile-actions>.form-feedback { display: block; }
 .profile-actions>.form-action-buttons { display: flex; }
 .filter-sheet { top: 24px; right: 24px; height: auto; max-height: calc(100dvh - 48px); border-radius: 26px; overflow: hidden; }
+.my-listings-page .filter-sheet { width: min(540px, 100%); }
 .filter-scroll { display: grid; gap: 20px; padding-top: 20px; }
 .filter-scroll fieldset { padding: 0 0 20px; }
 /* Keep dialog controls visible; only the content scrolls on short screens. */
@@ -62,6 +63,7 @@
 @media (max-width: 700px) {
   .room-card>.favorite-button { left: 74px; right: auto; }
   .filter-sheet { top: auto; right: 0; bottom: 0; height: auto; max-height: 88dvh; border-radius: 24px 24px 0 0; }
+  .my-listings-page .filter-sheet { width: 100%; }
   .room-grid { grid-template-columns: 1fr; }
   .room-card-link { display: grid; grid-template-columns: 126px minmax(0,1fr); }
   .room-card-copy .location { flex: initial; }
