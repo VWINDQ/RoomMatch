@@ -1,11 +1,11 @@
 import { Heart, RefreshCw } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageHeader } from '../components/Layout';
 import { RoomGrid } from '../components/RoomCard';
 import { Button, EmptyState, SkeletonGrid } from '../components/UI';
 import { api } from '../lib/api';
 import { Pagination, PersonalListToolbar } from '../components/Pagination';
+import { PersonalListFilterControl, useFilterClickGuard } from '../components/PersonalListFilterControl';
 import { useRoomPagination } from '../lib/useRoomPagination';
 
 export function FavoritesPage() {
@@ -13,6 +13,7 @@ export function FavoritesPage() {
   const { rooms, page: currentPage, totalPages, params, loading, error, refresh, changeParams, changePage, listStartRef } = useRoomPagination(api.favoritesPage, 12);
   const restoreFavoriteFocus = useRef(false);
   const page = useRef<HTMLDivElement>(null);
+  const filterClickGuard = useFilterClickGuard();
   const filtered = ['status', 'q', 'minPrice', 'maxPrice', 'minSlots', 'priceBasis'].some(key => Boolean(params.get(key)));
 
   useEffect(() => {
@@ -26,13 +27,15 @@ export function FavoritesPage() {
   };
 
   return (
-    <div ref={page} className="page favorites-page">
-      <PageHeader
-        title="ห้องโปรด"
-        subtitle="ห้องที่คุณบันทึกไว้"
-      />
-
-      <PersonalListToolbar listStartRef={listStartRef} status={params.get('status') || ''} sort={params.get('sort') || 'saved'} favorites onChange={changeParams}/>
+    <div ref={page} className="page favorites-page" {...filterClickGuard}>
+      <header className="favorites-header">
+        <h1>ห้องโปรด</h1>
+        <p>ห้องที่คุณบันทึกไว้</p>
+        <div ref={listStartRef} className="favorites-tools">
+          <PersonalListFilterControl params={params} onChange={changeParams} favorites/>
+          <PersonalListToolbar status={params.get('status') || ''} sort={params.get('sort') || 'saved'} favorites onChange={changeParams}/>
+        </div>
+      </header>
       {loading ? (
         <SkeletonGrid />
       ) : error ? (
