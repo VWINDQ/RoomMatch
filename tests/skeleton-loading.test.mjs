@@ -11,7 +11,7 @@ Object.assign(globalThis, {
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 const { createRoot } = await import('react-dom/client');
-const { MemoryRouter } = await import('react-router-dom');
+const { TestRouter: MemoryRouter } = await import('./helpers/test-router.mjs');
 const { AppProvider } = await import('../src/AppContext.tsx');
 const { ProfilePage } = await import('../src/pages/ProfilePage.tsx');
 const { MyListingsPage } = await import('../src/pages/MyListingsPage.tsx');

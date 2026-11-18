@@ -88,7 +88,7 @@ function ShellContent() {
   const navigate = useNavigate(); const location = useLocation(); const { user, logout } = useApp();
   const hideCreate = location.pathname.includes('/new') || location.pathname.includes('/edit');
   const initial = user?.firstName.trim().charAt(0) || 'ผ';
-  const signOut = () => { logout(); navigate('/login'); };
+  const signOut = () => { if (logout()) navigate('/login'); };
   return <div className="app-shell">
     <a className="skip-link" href="#main-content">ข้ามไปเนื้อหาหลัก</a>
     <aside className="desktop-rail"><Logo/><nav aria-label="เมนูหลัก"><NavItems/></nav>

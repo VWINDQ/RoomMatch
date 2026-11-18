@@ -7,7 +7,8 @@ type AppState = {
   user: User | null; authLoading: boolean; authError: string; toast: string;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
-  logout: () => void; refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string) => void;
+  logout: () => boolean; registerLogoutGuard: (guard: () => boolean) => () => void;
+  refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string) => void;
 };
 
 const Context = createContext<AppState | null>(null);
@@ -21,6 +22,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const authVersion = useRef(0);
   // Login and registration share a sequence independent of account refreshes.
   const signInVersion = useRef(0);
+  const logoutGuard = useRef<(() => boolean) | null>(null);
+  const registerLogoutGuard = useCallback((guard: () => boolean) => {
+    logoutGuard.current = guard;
+    return () => { if (logoutGuard.current === guard) logoutGuard.current = null; };
+  }, []);
   const notify = useCallback((message: string) => setToast(message), []);
   const clearSession = useCallback(() => {
     signInVersion.current += 1;
@@ -35,6 +41,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearSession();
     notify('การเข้าสู่ระบบสิ้นสุด กรุณาเข้าสู่ระบบอีกครั้ง');
   }, [clearSession, notify]);
+  const logout = useCallback(() => {
+    // Only an explicit logout may wait for unsaved edits; session expiry must not.
+    if (logoutGuard.current?.()) return false;
+    clearSession();
+    return true;
+  }, [clearSession]);
 
   useEffect(() => subscribeUnauthorized(expireSession), [expireSession]);
 
@@ -107,8 +119,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, authLoading, authError, toast, notify, refreshUser, retryAuth,
     login: (email, password) => signIn(() => api.login({ email, password })),
     register: payload => signIn(() => api.register(payload)),
-    logout: clearSession,
-  }), [authError, authLoading, clearSession, notify, refreshUser, retryAuth, signIn, toast, user]);
+    logout, registerLogoutGuard,
+  }), [authError, authLoading, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

@@ -8,18 +8,21 @@ const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://loc
 Object.assign(globalThis, {
   window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage,
   HTMLElement: dom.window.HTMLElement, FormData: dom.window.FormData,
+  HTMLInputElement: dom.window.HTMLInputElement, HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
+  HTMLSelectElement: dom.window.HTMLSelectElement,
   requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
   cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
   IS_REACT_ACT_ENVIRONMENT: true,
 });
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 const { createRoot } = await import('react-dom/client');
-const { MemoryRouter } = await import('react-router-dom');
-const { AppProvider } = await import('../src/AppContext.tsx');
+const { createMemoryRouter, RouterProvider, Outlet } = await import('react-router-dom');
+const { AppProvider, useApp } = await import('../src/AppContext.tsx');
 const { ProfilePage } = await import('../src/pages/ProfilePage.tsx');
 const { api, ApiError } = await import('../src/lib/api.ts');
 
-let root, profile, save, upload;
+let root, profile, save, upload, router, app;
+function SessionProbe() { app = useApp(); return null; }
 beforeEach(() => {
   localStorage.clear();
   profile = {
@@ -38,13 +41,17 @@ beforeEach(() => {
   upload = mock.method(api, 'uploadImage', async () => '/uploads/1/review.webp');
   root = createRoot(document.getElementById('root'));
 });
-afterEach(async () => { await act(async () => root.unmount()); mock.restoreAll(); });
+afterEach(async () => { await act(async () => root.unmount()); router?.dispose(); mock.restoreAll(); });
 after(() => dom.window.close());
 
 const field = name => document.querySelector(`[name="${name}"]`);
 const button = label => [...document.querySelectorAll('button')].find(element => element.textContent === label);
 async function mountEditor() {
-  await act(async () => root.render(createElement(MemoryRouter, null, createElement(AppProvider, null, createElement(ProfilePage)))));
+  router = createMemoryRouter([{ element: createElement(AppProvider, null, createElement(SessionProbe), createElement(Outlet)), children: [
+    { path: '/profile', element: createElement(ProfilePage) },
+    { path: '*', element: createElement('p', null, 'Destination') },
+  ] }], { initialEntries: ['/rooms', '/profile'], initialIndex: 1 });
+  await act(async () => root.render(createElement(RouterProvider, { router })));
   assert.ok(document.querySelector('.profile-summary'));
   await act(async () => button('แก้ไขโปรไฟล์').click());
 }
@@ -185,4 +192,163 @@ test('repeated submit while saving sends one request and locks editing until com
   assert.equal(button('ยกเลิก').matches(':disabled'), true);
   await act(async () => resolveSave(structuredClone(profile)));
   assert.equal(document.querySelector('form'), null);
+});
+
+const leave = destination => act(async () => { await router.navigate(destination); });
+const dialog = () => document.querySelector('[role="dialog"]');
+const confirmSave = () => act(async () => button('บันทึกและไปต่อ').click());
+const discard = () => act(async () => button('ยกเลิกการแก้ไข').click());
+
+test('an untouched editor and reverted values leave without a warning', async () => {
+  await mountEditor();
+  await change('firstName', 'Temporary');
+  await change('firstName', profile.user.firstName);
+  await leave('/rooms');
+  assert.equal(router.state.location.pathname, '/rooms');
+  assert.equal(dialog(), null);
+  assert.equal(save.mock.callCount(), 0);
+});
+
+test('dismissing the warning preserves edits; discard follows the latest chosen destination', async () => {
+  await mountEditor();
+  await change('bio', 'Unsaved biography');
+  await leave('/rooms');
+  assert.ok(dialog());
+  assert.equal(router.state.location.pathname, '/profile');
+  await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  assert.equal(dialog(), null);
+  assert.equal(field('bio').value, 'Unsaved biography');
+  await leave('/favorites?view=saved#top');
+  await discard();
+  assert.equal(router.state.location.pathname + router.state.location.search + router.state.location.hash, '/favorites?view=saved#top');
+  assert.equal(save.mock.callCount(), 0);
+  assert.equal(profile.user.bio, '');
+});
+
+test('save from the warning persists edits before continuing to the requested page', async () => {
+  await mountEditor();
+  await change('firstName', 'Saved before leaving');
+  await leave('/rooms?sort=price#results');
+  await confirmSave();
+  assert.equal(save.mock.callCount(), 1);
+  assert.equal(profile.user.firstName, 'Saved before leaving');
+  assert.equal(router.state.location.pathname + router.state.location.search + router.state.location.hash, '/rooms?sort=price#results');
+  assert.equal(dialog(), null);
+});
+
+test('validation failure cancels navigation, keeps input, and lets the user correct it', async () => {
+  await mountEditor();
+  await change('phone', '1');
+  await leave('/rooms');
+  await confirmSave();
+  assert.equal(router.state.location.pathname, '/profile');
+  assert.equal(dialog(), null);
+  assert.equal(save.mock.callCount(), 0);
+  assert.equal(field('phone').value, '1');
+  assert.equal(field('phone').getAttribute('aria-invalid'), 'true');
+  await change('phone', '0812345678');
+  await leave('/rooms');
+  await confirmSave();
+  assert.equal(profile.user.phone, '0812345678');
+  assert.equal(router.state.location.pathname, '/rooms');
+});
+
+test('a failed save from the warning retains selected images and retries without uploading twice', async () => {
+  await mountEditor();
+  await chooseImage();
+  await change('bio', 'Keep this text');
+  save.mock.mockImplementationOnce(async () => { throw new ApiError('Service unavailable', 503); });
+  await leave('/rooms');
+  await confirmSave();
+  assert.equal(router.state.location.pathname, '/profile');
+  assert.equal(dialog(), null);
+  assert.equal(field('bio').value, 'Keep this text');
+  assert.ok(document.querySelector('.form-feedback[role="alert"]'));
+  assert.equal(upload.mock.callCount(), 1);
+  await leave('/favorites');
+  await confirmSave();
+  assert.equal(router.state.location.pathname, '/favorites');
+  assert.equal(upload.mock.callCount(), 1);
+  assert.equal(save.mock.callCount(), 2);
+});
+
+test('image-only edits are guarded and discard does not upload the selected image', async () => {
+  await mountEditor();
+  await chooseImage();
+  await leave('/rooms');
+  assert.ok(dialog());
+  await discard();
+  assert.equal(router.state.location.pathname, '/rooms');
+  assert.equal(upload.mock.callCount(), 0);
+  assert.equal(save.mock.callCount(), 0);
+  assert.equal(profile.user.profileImage, 'https://example.test/original.jpg');
+});
+
+test('browser history navigation continues to its original entry after saving', async () => {
+  await mountEditor();
+  await change('bio', 'Saved on Back');
+  await leave(-1);
+  assert.ok(dialog());
+  await confirmSave();
+  assert.equal(router.state.location.pathname, '/rooms');
+  assert.equal(profile.user.bio, 'Saved on Back');
+  await leave(1);
+  assert.equal(router.state.location.pathname, '/profile');
+  assert.ok(document.querySelector('.profile-summary'));
+});
+
+for (const saveFirst of [false, true]) {
+  test(`logout waits for the ${saveFirst ? 'save' : 'discard'} decision before clearing the session`, async () => {
+    await mountEditor();
+    localStorage.setItem('roommatch:token', 'profile-test-session');
+    await change('bio', 'Logout edit');
+    await act(async () => { assert.equal(app.logout(), false); });
+    assert.ok(dialog());
+    assert.equal(localStorage.getItem('roommatch:token'), 'profile-test-session');
+    if (saveFirst) await confirmSave();
+    else await discard();
+    assert.equal(router.state.location.pathname, '/login');
+    assert.equal(localStorage.getItem('roommatch:token'), null);
+    assert.equal(save.mock.callCount(), saveFirst ? 1 : 0);
+    assert.equal(profile.user.bio, saveFirst ? 'Logout edit' : '');
+  });
+}
+
+test('closing the warning during a pending save keeps the page and prevents duplicate requests', async () => {
+  await mountEditor();
+  await change('bio', 'Pending edit');
+  let resolveSave;
+  save.mock.mockImplementationOnce(() => new Promise(resolve => { resolveSave = resolve; }));
+  await leave('/rooms');
+  await confirmSave();
+  assert.equal(button('ยกเลิกการแก้ไข').disabled, true);
+  await submit();
+  assert.equal(save.mock.callCount(), 1);
+  await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  assert.equal(dialog(), null);
+  const updated = { ...profile, user: { ...profile.user, bio: 'Pending edit' } };
+  await act(async () => resolveSave(updated));
+  assert.equal(router.state.location.pathname, '/profile');
+  assert.equal(document.querySelector('.profile-editor'), null);
+  await leave('/rooms');
+  assert.equal(router.state.location.pathname, '/rooms');
+});
+
+test('refresh warns only for unsaved changes and explicit cancel resets the next editor baseline', async () => {
+  await mountEditor();
+  const warns = () => {
+    const event = new dom.window.Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  assert.equal(warns(), false);
+  await change('bio', 'Unsaved');
+  assert.equal(warns(), true);
+  await act(async () => button('ยกเลิก').click());
+  assert.equal(warns(), false);
+  await act(async () => button('แก้ไขโปรไฟล์').click());
+  assert.equal(field('bio').value, '');
+  assert.equal(warns(), false);
+  await leave('/rooms');
+  assert.equal(router.state.location.pathname, '/rooms');
 });
