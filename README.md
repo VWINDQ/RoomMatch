@@ -332,6 +332,12 @@ accounts. Existing SQLite files are retained and can be imported explicitly;
 see [PostgreSQL setup and migration](database/POSTGRESQL.md).
 `npm test` uses `TEST_DATABASE_URL`, a separate database ending in `_test`.
 
+`npm run dev` and `npm run dev:api` now watch imported API source files and restart
+the API when they change, alongside Vite's frontend updates. Restart an already
+running pre-watch dev command once to activate this behavior. With the ephemeral
+development signing key, API restarts require signing in again; no `.env` change
+is needed to use watch mode.
+
 Useful commands:
 
 ```bash

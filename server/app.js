@@ -9,6 +9,7 @@ import { openDatabase } from './database.js';
 import { handleFriendRoutes } from './friends.js';
 import { createRoomRequestHandler } from './requests.js';
 import { canViewRoomMembers, createRoomMatchesHandler, listRoomMembers } from './matches.js';
+import { roomPagination, selectRoomPage } from './roomPagination.js';
 import { createImageStorage } from './uploads.js';
 import { validateListing, isWebUrl } from '../shared/listingValidation.js';
 
@@ -327,6 +328,41 @@ async function imageRows(db, roomId) {
   return await db.prepare('SELECT * FROM ROOM_IMAGE WHERE room_id = ? ORDER BY image_order, image_id').all(roomId);
 }
 
+const ROOM_SORTS = {
+  newest: 'created_at DESC, room_id DESC',
+  price_asc: 'price ASC, room_id DESC',
+  price_desc: 'price DESC, room_id DESC',
+  capacity_desc: 'capacity DESC, room_id DESC',
+};
+
+function roomListFilters(searchParams) {
+  const conditions = [];
+  const parameters = [];
+  const search = searchParams.get('q')?.trim();
+  if (search) {
+    assert(search.length <= 200, 400, 'q is too long');
+    conditions.push("(r.description ILIKE ? ESCAPE '\\' OR owner.first_name ILIKE ? ESCAPE '\\' OR owner.last_name ILIKE ? ESCAPE '\\' OR r.locality ILIKE ? ESCAPE '\\')");
+    const escaped = `%${search.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
+    parameters.push(escaped, escaped, escaped, escaped);
+  }
+  const minPrice = money(searchParams.get('minPrice'), 'minPrice');
+  const maxPrice = money(searchParams.get('maxPrice'), 'maxPrice');
+  if (minPrice !== null) { conditions.push('r.price >= ?'); parameters.push(minPrice); }
+  if (maxPrice !== null) { conditions.push('r.price <= ?'); parameters.push(maxPrice); }
+  assert(minPrice === null || maxPrice === null || minPrice <= maxPrice, 400, 'minPrice cannot exceed maxPrice');
+  const minSlots = integer(searchParams.get('minSlots'), 'minSlots', { min: 1, max: 100 });
+  if (minSlots !== null) {
+    conditions.push("r.capacity - 1 - (SELECT COUNT(*) FROM ROOM_MEMBER slots WHERE slots.room_id = r.room_id AND slots.status = 'approved') >= ?");
+    parameters.push(minSlots);
+  }
+  const priceBasis = searchParams.get('priceBasis');
+  if (priceBasis) {
+    assert(['per_room', 'per_person'].includes(priceBasis), 400, 'priceBasis is invalid');
+    conditions.push('r.price_basis = ?'); parameters.push(priceBasis);
+  }
+  return { conditions, parameters };
+}
+
 const ROOM_SELECT = `
   SELECT r.*,
     owner.user_id AS owner_user_id,
@@ -617,7 +653,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const user = await authenticate(db, request);
         const body = await readJson(request);
         const lifestyleName = text(body.lifestyleName, 'lifestyleName', { required: true, max: 400 });
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)
           ON CONFLICT(user_id) DO UPDATE SET lifestyle_name = excluded.lifestyle_name
         `).run(user.user_id, lifestyleName);
@@ -635,30 +671,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
 
       if (request.method === 'GET' && pathname === '/api/rooms') {
         const currentUser = await authenticate(db, request, { optional: true });
-        const conditions = [];
-        const parameters = [];
-        const search = url.searchParams.get('q')?.trim();
-        if (search) {
-          assert(search.length <= 200, 400, 'q is too long');
-          conditions.push("(r.description ILIKE ? ESCAPE '\\' OR owner.first_name ILIKE ? ESCAPE '\\' OR owner.last_name ILIKE ? ESCAPE '\\' OR r.locality ILIKE ? ESCAPE '\\')");
-          const escaped = `%${search.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
-          parameters.push(escaped, escaped, escaped, escaped);
-        }
-        const minPrice = money(url.searchParams.get('minPrice'), 'minPrice');
-        const maxPrice = money(url.searchParams.get('maxPrice'), 'maxPrice');
-        if (minPrice !== null) { conditions.push('r.price >= ?'); parameters.push(minPrice); }
-        if (maxPrice !== null) { conditions.push('r.price <= ?'); parameters.push(maxPrice); }
-        assert(minPrice === null || maxPrice === null || minPrice <= maxPrice, 400, 'minPrice cannot exceed maxPrice');
-        const minSlots = integer(url.searchParams.get('minSlots'), 'minSlots', { min: 1, max: 100 });
-        if (minSlots !== null) {
-          conditions.push("r.capacity - 1 - (SELECT COUNT(*) FROM ROOM_MEMBER slots WHERE slots.room_id = r.room_id AND slots.status = 'approved') >= ?");
-          parameters.push(minSlots);
-        }
-        const priceBasis = url.searchParams.get('priceBasis');
-        if (priceBasis) {
-          assert(['per_room', 'per_person'].includes(priceBasis), 400, 'priceBasis is invalid');
-          conditions.push('r.price_basis = ?'); parameters.push(priceBasis);
-        }
+        const { conditions, parameters } = roomListFilters(url.searchParams);
         const friendId = integer(url.searchParams.get('withFriend'), 'withFriend', { min: 1 });
         if (friendId !== null) {
           const viewer = await authenticate(db, request);
@@ -680,44 +693,12 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         } else {
           conditions.push("r.status != 'inactive'");
         }
-        const sortMap = {
-          newest: 'r.created_at DESC, r.room_id DESC',
-          price_asc: 'r.price ASC, r.room_id DESC',
-          price_desc: 'r.price DESC, r.room_id DESC',
-          capacity_desc: 'r.capacity DESC, r.room_id DESC',
-        };
         const sort = url.searchParams.get('sort') ?? 'newest';
-        assert(Object.hasOwn(sortMap, sort), 400, 'sort is invalid');
-        const paginated = url.searchParams.has('page') || url.searchParams.has('pageSize');
-        const paginationInteger = (name, fallback, max = Number.MAX_SAFE_INTEGER) => {
-          const value = url.searchParams.get(name) ?? String(fallback);
-          assert(/^[1-9]\d*$/.test(value), 400, `${name} must be a positive integer`);
-          return integer(value, name, { required: true, min: 1, max });
-        };
-        const requestedPage = paginated ? paginationInteger('page', 1) : 1;
-        const pageSize = paginated ? paginationInteger('pageSize', 12, 100) : null;
-        assert(!paginated || (!url.searchParams.has('limit') && !url.searchParams.has('offset')), 400, 'Use page/pageSize or limit/offset, not both');
-        const limit = pageSize ?? integer(url.searchParams.get('limit') ?? 100, 'limit', { required: true, min: 1, max: 100 });
-        const offset = paginated ? 0 : integer(url.searchParams.get('offset') ?? 0, 'offset', { required: true, min: 0, max: Number.MAX_SAFE_INTEGER });
-        // One statement gives the count and clamped page the same PostgreSQL snapshot.
-        const order = sortMap[sort].replaceAll('r.', '');
-        const result = await db.prepare(`
-          WITH filtered AS (
-            ${ROOM_SELECT} WHERE ${conditions.join(' AND ')}
-          ), totals AS (SELECT COUNT(*) AS total FROM filtered),
-          paging AS (
-            SELECT total, LEAST(?::bigint, GREATEST(1, CEIL(total::numeric / ?)))::bigint AS page
-            FROM totals
-          )
-          SELECT selected.*, paging.total, paging.page
-          FROM paging LEFT JOIN LATERAL (
-            SELECT * FROM filtered ORDER BY ${order}
-            LIMIT ? OFFSET ${paginated ? '(SELECT (page - 1) * ? FROM paging)' : '?'}
-          ) selected ON true
-          ORDER BY ${order}
-        `).all(...parameters, requestedPage, limit, limit, paginated ? limit : offset);
-        const { total, page } = result[0];
-        const rows = result.filter(row => row.room_id !== null);
+        assert(Object.hasOwn(ROOM_SORTS, sort), 400, 'sort is invalid');
+        const { rows, metadata } = await selectRoomPage(db, {
+          select: ROOM_SELECT, conditions, parameters, order: ROOM_SORTS[sort],
+          pagination: roomPagination(url.searchParams, { legacyLimit: 100 }),
+        });
         const favoriteRoomIds = new Set(
           currentUser
             ? (await db
@@ -730,7 +711,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const rooms = await roomDtos(db, rows, row => ({
           isFavorite: favoriteRoomIds.has(Number(row.room_id)),
         }));
-        sendJson(response, 200, { rooms, total, ...(paginated ? { page, pageSize: limit, totalPages: Math.ceil(total / limit) } : {}) }, request);
+        sendJson(response, 200, { rooms, ...metadata }, request);
         return;
       }
 
@@ -912,27 +893,33 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         return;
       }
 
-      if (request.method === 'GET' && pathname === '/api/my/rooms') {
+      if (request.method === 'GET' && ['/api/my/rooms', '/api/favorites'].includes(pathname)) {
         const user = await authenticate(db, request);
-        const rows = await db.prepare(`${ROOM_SELECT} WHERE r.owner_id = ? ORDER BY r.created_at DESC, r.room_id DESC`).all(user.user_id);
-        sendJson(response, 200, { rooms: await roomDtos(db, rows, () => ({ currentUserId: user.user_id })) }, request);
-        return;
-      }
-
-      if (request.method === 'GET' && pathname === '/api/favorites') {
-        const user = await authenticate(db, request);
-        const rows = await db.prepare(`
-          ${ROOM_SELECT}
-          JOIN ROOM_FAVORITE favorite ON favorite.room_id = r.room_id
-          WHERE favorite.user_id = ?
-          ORDER BY favorite.created_at DESC, r.room_id DESC
-        `).all(user.user_id);
-
+        const favorites = pathname === '/api/favorites';
+        const { conditions, parameters } = roomListFilters(url.searchParams);
+        conditions.push(favorites ? 'favorite.user_id = ?' : 'r.owner_id = ?');
+        parameters.push(user.user_id);
+        const status = url.searchParams.get('status');
+        if (status) {
+          assert(ROOM_STATUSES.has(status), 400, 'status is invalid');
+          conditions.push('r.status = ?'); parameters.push(status);
+        }
+        const sorts = favorites ? { saved: 'saved_at DESC, room_id DESC', ...ROOM_SORTS } : ROOM_SORTS;
+        const sort = url.searchParams.get('sort') ?? (favorites ? 'saved' : 'newest');
+        assert(Object.hasOwn(sorts, sort), 400, 'sort is invalid');
+        const select = favorites
+          ? `${ROOM_SELECT.replace('SELECT r.*,', 'SELECT r.*, favorite.created_at AS saved_at,')}
+              JOIN ROOM_FAVORITE favorite ON favorite.room_id = r.room_id`
+          : ROOM_SELECT;
+        const pageSize = favorites ? 12 : 10;
+        const { rows, metadata } = await selectRoomPage(db, {
+          select, conditions, parameters, order: sorts[sort],
+          pagination: roomPagination(url.searchParams, { pageSize, maxPageSize: pageSize }),
+        });
         const rooms = await roomDtos(db, rows, () => ({
-          currentUserId: user.user_id, isFavorite: true,
+          currentUserId: user.user_id, ...(favorites ? { isFavorite: true } : {}),
         }));
-
-        sendJson(response, 200, { rooms }, request);
+        sendJson(response, 200, { rooms, ...metadata }, request);
         return;
       }
 

@@ -1,8 +1,8 @@
 import { CalendarDays, Heart, MapPin, UsersRound } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApp } from '../AppContext';
-import { api } from '../lib/api';
+import { api, SessionChangedError } from '../lib/api';
 import type { PriceBasis, Room } from '../types';
 import { StatusBadge } from './UI';
 import { RoomPhoto } from './RoomPhoto';
@@ -17,12 +17,14 @@ export function RoomCard({ room, onFavoriteChange }: { room: Room; onFavoriteCha
   const { notify } = useApp();
   const [isFavorite, setIsFavorite] = useState(Boolean(room.isFavorite));
   const [saving, setSaving] = useState(false);
+  const favoriteLocked = useRef(false);
   const [favoriteFeedback, setFavoriteFeedback] = useState(false);
   const id = `room-card-${room.roomId}`;
 
   useEffect(() => { setIsFavorite(Boolean(room.isFavorite)); }, [room.isFavorite]);
   const toggleFavorite = async () => {
-    if (saving) return;
+    if (favoriteLocked.current) return;
+    favoriteLocked.current = true;
     setFavoriteFeedback(false);
     setSaving(true);
     try {
@@ -31,8 +33,8 @@ export function RoomCard({ room, onFavoriteChange }: { room: Room; onFavoriteCha
       setFavoriteFeedback(!isFavorite);
       onFavoriteChange?.(room.roomId, !isFavorite);
       notify(isFavorite ? 'เอาห้องออกจากรายการโปรดแล้ว' : 'บันทึกห้องโปรดแล้ว');
-    } catch (caught) { notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ'); }
-    finally { setSaving(false); }
+    } catch (caught) { if (!(caught instanceof SessionChangedError)) notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ'); }
+    finally { favoriteLocked.current = false; setSaving(false); }
   };
 
   return <article className={`room-card ${room.status !== 'available' ? 'is-unavailable' : ''}`}>
