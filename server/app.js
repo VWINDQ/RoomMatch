@@ -63,6 +63,14 @@ function text(value, field, { required = false, max = 255 } = {}) {
   return trimmed || null;
 }
 
+function phoneNumber(value) {
+  const parsed = text(value, 'phone', { required: true, max: 30 });
+  if (!/^\d{10}$/.test(parsed)) {
+    throw new HttpError(400, 'phone must contain exactly 10 digits', { phone: 'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก' });
+  }
+  return parsed;
+}
+
 function integer(value, field, { min, max, required = false } = {}) {
   if (value === undefined || value === null || value === '') {
     assert(!required, 400, `${field} is required`);
@@ -489,7 +497,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const body = await readJson(request);
         const firstName = text(body.firstName, 'firstName', { required: true, max: 100 });
         const lastName = text(body.lastName, 'lastName', { required: true, max: 100 });
-        const phone = text(body.phone, 'phone', { required: true, max: 30 });
+        const phone = phoneNumber(body.phone);
         const email = text(body.email, 'email', { required: true, max: 320 }).toLowerCase();
         assert(EMAIL_PATTERN.test(email), 400, 'email must be valid');
         const password = text(body.password, 'password', { required: true, max: 256 });
@@ -562,7 +570,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const fields = [
           ['firstName', 'first_name', (value) => text(value, 'firstName', { required: true, max: 100 })],
           ['lastName', 'last_name', (value) => text(value, 'lastName', { required: true, max: 100 })],
-          ['phone', 'phone', (value) => text(value, 'phone', { required: true, max: 30 })],
+          ['phone', 'phone', phoneNumber],
           ['gender', 'gender', (value) => text(value, 'gender', { max: 50 })],
           ['dateOfBirth', 'date_of_birth', (value) => isoDate(value, 'dateOfBirth')],
           ['university', 'university', (value) => text(value, 'university', { max: 255 })],
