@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 import { act, createElement, StrictMode } from 'react';
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
+import { openDatabase } from './support/postgres.mjs';
 
 const nativeFetch = globalThis.fetch;
 
@@ -168,8 +169,10 @@ test('expired token during startup returns to a signed-out state', async () => {
   assert.equal(state.toast, sessionMessage);
 });
 
-test('a real expired signed token ends the session and a fresh login works against the API', async () => {
-  const application = await startRoomMatchServer({ host: '127.0.0.1', port: 0, database: { filename: ':memory:', seed: false } });
+test('a real expired signed token ends the session and a fresh login works against the API', async t => {
+  const db = await openDatabase({ filename: ':memory:', seed: false });
+  t.after(() => db.close());
+  const application = await startRoomMatchServer({ host: '127.0.0.1', port: 0, db });
   const baseUrl = `http://127.0.0.1:${application.server.address().port}`;
   try {
     const registration = await nativeFetch(`${baseUrl}/api/auth/register`, {
@@ -608,8 +611,10 @@ test(`an old listing action cannot show a notification in the next account (${ac
 });
 }
 
-test('external account changes keep the displayed user and real API identity in sync', async () => {
-  const application = await startRoomMatchServer({ host: '127.0.0.1', port: 0, database: { filename: ':memory:', seed: false } });
+test('external account changes keep the displayed user and real API identity in sync', async t => {
+  const db = await openDatabase({ filename: ':memory:', seed: false });
+  t.after(() => db.close());
+  const application = await startRoomMatchServer({ host: '127.0.0.1', port: 0, db });
   const baseUrl = `http://127.0.0.1:${application.server.address().port}`;
   try {
     const accounts = [];
@@ -1045,7 +1050,9 @@ test('network errors retain their connection message instead of becoming validat
   await mountProvider();
   respond = async () => { throw new TypeError('Offline'); };
   await assert.rejects(api.profile(), error => error instanceof ApiError
-    && error.status === 0 && error.message === 'Unable to connect to the server. Please try again.');
+    && error.status === 0 && error.networkError === true
+    && error.message === 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง'
+    && Object.keys(error.fieldErrors).length === 0);
   assert.equal(state.user.userId, user.userId);
   assert.equal(tokenStorage.get(), 'old-token');
 });

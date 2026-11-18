@@ -6,6 +6,21 @@ The existing Vite, React, TypeScript, and React Router application is structural
 
 The runtime target is Node.js 26. The server uses `node:http`, `node:crypto`, and the `pg` PostgreSQL driver. One pooled connection is retained per request; database operations are asynchronous. Room writes acquire a room-row lock before checking capacity and changing requests/members. See [PostgreSQL setup and transaction contract](../database/POSTGRESQL.md).
 
+Listing saves distinguish image upload failures (under the image picker) from
+room save failures (above the save buttons). API field errors stay with their
+fields. Connection advice is shown only for a rejected fetch, while generic
+server failures use a safe message for the failed step. Completed uploads stay
+in form state and are reused when retrying.
+
+The listing form locks submission synchronously with a ref while uploading or
+saving, and retains the lock after success until navigation. Failed operations
+unlock for retry without clearing the form or completed uploads. This does not
+change the database schema. If the server creates a room but its response is
+lost, retrying can create another room: the browser cannot determine whether
+the first save committed. Independent submissions, including submissions from
+other tabs or forms, may create identical rooms; names and prices are not used
+to reject duplicates.
+
 ## Database contract
 
 The original room workflow preserves the eight entities required by the ER diagram:
@@ -106,6 +121,16 @@ there is no schema migration. See [UPLOADS.md](UPLOADS.md) for limits and deploy
 ### Rooms and images
 
 - `GET /api/rooms` — browse/search/sort/filter by price and status.
+  RM-12: `page` (positive safe integer, default 1) / `pageSize` (1–100,
+  default 12) opt into server pagination. Response: `{ rooms, total, page,
+  pageSize, totalPages }`. Filtering precedes counting and sorting; every sort
+  uses descending room ID to break ties. Count and page share one SQL snapshot.
+  Oversized pages return the last real page; empty results return page 1 and
+  totalPages 0. Legacy `limit`/`offset` callers retain `{ rooms }` with additive
+  `total`; mixing the two pagination styles returns 400.
+  `/rooms` displays 12 rooms per page and keeps page/search/filter/sort in the
+  URL. Condition changes reset page; canonical page corrections replace history
+  without another API call. Room detail return state preserves the list URL.
 - `GET /api/rooms/:roomId` — room, owner, ordered images, occupancy, members, and current-user request state.
 - `POST /api/rooms` — create an owned room with image URLs.
 - `PATCH /api/rooms/:roomId` — owner-only update.

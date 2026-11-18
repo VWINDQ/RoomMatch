@@ -1,3 +1,4 @@
+import { Skeleton } from './Skeleton';
 import { RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
@@ -44,7 +45,7 @@ export function RequesterProfileModal({ request, onClose, onDecide }: { request:
     {canDecide && <><Button variant="quiet" onClick={() => onDecide('rejected')}>ปฏิเสธคำขอ</Button><Button onClick={() => onDecide('approved')}>อนุมัติเข้าพัก</Button></>}
     <Button className="profile-return" variant="quiet" onClick={onClose}>กลับไปดูคำขอ</Button>
   </>}>
-    {loading ? <div className="requester-profile-loading" role="status"><span className="clay-loader"/><p>กำลังโหลดโปรไฟล์…</p></div>
+    {loading ? <Skeleton variant="requester-profile"/>
       : error || !profile ? <div className="requester-profile-error"><p role="alert">{error || 'ไม่พบโปรไฟล์ผู้ขอเข้าพัก'}</p><Button variant="secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={17}/>ลองอีกครั้ง</Button></div>
         : <div className="requester-profile">
           <header><div className="requester-profile-avatar"><ProfilePhoto src={profile.profileImage} fallback={profile.firstName.charAt(0) || 'R'}/></div><div><h3>{profile.firstName} {profile.lastName}</h3><p>{profile.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p></div></header>

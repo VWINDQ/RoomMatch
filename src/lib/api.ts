@@ -8,30 +8,40 @@ const tokenChangeListeners = new Set<() => void>();
 type JsonObject = Record<string, unknown>;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public fieldErrors: Record<string, string> = {}) { super(status === 0 ? message : friendlyApiError(message, status)); this.name = 'ApiError'; }
-}
-
-export class SessionChangedError extends Error {
-  constructor() { super('The active account has been changed; please try again.'); this.name = 'SessionChangedError'; }
-}
-
-export class InvalidAuthResponseError extends Error {
-  constructor() {
-    super('The server sent incomplete or incorrect account information. Please try again.');
-    this.name = 'InvalidAuthResponseError';
+    constructor(
+      message: string,
+      public status: number,
+      public fieldErrors: Record<string, string> = {},
+      public networkError = false
+    ) {
+      super(status === 0 ? message : friendlyApiError(message, status));
+      this.name = 'ApiError';
+    }
   }
-}
 
-function synchronizeToken() {
-  // Read the latest value: a queued storage event may describe an older change.
-  observedToken = localStorage.getItem(TOKEN_KEY);
-  tokenRevision += 1;
-  for (const listener of tokenChangeListeners) listener();
-}
+  export class SessionChangedError extends Error {
+    constructor() {
+      super('The active account has been changed; please try again.');
+      this.name = 'SessionChangedError';
+    }
+  }
 
-function handleTokenStorage(event: StorageEvent) {
-  if (event.storageArea !== localStorage || (event.key !== TOKEN_KEY && event.key !== null)) return;
-  synchronizeToken();
+  export class InvalidAuthResponseError extends Error {
+    constructor() {
+      super('The server sent incomplete or incorrect account information. Please try again.');
+      this.name = 'InvalidAuthResponseError';
+    }
+  }
+
+  function synchronizeToken() {
+    observedToken = localStorage.getItem(TOKEN_KEY);
+    tokenRevision += 1;
+    for (const listener of tokenChangeListeners) listener();
+  }
+
+  function handleTokenStorage(event: StorageEvent) {
+    if (event.storageArea !== localStorage || (event.key !== TOKEN_KEY && event.key !== null)) return;
+    synchronizeToken();
 }
 
 const object = (value: unknown): JsonObject => value && typeof value === 'object' ? value as JsonObject : {};
@@ -161,7 +171,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try { response = await fetch(`/api${path}`, { ...options, headers }); }
   catch {
     assertCurrentSession();
-    throw new ApiError('Unable to connect to the server. Please try again.', 0);
+    throw new ApiError(
+      'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง',
+      0,
+      {},
+      true
+    );
   }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
   assertCurrentSession();
@@ -237,6 +252,10 @@ export const api = {
   async login(payload: { email: string; password: string }) { return parseAuthSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) })); },
   async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
   async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
+  async roomsPage(params: URLSearchParams) {
+    const result = await request<{ rooms: unknown[]; total: number; page: number; totalPages: number }>(`/rooms?${params}`);
+    return { ...result, rooms: list(result, 'rooms').map(normalizeRoom) };
+  },
   async rooms(params: URLSearchParams) { return list(await request(`/rooms${params.size ? `?${params}` : ''}`), 'rooms').map(normalizeRoom); },
   async room(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}`); return normalizeRoom(result.room); },
   async myRooms() { return list(await request('/my/rooms'), 'rooms').map(normalizeRoom); },

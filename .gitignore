@@ -18,3 +18,8 @@ database/*.sqlite-wal
 .openai/
 .deck-build/
 deliverables/
+
+# Playwright runtime evidence and authentication data
+playwright-report/
+test-results/
+playwright/.auth/
