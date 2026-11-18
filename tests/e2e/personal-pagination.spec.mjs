@@ -8,6 +8,120 @@ const pagination = page => page.getByRole('navigation', { name: 'แบ่งห
 const nextButton = page => pagination(page).getByRole('button', { name: 'ถัดไป', exact: true });
 const titleInput = page => page.locator('[name=title]');
 
+test('Favorites applies and clears filters without activating a card or heart underneath', async ({ page, environment }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await signIn(page, environment, 'seeker');
+  const base = new URL('/favorites?q=Private+pagination', environment.baseURL);
+  await page.goto(base.href + '&page=2');
+  const cards = page.locator('.room-card');
+  await expect(cards).toHaveCount(12);
+
+  const trigger = page.getByRole('button', { name: /^ตัวกรอง/ });
+  if (!(await trigger.isVisible())) {
+    await page.getByRole('combobox', { name: 'กรองสถานะ' }).selectOption('available');
+    await expect(page).toHaveURL(base.href + '&status=available');
+    await expect(cards.locator('.status')).toHaveText(Array(12).fill('ว่าง'));
+    await page.getByRole('combobox', { name: 'กรองสถานะ' }).selectOption('');
+    await expect(page).toHaveURL(base.href);
+    await expect(page.getByRole('combobox', { name: 'เรียงตาม' })).toHaveValue('saved');
+    return;
+  }
+
+  const mutations = [], paths = [], reads = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (['PUT', 'DELETE', 'PATCH', 'POST'].includes(request.method())) mutations.push(url.pathname);
+    if (url.pathname === '/api/favorites') reads.push(url.searchParams.get('page'));
+  });
+  page.on('framenavigated', frame => {
+    if (frame === page.mainFrame()) paths.push(new URL(frame.url()).pathname);
+  });
+  const sheet = page.getByRole('dialog', { name: 'ตัวกรองห้องโปรด' });
+  const status = sheet.getByRole('combobox', { name: 'กรองสถานะ' });
+  const sort = sheet.getByRole('combobox', { name: 'เรียงตาม' });
+  const apply = sheet.getByRole('button', { name: 'ใช้ตัวกรอง' });
+  const reset = sheet.getByRole('button', { name: 'ล้างตัวกรอง' });
+  const close = sheet.getByRole('button', { name: 'ปิด', exact: true });
+
+  await trigger.click();
+  await expect(close).toBeFocused();
+  await expect(sort).toHaveValue('saved');
+  await status.selectOption('inactive');
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+  await expect(page).toHaveURL(base.href + '&page=2');
+  await trigger.click();
+  await expect(status).toHaveValue('');
+  await status.selectOption('available');
+  await sort.selectOption('price_asc');
+  await apply.click();
+  const filtered = base.href + '&status=available&sort=price_asc';
+  await expect(page).toHaveURL(filtered);
+  await expect(cards.locator('.status')).toHaveText(Array(12).fill('ว่าง'));
+  await expect(trigger).toBeFocused();
+  await expect(trigger.locator('span')).toHaveText('2');
+
+  const repeatAbove = async (button, target) => {
+    const box = await button.boundingBox();
+    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const hit = await target.evaluate((element, { x, y }) => {
+      const card = element.closest('.room-card');
+      Object.assign(card.style, {
+        position: 'fixed', inset: 'auto', left: `${x - 40}px`, top: `${y - 30}px`,
+        width: '80px', height: '60px', minHeight: '0', zIndex: '60', transform: 'none', transitionProperty: 'none',
+      });
+      Object.assign(element.style, {
+        position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '1', transitionProperty: 'none',
+      });
+      const stack = document.elementsFromPoint(x, y);
+      return {
+        underlay: stack.includes(element), footer: Boolean(stack[0]?.closest('.filter-sheet footer')),
+        target: element.getBoundingClientRect().toJSON(), card: card.getBoundingClientRect().toJSON(),
+        stack: stack.map(node => node.tagName + '.' + node.getAttribute('class')),
+      };
+    }, point);
+    expect(hit, JSON.stringify(hit)).toMatchObject({ underlay: true, footer: true });
+    await page.mouse.dblclick(point.x, point.y, { delay: 20 });
+    await expect(sheet).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await target.evaluate(element => {
+      element.removeAttribute('style');
+      element.closest('.room-card').removeAttribute('style');
+    });
+  };
+
+  await trigger.click();
+  await expect(status).toHaveValue('available');
+  await expect(sort).toHaveValue('price_asc');
+  await repeatAbove(apply, cards.first().locator('.room-card-link'));
+  await expect(page).toHaveURL(filtered);
+  await nextButton(page).click();
+  await expect(page).toHaveURL(filtered + '&page=2');
+  await expect(cards).toHaveCount(12);
+  await trigger.click();
+  await reset.click();
+  await expect(page).toHaveURL(base.href);
+  await expect(cards).toHaveCount(12);
+  await expect(trigger.locator('span')).toHaveCount(0);
+  await trigger.click();
+  await expect(status).toHaveValue('');
+  await expect(sort).toHaveValue('saved');
+  await repeatAbove(reset, cards.first().locator('.favorite-button'));
+  await expect(page).toHaveURL(base.href);
+  await expect(pagination(page).getByRole('button', { name: 'ก่อนหน้า' })).toBeDisabled();
+  expect(paths).toEqual(['/favorites', '/favorites', '/favorites']);
+  expect(reads).toEqual(['1', '2', '1']);
+  expect(mutations).toEqual([]);
+
+  await cards.first().locator('.room-card-link').click();
+  await expect(page).toHaveURL(/\/rooms\/\d+$/);
+  await page.getByRole('button', { name: 'กลับไปห้องโปรด' }).click();
+  await expect(page).toHaveURL(base.href);
+  const unfavorite = page.waitForResponse(response => response.request().method() === 'DELETE' && response.url().endsWith('/favorite'));
+  await cards.first().locator('.favorite-button').click();
+  expect((await unfavorite).ok()).toBe(true);
+});
+
 test('My Listings filters stay on the list during apply, reset and repeated clicks', async ({ page, environment }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await signIn(page, environment, 'owner');

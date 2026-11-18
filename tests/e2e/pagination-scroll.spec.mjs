@@ -33,7 +33,7 @@ const clearScroll = page => page.evaluate(() => { window.__listScrollCalls = [];
 const calls = page => page.evaluate(() => window.__listScrollCalls);
 const next = page => page.locator('.room-pagination').getByRole('button', { name: 'ถัดไป', exact: true });
 const previous = page => page.locator('.room-pagination').getByRole('button', { name: 'ก่อนหน้า', exact: true });
-const listStart = page => page.locator('.my-listings-header > div, .list-toolbar:visible:not(.my-listings-header *)');
+const listStart = page => page.locator('.my-listings-header > div, .favorites-tools, .rooms-page .list-toolbar');
 async function bottom(page) {
   await next(page).scrollIntoViewIfNeeded();
   expect((await listStart(page).boundingBox()).y).toBeLessThan(-50);

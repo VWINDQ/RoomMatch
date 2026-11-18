@@ -105,6 +105,7 @@ for (const item of personalCases) {
       }
       expect(new Set(ids).size).toBe(count);
       expect([...ids].sort()).toEqual(rooms.map(room=>String(room.room_id)).sort());
+      await expect.poll(() => network.length).toBeGreaterThan(0);
       for (const response of network) {
         expect(response.requested.pageSize).toBe(String(item.size));
         expect(response.requested.page).not.toBe('undefined');
@@ -112,7 +113,6 @@ for (const item of personalCases) {
         expect(response.items).toBeLessThanOrEqual(item.size);
         expect(response.total).toBe(count); expect(response.totalPages).toBe(totalPages);
       }
-      expect(network.length).toBeGreaterThan(0);
       expect(new URL(page.url()).searchParams.get('page')).not.toBe('undefined');
       if(totalPages>1) await reachable(page.getByRole('button',{name:'ก่อนหน้า',exact:true}));
       await noOverflow(page);

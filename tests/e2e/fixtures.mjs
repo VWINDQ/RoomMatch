@@ -87,7 +87,7 @@ export async function selectPersonalListFilter(page, name, value) {
   const trigger = page.getByRole('button', { name: /^ตัวกรอง/ });
   if (await trigger.isVisible()) {
     await trigger.click();
-    const sheet = page.getByRole('dialog', { name: 'ตัวกรองประกาศของฉัน' });
+    const sheet = page.getByRole('dialog', { name: /^ตัวกรอง/ });
     await sheet.getByRole('combobox', { name, exact: true }).selectOption(value);
     await sheet.getByRole('button', { name: 'ใช้ตัวกรอง' }).click();
   } else {
