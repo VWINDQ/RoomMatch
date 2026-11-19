@@ -37,7 +37,7 @@ test('listing form marks required fields, keeps optional text optional and start
     assert.ok(html.replace(/<[^>]*>/g, "").includes(`${label} *`), label);
   }
   assert.match(html, /aria-required="true"/);
-  assert.match(html, /accept="image\/jpeg,image\/png,image\/webp"/);
+  assert.match(html, /accept="image\/jpeg,image\/png,image\/webp,image\/gif,image\/avif,[^"]*\.jfif[^"]*"/);
   assert.doesNotMatch(html, /class="field-error"|class="form-feedback"|aria-invalid="true"/);
   const { ImagePicker } = await vite.ssrLoadModule('/src/components/ImagePicker.tsx');
   const imageHtml = renderToStaticMarkup(createElement(ImagePicker, {

@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { assert, HttpError } from './errors.js';
-import { IMAGE_FORMATS, IMAGE_TYPE_MESSAGE, MAX_IMAGE_BYTES } from '../shared/imageUpload.js';
+import { IMAGE_FORMATS, IMAGE_FORMAT_LABEL, IMAGE_TYPE_MESSAGE, MAX_IMAGE_BYTES } from '../shared/imageUpload.js';
 
 export { MAX_IMAGE_BYTES } from '../shared/imageUpload.js';
 export const DEFAULT_UPLOAD_DIRECTORY = fileURLToPath(new URL('../storage/uploads/', import.meta.url));
@@ -58,15 +58,16 @@ export function createImageStorage({ directory = process.env.ROOMMATCH_UPLOAD_DI
       const input = await readImage(request);
       let output;
       try {
-        const image = sharp(input, { limitInputPixels: 25_000_000, failOn: 'warning' });
+        const image = sharp(input, { page: 0, pages: 1, limitInputPixels: 25_000_000, failOn: 'warning' });
         const metadata = await image.metadata();
-        assert(metadata.format === INPUT_TYPES.get(type) && (metadata.pages ?? 1) === 1, 400, 'ไฟล์ต้องเป็นรูปภาพนิ่ง JPG, PNG หรือ WebP ที่ถูกต้อง');
+        assert(metadata.format === INPUT_TYPES.get(type) && (type !== 'image/avif' || metadata.compression === 'av1'), 400, `ไฟล์ต้องเป็นรูปภาพ ${IMAGE_FORMAT_LABEL} ที่ถูกต้อง`);
         // Decode and re-encode instead of trusting a filename or MIME header.
+        // Animated inputs use only their first frame and are saved as static WebP.
         // rotate() applies EXIF orientation; metadata (including GPS) is omitted.
         output = await image.rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
       } catch (error) {
         if (error instanceof HttpError) throw error;
-        throw new HttpError(400, 'อ่านรูปภาพไม่ได้ กรุณาใช้รูป JPG, PNG หรือ WebP ไม่เกิน 25 ล้านพิกเซล');
+        throw new HttpError(400, `อ่านรูปภาพไม่ได้ กรุณาใช้รูป ${IMAGE_FORMAT_LABEL} ไม่เกิน 25 ล้านพิกเซล`);
       }
       assert(output.length <= MAX_IMAGE_BYTES, 413, 'รูปภาพมีขนาดใหญ่เกินไป กรุณาเลือกรูปที่เล็กลง');
       const userDirectory = resolve(root, String(userId));

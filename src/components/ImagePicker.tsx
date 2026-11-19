@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, ImagePlus, Trash2 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { completedListingImageUrls } from '../../shared/listingValidation.js';
-import { IMAGE_ACCEPT } from '../../shared/imageUpload.js';
+import { IMAGE_ACCEPT, IMAGE_FORMAT_LABEL } from '../../shared/imageUpload.js';
 import { selectImageFiles } from '../lib/imageSelection';
 import './ImagePicker.css';
 
@@ -81,7 +81,7 @@ export function ImagePicker({ images, onChange, max = 1, disabled = false, label
   return <div className={`image-picker ${max === 1 ? 'image-picker-single' : ''}`} role="group" tabIndex={fieldName ? -1 : undefined} data-error-field={fieldName} aria-busy={checking} aria-label={label} aria-required={required || undefined} aria-invalid={message ? true : undefined} aria-describedby={message ? `${descriptionId} ${errorId}` : descriptionId}
     onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); event.stopPropagation(); void chooseFiles(Array.from(event.dataTransfer.files)); }}>
     <div className="image-picker-heading"><strong>{label}{required && <> <span className="required-marker" aria-hidden="true">*</span></>}</strong><span>{imageCount}/{max} รูป</span></div>
-    <p className="image-picker-hint" id={descriptionId}>JPG, PNG หรือ WebP ไม่เกิน 5 MB ต่อรูป{max > 1 ? ' · รูปแรกใช้เป็นรูปปก' : ''}<br/>รูปจะอัปโหลดเมื่อกดบันทึก</p>
+    <p className="image-picker-hint" id={descriptionId}>{IMAGE_FORMAT_LABEL}{' '}<span className="image-picker-limit">ไม่เกิน 5 MB ต่อรูป</span>{max > 1 ? ' · รูปแรกใช้เป็นรูปปก' : ''}<br/>ภาพเคลื่อนไหวใช้เฟรมแรก · รูปจะอัปโหลดเมื่อกดบันทึก</p>
     {images.length > 0 && <ul className="image-picker-grid">{images.map((image, index) => <li key={image.id}>
       <div className="image-picker-preview"><ImagePreview image={image} label={max === 1 ? 'รูปโปรไฟล์ที่เลือก' : `รูปห้อง ${index + 1}`}/>{max > 1 && index === 0 && <span className="image-picker-cover">รูปปก</span>}</div>
       <div className="image-picker-tools">{max > 1 && <><button type="button" disabled={busy || index === 0} onClick={() => move(index, -1)} aria-label={`เลื่อนรูป ${index + 1} ไปก่อนหน้า`}><ArrowLeft size={16}/></button><button type="button" disabled={busy || index === images.length - 1} onClick={() => move(index, 1)} aria-label={`เลื่อนรูป ${index + 1} ไปถัดไป`}><ArrowRight size={16}/></button></>}<button type="button" disabled={busy} onClick={() => { onChange(images.filter(item => item.id !== image.id)); setSelectionError(''); }} aria-label={max === 1 ? 'ลบรูปโปรไฟล์' : `ลบรูป ${index + 1}`}><Trash2 size={16}/><span>ลบรูป</span></button></div>
