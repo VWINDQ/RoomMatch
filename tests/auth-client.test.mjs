@@ -58,7 +58,7 @@ beforeEach(() => {
     if (path === '/api/auth/me') return json({ user });
     if (path === '/api/auth/login' || path === '/api/auth/register') return json({ user, token: 'new-token' });
     if (path === '/api/profile') return json({ user, lifestyle: null, preference: null });
-    if (path === '/api/rooms') return json({ rooms: [] });
+    if (new URL(path, 'http://localhost').pathname === '/api/rooms') return json({ rooms: [], total: 0, page: 1, pageSize: 12, totalPages: 0 });
     if (path === '/api/owner/requests') return json({ requests: [] });
     throw new Error(`Unexpected request: ${path}`);
   };
@@ -591,7 +591,7 @@ test(`an old listing action cannot show a notification in the next account (${ac
   tokenStorage.set('old-token');
   const pending = deferred();
   const room = { roomId: '1', title: 'Old listing', status: 'available', price: 5000, capacity: 2 };
-  respond = async path => path === '/api/auth/me' ? json({ user }) : json({ rooms: [room] });
+  respond = async path => path === '/api/auth/me' ? json({ user }) : json({ rooms: [room], total: 1, page: 1, pageSize: 10, totalPages: 1 });
   await act(async () => root.render(createElement(StrictMode, null,
     createElement(MemoryRouter, { initialEntries: ['/my-listings'] }, createElement(App)))));
   respond = () => pending.promise;
@@ -604,7 +604,7 @@ test(`an old listing action cannot show a notification in the next account (${ac
     await act(async () => confirm.click());
   }
   const nextUser = { ...user, userId: '2' };
-  respond = async path => path === '/api/auth/me' ? json({ user: nextUser }) : json({ rooms: [] });
+  respond = async path => path === '/api/auth/me' ? json({ user: nextUser }) : json({ rooms: [], total: 0, page: 1, pageSize: 10, totalPages: 0 });
   await act(async () => changeTokenInAnotherTab('external-token'));
   await act(async () => pending.resolve(action === 'status' ? json({ room }) : new Response(null, { status: 204 })));
   assert.equal(Boolean(document.querySelector('.my-listing')), false);

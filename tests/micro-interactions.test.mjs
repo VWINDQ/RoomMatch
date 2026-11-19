@@ -89,12 +89,12 @@ for (const surface of ['card', 'detail']) {
   });
 }
 
-test('late room results cannot steal focus from an open filter after returning from a room', async () => {
+test('late room results cannot steal focus from an open filter after returning from a room', { timeout: 5000 }, async () => {
   const results = deferred(), queryStarted = deferred();
   localStorage.setItem('roommatch:token', 'focus-test-token');
   mock.method(api, 'me', async () => ({ userId: '1', firstName: 'Focus', lastName: 'Test' }));
   mock.method(api, 'ownerRequests', async () => []);
-  mock.method(api, 'rooms', () => { queryStarted.resolve(); return results.promise; });
+  mock.method(api, 'roomsPage', () => { queryStarted.resolve(); return results.promise; });
   // jsdom does not lay out controls; expose the visible dialog controls to its focus trap.
   mock.method(window.HTMLElement.prototype, 'getClientRects', () => [{}]);
   await act(async () => root.render(createElement(MemoryRouter, {
@@ -105,7 +105,7 @@ test('late room results cannot steal focus from an open filter after returning f
   await act(async () => { filterButton.focus(); filterButton.click(); });
   const dialog = document.querySelector('.filter-sheet');
   assert.ok(dialog.contains(document.activeElement));
-  await act(async () => results.resolve([room]));
+  await act(async () => results.resolve({ rooms: [room], page: 1, pageSize: 12, total: 1, totalPages: 1 }));
   assert.ok(document.getElementById('room-card-1'));
   assert.ok(dialog.contains(document.activeElement), 'focus must stay inside the filter when the background list finishes loading');
   await act(async () => document.activeElement.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));

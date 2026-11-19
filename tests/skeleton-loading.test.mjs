@@ -56,12 +56,12 @@ test('profile skeleton resolves to an error, returns on retry and is replaced by
 
 test('list loading announces once without fake controls and does not show an empty state before completion', async () => {
   const pending = deferred();
-  mock.method(api, 'myRooms', () => pending.promise);
+  mock.method(api, 'myRoomsPage', () => pending.promise);
   await mount(MyListingsPage);
   assert.equal(document.querySelectorAll('.skeleton-region[role="status"]').length, 1);
   assert.equal(skeleton().querySelectorAll('button, a, input, [tabindex]').length, 0);
   assert.doesNotMatch(document.body.textContent, /ยังไม่มีประกาศของคุณ/);
-  await act(async () => pending.resolve([]));
+  await act(async () => pending.resolve({ rooms: [], total: 0, page: 1, pageSize: 10, totalPages: 0 }));
   assert.equal(skeleton(), null);
   assert.match(document.body.textContent, /ยังไม่มีประกาศของคุณ/);
 });

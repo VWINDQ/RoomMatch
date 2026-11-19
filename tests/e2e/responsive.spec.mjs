@@ -31,7 +31,7 @@ test('navigation and create-listing controls are usable', async ({ page, environ
     await expect(page).toHaveURL(new RegExp(`${path}(\\?|$)`));
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   }
-  const create = page.getByRole('button', { name: 'ลงประกาศใหม่', exact: true }).filter({ visible: true }).first();
+  const create = page.getByRole('button', { name: /^ลงประกาศ(ใหม่)?$/ });
   await reachable(create); await create.click();
   await expect(page).toHaveURL(/\/my-listings\/new$/);
   await reachable(page.getByRole('button', { name: 'สร้างประกาศ', exact: true }));
@@ -207,7 +207,7 @@ test('empty layouts and list error layouts', async ({ page, environment }, testI
     await capture(page, testInfo, `empty-${path.split('?')[0].slice(1)}`);
   }
   await signIn(page, environment, 'owner');
-  const cases = [['/rooms','/api/rooms*'], ['/favorites','/api/favorites'], ['/my-listings','/api/my/rooms'], ['/profile','/api/profile'], ['/matches','/api/matches'], ['/friends','/api/friends*'], ['/requests?view=incoming','/api/owner/requests']];
+  const cases = [['/rooms','/api/rooms*'], ['/favorites','/api/favorites*'], ['/my-listings','/api/my/rooms*'], ['/profile','/api/profile'], ['/matches','/api/matches'], ['/friends','/api/friends*'], ['/requests?view=incoming','/api/owner/requests']];
   for (const [path, endpoint] of cases) {
     const pattern = `**${endpoint}`;
     await page.route(pattern, route => route.fulfill({ status: 503, json: { error: 'Service temporarily unavailable' } }));

@@ -1,6 +1,30 @@
 import type { FriendConnection, FriendProfile, JoinRequest, Lifestyle, Match, Preference, ProfileBundle, Room, RoomMember, User } from '../types';
 import { friendlyApiError } from './apiErrors';
 
+export type RoomPage = { rooms: Room[]; total: number; page: number; pageSize: number; totalPages: number };
+export class InvalidRoomPageResponseError extends Error {
+  constructor() { super('เซิร์ฟเวอร์ส่งข้อมูลแบ่งหน้าไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'); this.name = 'InvalidRoomPageResponseError'; }
+}
+async function requestRoomPage(path: string, params: URLSearchParams): Promise<RoomPage> {
+  const query = new URLSearchParams(params);
+  if (!query.has('page')) query.set('page', '1');
+  if (!query.has('pageSize')) query.set('pageSize', path === '/my/rooms' ? '10' : '12');
+  const result = object(await request<unknown>(`${path}?${query}`));
+  const { rooms, total, page, pageSize, totalPages } = result;
+  const integer = (value: unknown, min: number): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= min;
+  const requestedSize = Number(query.get('pageSize'));
+  const requestedPage = Number(query.get('page'));
+  if (!Array.isArray(rooms) || !integer(total, 0) || !integer(page, 1) || !integer(pageSize, 1) || !integer(totalPages, 0)
+    || pageSize !== requestedSize || totalPages !== Math.ceil(total / pageSize)
+    || page !== Math.min(requestedPage, Math.max(1, totalPages))
+    || rooms.length !== Math.min(pageSize, Math.max(0, total - (page - 1) * pageSize))) {
+    // A hot-updated client can encounter an older API process. Never mistake its
+    // unbounded legacy rooms array for a page or write undefined metadata to URLs.
+    throw new InvalidRoomPageResponseError();
+  }
+  return { rooms: rooms.map(normalizeRoom), total, page, pageSize, totalPages };
+}
+
 const TOKEN_KEY = 'roommatch:token';
 let tokenRevision = 0;
 let observedToken: string | null | undefined;
@@ -252,10 +276,9 @@ export const api = {
   async login(payload: { email: string; password: string }) { return parseAuthSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) })); },
   async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
   async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
-  async roomsPage(params: URLSearchParams) {
-    const result = await request<{ rooms: unknown[]; total: number; page: number; totalPages: number }>(`/rooms?${params}`);
-    return { ...result, rooms: list(result, 'rooms').map(normalizeRoom) };
-  },
+  roomsPage: (params: URLSearchParams) => requestRoomPage('/rooms', params),
+  favoritesPage: (params: URLSearchParams) => requestRoomPage('/favorites', params),
+  myRoomsPage: (params: URLSearchParams) => requestRoomPage('/my/rooms', params),
   async rooms(params: URLSearchParams) { return list(await request(`/rooms${params.size ? `?${params}` : ''}`), 'rooms').map(normalizeRoom); },
   async room(roomId: string) { const result = await request<JsonObject>(`/rooms/${roomId}`); return normalizeRoom(result.room); },
   async myRooms() { return list(await request('/my/rooms'), 'rooms').map(normalizeRoom); },

@@ -57,16 +57,17 @@ for (const editing of [false, true]) {
       const original = await input.inputValue();
       await input.fill(['price', 'capacity'].includes(name) ? '3' : 'changed');
       await backButton(page).click(); await expect(warning(page)).toBeVisible();
-      await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+      await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
       await input.fill(original);
+      await expect(input).toHaveValue(original);
     }
     const basis = page.getByRole('combobox', { name: /หน่วยราคา/ });
     const originalBasis = await basis.inputValue();
     await basis.selectOption('per_person');
-    await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+    await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
     await basis.selectOption(originalBasis);
     await page.getByRole('button', { name: 'พักประกาศ', exact: true }).click();
-    await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+    await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
     await page.getByRole('button', { name: 'เปิดรับคำขอ', exact: true }).click();
     if (!editing) {
       await page.getByRole('button', { name: 'สร้างประกาศ', exact: true }).click();
@@ -111,7 +112,7 @@ for (const editing of [false, true]) {
 
 test('RM-13 browser Back and Forward can stay or proceed to their original history entries', async ({ page }) => {
   await page.goto('/my-listings');
-  await page.getByRole('button', { name: /ลงประกาศใหม่/ }).first().click();
+  await page.getByRole('button', { name: /^ลงประกาศ(ใหม่)?$/ }).click();
   await expect(titleInput(page)).toBeVisible();
   await menu(page, '/rooms').click();
   await expect(page).toHaveURL(/\/rooms$/);
