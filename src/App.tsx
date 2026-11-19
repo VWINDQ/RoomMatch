@@ -1,19 +1,35 @@
-import { SessionSkeleton } from './components/Skeleton';
-import { useEffect, type ReactNode } from 'react';
+import { SessionSkeleton, Skeleton } from './components/Skeleton';
+import { Component, lazy, Suspense, useEffect, type ComponentProps, type ReactNode } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { AppProvider, useApp } from './AppContext';
 import { AppShell } from './components/Layout';
 import { Toast } from './components/Toast';
+import { Button } from './components/UI';
 import { LoginPage, RegisterPage } from './pages/AuthPages';
-import { ListingFormPage } from './pages/ListingFormPage';
-import { MatchesPage } from './pages/MatchesPage';
-import { MyListingsPage } from './pages/MyListingsPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { RequestsPage } from './pages/RequestsPage';
-import { RoomDetailPage } from './pages/RoomDetailPage';
 import { RoomsPage } from './pages/RoomsPage';
-import { FriendsPage } from './pages/FriendsPage';
-import { FavoritesPage } from './pages/FavoritesPage';
+
+const ListingFormPage = lazy(() => import('./pages/ListingFormPage').then(module => ({ default: module.ListingFormPage })));
+const MatchesPage = lazy(() => import('./pages/MatchesPage').then(module => ({ default: module.MatchesPage })));
+const MyListingsPage = lazy(() => import('./pages/MyListingsPage').then(module => ({ default: module.MyListingsPage })));
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then(module => ({ default: module.ProfilePage })));
+const RequestsPage = lazy(() => import('./pages/RequestsPage').then(module => ({ default: module.RequestsPage })));
+const RoomDetailPage = lazy(() => import('./pages/RoomDetailPage').then(module => ({ default: module.RoomDetailPage })));
+const FriendsPage = lazy(() => import('./pages/FriendsPage').then(module => ({ default: module.FriendsPage })));
+const FavoritesPage = lazy(() => import('./pages/FavoritesPage').then(module => ({ default: module.FavoritesPage })));
+
+class PageLoadBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: Error) { console.error('RoomMatch page failed to load', error); }
+  render() {
+    if (this.state.failed) return <div className="page" role="alert"><h1>โหลดหน้านี้ไม่สำเร็จ</h1><p>ตรวจสอบการเชื่อมต่อแล้วลองโหลดหน้าใหม่ ข้อมูลที่บันทึกไว้ยังอยู่</p><Button onClick={() => window.location.reload()}>โหลดหน้าใหม่</Button></div>;
+    return this.props.children;
+  }
+}
+
+function DeferredPage({ children, variant }: { children: ReactNode; variant: ComponentProps<typeof Skeleton>['variant'] }) {
+  return <PageLoadBoundary key={variant}><Suspense fallback={<div className="page"><Skeleton variant={variant}/></div>}>{children}</Suspense></PageLoadBoundary>;
+}
 
 function ScrollToTop() {
   const location = useLocation();
@@ -64,11 +80,11 @@ function RoutedApp() {
     <Route path="/login" element={<GuestOnly><LoginPage/></GuestOnly>}/>
     <Route path="/register" element={<GuestOnly><RegisterPage/></GuestOnly>}/>
     <Route element={<ProtectedRoutes/>}><Route element={<AppShell/>}>
-      <Route path="/favorites" element={<FavoritesPage/>}/>
-      <Route path="/rooms" element={<RoomsPage/>}/><Route path="/rooms/:id" element={<RoomDetailPage/>}/>
-      <Route path="/my-listings" element={<MyListingsPage/>}/><Route path="/my-listings/new" element={<ListingFormPage/>}/><Route path="/my-listings/:id/edit" element={<ListingFormPage/>}/>
-      <Route path="/requests" element={<RequestsPage/>}/><Route path="/matches" element={<MatchesPage/>}/><Route path="/profile" element={<ProfilePage/>}/>
-      <Route path="/friends" element={<FriendsPage/>}/>
+      <Route path="/favorites" element={<DeferredPage variant="rooms"><FavoritesPage/></DeferredPage>}/>
+      <Route path="/rooms" element={<RoomsPage/>}/><Route path="/rooms/:id" element={<DeferredPage variant="room-detail"><RoomDetailPage/></DeferredPage>}/>
+      <Route path="/my-listings" element={<DeferredPage variant="listings"><MyListingsPage/></DeferredPage>}/><Route path="/my-listings/new" element={<DeferredPage variant="listing-form"><ListingFormPage/></DeferredPage>}/><Route path="/my-listings/:id/edit" element={<DeferredPage variant="listing-form"><ListingFormPage/></DeferredPage>}/>
+      <Route path="/requests" element={<DeferredPage variant="requests"><RequestsPage/></DeferredPage>}/><Route path="/matches" element={<DeferredPage variant="matches"><MatchesPage/></DeferredPage>}/><Route path="/profile" element={<DeferredPage variant="profile"><ProfilePage/></DeferredPage>}/>
+      <Route path="/friends" element={<DeferredPage variant="friends"><FriendsPage/></DeferredPage>}/>
     </Route></Route>
     <Route path="*" element={<Navigate to="/rooms" replace/>}/>
   </Routes><Toast message={toast}/></>;

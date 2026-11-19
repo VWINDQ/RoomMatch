@@ -241,10 +241,15 @@ function roomDto(row, images = [], options = {}) {
 }
 
 async function roomDtos(db, rows, optionsForRow) {
-  const rooms = [];
-  // A request retains one PostgreSQL client; await each read before using it again.
-  for (const row of rows) rooms.push(roomDto(row, await imageRows(db, row.room_id), optionsForRow(row)));
-  return rooms;
+  if (!rows.length) return [];
+  const images = await db.prepare(`SELECT * FROM ROOM_IMAGE WHERE room_id = ANY(?::bigint[])
+    ORDER BY room_id, image_order, image_id`).all(rows.map(row => row.room_id));
+  const byRoom = new Map();
+  for (const image of images) {
+    if (!byRoom.has(image.room_id)) byRoom.set(image.room_id, []);
+    byRoom.get(image.room_id).push(image);
+  }
+  return rows.map(row => roomDto(row, byRoom.get(row.room_id) ?? [], optionsForRow(row)));
 }
 
 function parsePriceBasis(value) {
@@ -861,18 +866,23 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (request.method === 'POST' && pathMatch) {
         const user = await authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = await getRoomRow(db, roomId);
-        assert(room, 404, 'Room not found');
-        assert(room.owner_id === user.user_id, 403, 'Only the room owner can add images');
         const body = await readJson(request);
         const storedImageUrl = imageUrl(body.imageUrl, user.user_id, 'imageUrl');
-        const count = (await db.prepare('SELECT COUNT(*) AS count FROM ROOM_IMAGE WHERE room_id = ?').get(roomId)).count;
-        assert(count < 12, 409, 'A room cannot have more than 12 images');
-        const imageOrder = body.imageOrder === undefined
-          ? Number((await db.prepare('SELECT COALESCE(MAX(image_order), -1) + 1 AS next_order FROM ROOM_IMAGE WHERE room_id = ?').get(roomId)).next_order)
-          : integer(body.imageOrder, 'imageOrder', { min: 0, max: 11 });
-        const result = await db.prepare('INSERT INTO ROOM_IMAGE (room_id, image_url, image_order) VALUES (?, ?, ?) RETURNING image_id').run(roomId, storedImageUrl, imageOrder);
-        sendJson(response, 201, { image: { imageId: Number(result.insertId), imageUrl: storedImageUrl, imageOrder } }, request);
+        const image = await db.transaction(async () => {
+          // Serialize image edits with each other and with full listing updates.
+          const room = await db.prepare('SELECT owner_id FROM ROOM WHERE room_id = ? FOR UPDATE').get(roomId);
+          assert(room, 404, 'Room not found');
+          assert(room.owner_id === user.user_id, 403, 'Only the room owner can add images');
+          const currentImages = await imageRows(db, roomId);
+          assert(currentImages.length < 12, 409, 'A room cannot have more than 12 images');
+          const imageOrder = body.imageOrder === undefined
+            ? Math.max(-1, ...currentImages.map(image => image.image_order)) + 1
+            : integer(body.imageOrder, 'imageOrder', { min: 0, max: 11 });
+          assert(!currentImages.some(image => image.image_order === imageOrder), 409, 'Image order is already in use');
+          const result = await db.prepare('INSERT INTO ROOM_IMAGE (room_id, image_url, image_order) VALUES (?, ?, ?) RETURNING image_id').run(roomId, storedImageUrl, imageOrder);
+          return { imageId: Number(result.insertId), imageUrl: storedImageUrl, imageOrder };
+        });
+        sendJson(response, 201, { image }, request);
         return;
       }
 
@@ -881,14 +891,16 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const user = await authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
         const imageId = integer(pathMatch[1], 'imageId', { required: true, min: 1 });
-        const room = await getRoomRow(db, roomId);
-        assert(room, 404, 'Room not found');
-        assert(room.owner_id === user.user_id, 403, 'Only the room owner can remove images');
-        const currentImages = await imageRows(db, roomId);
-        assert(currentImages.some(image => image.image_id === imageId), 404, 'Image not found');
-        assertListing({ images: currentImages.filter(image => image.image_id !== imageId).map(image => image.image_url) }, { partial: true });
-        const result = await db.prepare('DELETE FROM ROOM_IMAGE WHERE image_id = ? AND room_id = ?').run(imageId, roomId);
-        assert(result.changes > 0, 404, 'Image not found');
+        await db.transaction(async () => {
+          const room = await db.prepare('SELECT owner_id FROM ROOM WHERE room_id = ? FOR UPDATE').get(roomId);
+          assert(room, 404, 'Room not found');
+          assert(room.owner_id === user.user_id, 403, 'Only the room owner can remove images');
+          const currentImages = await imageRows(db, roomId);
+          assert(currentImages.some(image => image.image_id === imageId), 404, 'Image not found');
+          assertListing({ images: currentImages.filter(image => image.image_id !== imageId).map(image => image.image_url) }, { partial: true });
+          const result = await db.prepare('DELETE FROM ROOM_IMAGE WHERE image_id = ? AND room_id = ?').run(imageId, roomId);
+          assert(result.changes > 0, 404, 'Image not found');
+        });
         sendJson(response, 200, { success: true }, request);
         return;
       }

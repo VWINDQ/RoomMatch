@@ -19,6 +19,10 @@ export function FavoritesPage() {
   useEffect(() => {
     if (loading || !restoreFavoriteFocus.current) return;
     restoreFavoriteFocus.current = false;
+    // The user may have opened a filter or moved to another control while loading.
+    const active = document.activeElement;
+    if (document.querySelector('[role="dialog"][aria-modal="true"]') ||
+      (active && active !== document.body && active !== document.documentElement && active.isConnected)) return;
     const target = page.current?.querySelector<HTMLElement>('.favorite-button') || page.current?.querySelector<HTMLElement>('h1');
     if (target) { if (target.tagName === 'H1') target.tabIndex = -1; target.focus({ preventScroll: true }); }
   }, [loading]);
