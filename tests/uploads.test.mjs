@@ -64,7 +64,7 @@ test('upload re-encodes, resizes, strips metadata, serves publicly, and survives
   assert.equal((await f.fetch(url)).status, 200);
 });
 
-test('reject unauthenticated, empty, oversized, corrupt, spoofed, SVG, and oversized-dimension images', async t => {
+test('reject unauthenticated, empty, oversized, corrupt, MIME-mismatched, SVG, and oversized-dimension images', async t => {
   const f = await fixture(t);
   assert.equal((await f.upload(f.image, 'image/jpeg', false)).status, 401);
   assert.equal((await f.upload(Buffer.alloc(0))).status, 400);
@@ -77,6 +77,49 @@ test('reject unauthenticated, empty, oversized, corrupt, spoofed, SVG, and overs
   const big = await sharp({ create: { width: 6000, height: 6000, channels: 3, background: '#fff' } }).png().toBuffer();
   assert.equal((await f.upload(big, 'image/png')).status, 400);
   assert.equal((await f.api('/profile')).body.user.profileImage, null);
+});
+
+test('GIF and AVIF uploads become static WebP and persist as profile images', async t => {
+  const f = await fixture(t);
+  for (const format of ['gif', 'avif']) {
+    const input = await sharp({ create: { width: 32, height: 24, channels: 3, background: '#aecbed' } }).toFormat(format).toBuffer();
+    const uploaded = await f.upload(input, `image/${format}`);
+    assert.equal(uploaded.status, 201, JSON.stringify(uploaded.body));
+    const url = uploaded.body.imageUrl;
+    assert.equal((await f.api('/profile', 'PATCH', { profileImage: url })).status, 200);
+    const response = await f.fetch(url);
+    const metadata = await sharp(Buffer.from(await response.arrayBuffer())).metadata();
+    assert.equal(metadata.format, 'webp');
+    assert.equal(metadata.width, 32);
+    assert.equal(metadata.height, 24);
+    assert.equal(metadata.pages ?? 1, 1);
+    await f.restart();
+    assert.equal((await f.api('/profile')).body.user.profileImage, url);
+  }
+});
+
+test('animated GIF stores the first frame only and invalid GIF/AVIF inputs never change the profile', async t => {
+  const f = await fixture(t);
+  // Distinct colors prevent the GIF encoder from merging the two frames.
+  const pixels = Buffer.from([255, 0, 0, 0, 0, 255]);
+  const gif = await sharp(pixels, { raw: { width: 1, height: 2, channels: 3, pageHeight: 1 } }).gif({ delay: [100, 100], loop: 0 }).toBuffer();
+  assert.equal((await sharp(gif, { animated: true }).metadata()).pages, 2);
+  const uploaded = await f.upload(gif, 'image/gif');
+  assert.equal(uploaded.status, 201, JSON.stringify(uploaded.body));
+  const url = uploaded.body.imageUrl;
+  await f.api('/profile', 'PATCH', { profileImage: url });
+  const response = await f.fetch(url);
+  const image = sharp(Buffer.from(await response.arrayBuffer()));
+  const metadata = await image.metadata();
+  assert.equal(metadata.pages ?? 1, 1);
+  assert.equal(metadata.height, 1);
+  const first = await image.removeAlpha().raw().toBuffer();
+  assert.ok(first[0] > 200 && first[2] < 50, 'saved picture must use the red first frame');
+  for (const type of ['image/gif', 'image/avif']) {
+    assert.equal((await f.upload(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'), type)).status, 400);
+    assert.equal((await f.upload(Buffer.from('broken image'), type)).status, 400);
+  }
+  assert.equal((await f.api('/profile')).body.user.profileImage, url);
 });
 
 test('PNG and WebP inputs work, while paths cannot escape storage or reuse another user upload', async t => {
