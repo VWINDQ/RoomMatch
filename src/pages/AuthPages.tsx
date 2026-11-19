@@ -7,6 +7,17 @@ import { useFormFeedback } from '../components/FormFeedback';
 import { SessionChangedError } from '../lib/api';
 import { BirthDateInput } from '../components/BirthDateInput';
 import { parseBirthDate } from '../lib/birthDate';
+import { GoogleSignIn } from '../components/GoogleSignIn';
+
+const oauthErrors: Record<string, string> = {
+  cancelled: 'ยกเลิกการเข้าสู่ระบบด้วย Google แล้ว คุณสามารถลองใหม่ได้',
+  email_exists: 'อีเมลนี้มีบัญชี RoomMatch แล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่านเดิม',
+  invalid_state: 'การเข้าสู่ระบบด้วย Google หมดเวลาหรือไม่ตรงกับเบราว์เซอร์นี้ กรุณาลองใหม่',
+  invalid_identity: 'ไม่สามารถยืนยันบัญชี Google ได้ กรุณาใช้บัญชีที่ยืนยันอีเมลแล้ว',
+  account_unavailable: 'บัญชีนี้ไม่พร้อมใช้งาน',
+  unavailable: 'ยังไม่ได้เปิดใช้งานการเข้าสู่ระบบด้วย Google',
+  failed: 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+};
 
 function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate();
@@ -15,7 +26,10 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    const reason = new URLSearchParams(location.search).get('oauth_error') ?? '';
+    return Object.hasOwn(oauthErrors, reason) ? oauthErrors[reason] : '';
+  });
   const submissionVersion = useRef(0);
 
   const formRef = useRef<HTMLFormElement>(null);
@@ -212,6 +226,8 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
               {mode === 'login' ? 'เข้าสู่ระบบ' : 'สร้างบัญชี'}
             </Button>
           </form>
+
+          <GoogleSignIn disabled={loading} returnTo={(location.state as { from?: string } | null)?.from} />
 
           <p className="auth-switch">
             {mode === 'login' ? 'ยังไม่มีบัญชี?' : 'มีบัญชีแล้ว?'}{' '}

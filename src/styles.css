@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+.auth-oauth { display: grid; gap: 10px; margin-top: 20px; text-align: center; }
+.auth-oauth .field-hint { margin: 0; }
+.auth-oauth a[aria-disabled="true"] { opacity: .6; cursor: not-allowed; }
+
 :root {
   --background: #f7f1e8;
   --surface: #fffaf4;

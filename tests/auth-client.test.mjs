@@ -55,6 +55,7 @@ beforeEach(() => {
   state = null;
   location = null;
   respond = async path => {
+    if (path === '/api/auth/oauth/providers') return json({ google: false });
     if (path === '/api/auth/me') return json({ user });
     if (path === '/api/auth/login' || path === '/api/auth/register') return json({ user, token: 'new-token' });
     if (path === '/api/profile') return json({ user, lifestyle: null, preference: null });
@@ -357,7 +358,7 @@ test('expiration redirects to login, wrong password shows an error, and login re
   await act(async () => root.render(createElement(StrictMode, null,
     createElement(MemoryRouter, { initialEntries: [originalRoute] }, createElement(App), createElement(LocationProbe)))));
   assert.equal(location.pathname, '/profile');
-  respond = async () => rejected();
+  respond = async path => path === '/api/auth/oauth/providers' ? json({ google: false }) : rejected();
   await act(async () => { await assert.rejects(api.profile(), error => error.status === 401); });
   assert.equal(location.pathname, '/login');
   assert.equal(location.state.from, originalRoute);
@@ -1056,4 +1057,80 @@ test('network errors retain their connection message instead of becoming validat
     && Object.keys(error.fieldErrors).length === 0);
   assert.equal(state.user.userId, user.userId);
   assert.equal(tokenStorage.get(), 'old-token');
+});
+
+for (const priorSession of [null, 'old-token', 'expired-token']) {
+  test(`Google completion exchanges once in StrictMode with prior session ${priorSession}`, async () => {
+    if (priorSession) tokenStorage.set(priorSession);
+    let exchanges = 0;
+    const defaultRespond = respond;
+    respond = async (path, options) => {
+      if (path === '/api/auth/me' && priorSession === 'expired-token') return rejected();
+      if (path === '/api/auth/oauth/session') {
+        exchanges += 1;
+        assert.equal(options.method, 'POST');
+        assert.equal(options.headers.has('Authorization'), false);
+        return json({ user, token: 'google-token' });
+      }
+      return defaultRespond(path, options);
+    };
+    await act(async () => root.render(createElement(StrictMode, null,
+      createElement(MemoryRouter, { initialEntries: ['/auth/google/complete?returnTo=%2Fprofile%3Ftab%3Daccount%23details'] }, createElement(App), createElement(LocationProbe)))));
+    assert.equal(exchanges, 1);
+    assert.equal(tokenStorage.get(), 'google-token');
+    assert.equal(location.pathname + location.search + location.hash, '/profile?tab=account#details');
+    assert.ok(document.querySelector('.profile-summary'));
+  });
+}
+
+test('invalid OAuth session payload does not overwrite an existing session', async () => {
+  await mountProvider();
+  respond = async () => json({ token: 'invalid', user: {} });
+  await act(async () => { await assert.rejects(state.completeOAuth(), InvalidAuthResponseError); });
+  assert.equal(tokenStorage.get(), 'old-token');
+  assert.equal(state.user.userId, user.userId);
+});
+
+test('failed OAuth ticket exchange retains an existing session and gives a route to retry', async () => {
+  tokenStorage.set('old-token');
+  const defaultRespond = respond;
+  respond = async (path, options) => path === '/api/auth/oauth/session' ? rejected() : defaultRespond(path, options);
+  await act(async () => root.render(createElement(StrictMode, null,
+    createElement(MemoryRouter, { initialEntries: ['/auth/google/complete'] }, createElement(App), createElement(LocationProbe)))));
+  assert.equal(location.pathname, '/auth/google/complete');
+  assert.equal(tokenStorage.get(), 'old-token');
+  assert.match(document.querySelector('[role="alert"]').textContent, /กรุณาลองอีกครั้ง/);
+  assert.equal(document.querySelector('a').getAttribute('href'), '/login');
+});
+
+test('a pending Google sign-in cannot replace an account selected in another tab', async () => {
+  await mountProvider(null);
+  const pending = deferred();
+  respond = async path => path === '/api/auth/oauth/session' ? pending.promise : json({ user: { ...user, userId: '2' } });
+  let ignored;
+  await act(async () => { ignored = assert.rejects(state.completeOAuth(), SessionChangedError); });
+  await act(async () => changeTokenInAnotherTab('other-tab-token'));
+  await act(async () => { pending.resolve(json({ user, token: 'google-token' })); await ignored; });
+  assert.equal(tokenStorage.get(), 'other-tab-token');
+  assert.equal(state.user.userId, '2');
+});
+
+test('Google provider discovery has a working retry and preserves the requested destination', async () => {
+  respond = async () => { throw new TypeError('Offline'); };
+  await act(async () => root.render(createElement(StrictMode, null,
+    createElement(MemoryRouter, { initialEntries: [{ pathname: '/login', state: { from: '/rooms/2?view=photos' } }] }, createElement(App)))));
+  const retry = document.querySelector('.auth-oauth button');
+  assert.equal(retry.disabled, false);
+  assert.match(retry.textContent, /ลองเชื่อมต่อ Google/);
+  respond = async () => json({ google: true });
+  await act(async () => retry.click());
+  const link = document.querySelector('.auth-oauth a');
+  assert.equal(link.getAttribute('href'), '/api/auth/oauth/google?returnTo=%2Frooms%2F2%3Fview%3Dphotos');
+});
+
+test('unknown OAuth query errors cannot render inherited object properties', async () => {
+  await act(async () => root.render(createElement(StrictMode, null,
+    createElement(MemoryRouter, { initialEntries: ['/login?oauth_error=__proto__'] }, createElement(App)))));
+  assert.ok(document.querySelector('form'));
+  assert.equal(document.querySelector('[role="alert"]'), null);
 });

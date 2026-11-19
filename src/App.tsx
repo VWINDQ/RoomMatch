@@ -5,6 +5,7 @@ import { AppProvider, useApp } from './AppContext';
 import { AppShell } from './components/Layout';
 import { Toast } from './components/Toast';
 import { LoginPage, RegisterPage } from './pages/AuthPages';
+import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { ListingFormPage } from './pages/ListingFormPage';
 import { MatchesPage } from './pages/MatchesPage';
 import { MyListingsPage } from './pages/MyListingsPage';
@@ -61,6 +62,7 @@ function GuestOnly({ children }: { children: ReactNode }) {
 function RoutedApp() {
   const { toast } = useApp();
   return <><ScrollToTop/><Routes>
+    <Route path="/auth/google/complete" element={<OAuthCallbackPage/>}/>
     <Route path="/login" element={<GuestOnly><LoginPage/></GuestOnly>}/>
     <Route path="/register" element={<GuestOnly><RegisterPage/></GuestOnly>}/>
     <Route element={<ProtectedRoutes/>}><Route element={<AppShell/>}>

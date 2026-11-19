@@ -24,7 +24,7 @@ test('PostgreSQL schema, seed, identity sequences, case-insensitive email and fo
   const db = await openDatabase({ filename: ':memory:' });
   assert.equal((await db.prepare('SELECT version() AS version').get()).version.startsWith('PostgreSQL'), true);
   const tables = await db.prepare("SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> '_roommatch_migrations'").all();
-  assert.deepEqual(tables.map(row => row.tablename.toUpperCase()).sort(), [...BUSINESS_TABLES].sort());
+  assert.deepEqual(tables.map(row => row.tablename.toUpperCase()).sort(), [...BUSINESS_TABLES, 'OAUTH_IDENTITY', 'OAUTH_ATTEMPT', 'OAUTH_TICKET'].sort());
   assert.equal(await seedDatabase(db), false);
   const user = await db.prepare("INSERT INTO USER(first_name,last_name,email,password_hash) VALUES('New','Student','NEW@example.test','test-hash') RETURNING user_id,created_at").get();
   assert.ok(user.user_id > 5);

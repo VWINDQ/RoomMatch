@@ -3,7 +3,8 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { bearerToken, createToken, hashPassword, validateAuthConfiguration, verifyPassword, verifyToken } from './auth.js';
+import { bearerToken, createToken, hashPassword, passwordNeedsRehash, validateAuthConfiguration, verifyPassword, verifyToken } from './auth.js';
+import { createGoogleOAuthHandler } from './oauth.js';
 import { assert, HttpError } from './errors.js';
 import { openDatabase } from './database.js';
 import { handleFriendRoutes } from './friends.js';
@@ -490,7 +491,8 @@ function matchPath(pathname, pattern) {
   return match ? match.slice(1).map((value) => decodeURIComponent(value)) : null;
 }
 
-export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY, uploadDirectory } = {}) {
+export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY, uploadDirectory, oauth } = {}) {
+  const handleOAuth = createGoogleOAuthHandler(db, { ...oauth, sendJson, userDto, logger });
   const imageStorage = createImageStorage({ directory: uploadDirectory, db });
   const imageUrl = (value, userId, field) => imageStorage.validateUrl(value, userId, url => webUrl(url, field, { required: true }));
   const handleRoomRequest = createRoomRequestHandler(db, {
@@ -521,6 +523,8 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         sendJson(response, 200, { ok: true }, request);
         return;
       }
+
+      if (await handleOAuth(request, response, url)) return;
 
       if (request.method === 'POST' && pathname === '/api/uploads/images') {
         const user = await authenticate(db, request);
@@ -578,6 +582,11 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const user = await db.prepare('SELECT * FROM USER WHERE lower(email) = lower(?)').get(email);
         const valid = user ? await verifyPassword(password, user.password_hash) : false;
         assert(valid && user.is_active, 401, 'Invalid email or password');
+        if (passwordNeedsRehash(user.password_hash)) {
+          const upgradedHash = await hashPassword(password);
+          await db.prepare('UPDATE USER SET password_hash = ? WHERE user_id = ? AND password_hash = ?')
+            .run(upgradedHash, user.user_id, user.password_hash);
+        }
         sendJson(response, 200, { token: createToken(user.user_id), user: userDto(user, { privateFields: true }) }, request);
         return;
       }
