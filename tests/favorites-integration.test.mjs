@@ -19,6 +19,38 @@ async function fixture(t) {
   return { db, api };
 }
 
+test('removing a stale favorite succeeds after its owner deleted the room', async t => {
+  const { db, api } = await fixture(t);
+  const created = await api('/rooms', 1, 'POST', { title: 'Stale favorite', description: 'Test', googleMapsUrl: 'https://maps.google.com/', price: 4000, capacity: 2, priceBasis: 'per_room', locality: 'ประชาอุทิศ', images: ['https://example.test/room.jpg'] });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const roomId = created.body.room.roomId;
+  assert.equal((await api(`/rooms/${roomId}/favorite`, 3, 'PUT')).status, 200);
+  assert.equal((await api('/favorites')).body.rooms.length, 1);
+  assert.equal((await api(`/rooms/${roomId}`, 1, 'DELETE')).status, 200);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const removed = await api(`/rooms/${roomId}/favorite`, 3, 'DELETE');
+    assert.equal(removed.status, 200);
+    assert.deepEqual(removed.body, { success: true });
+  }
+  assert.deepEqual((await api('/favorites')).body.rooms, []);
+  assert.deepEqual(await db.prepare('SELECT * FROM ROOM_FAVORITE WHERE room_id = ?').all(roomId), []);
+  assert.equal((await api(`/rooms/${roomId}/favorite`, 3, 'PUT')).status, 404);
+});
+
+test('idempotent unfavorite still validates input, protects other users and reports write failures', async t => {
+  const { db, api } = await fixture(t);
+  for (const user of [3, 4]) assert.equal((await api('/rooms/1/favorite', user, 'PUT')).status, 200);
+  assert.equal((await api('/rooms/1/favorite', null, 'DELETE')).status, 401);
+  assert.equal((await api('/rooms/0/favorite', 3, 'DELETE')).status, 400);
+  db.setReadOnly(true);
+  assert.equal((await api('/rooms/1/favorite', 3, 'DELETE')).status, 500);
+  db.setReadOnly(false);
+  assert.equal((await api('/favorites', 3)).body.rooms.length, 1);
+  for (let attempt = 0; attempt < 2; attempt++) assert.equal((await api('/rooms/1/favorite', 3, 'DELETE')).status, 200);
+  assert.deepEqual((await api('/favorites', 3)).body.rooms, []);
+  assert.equal((await api('/favorites', 4)).body.rooms.length, 1);
+});
+
 test('favorites survive withdrawal, approval and leaving without changing request history or privacy', async t => {
   const { api } = await fixture(t);
   assert.equal((await api('/rooms/1/favorite', 3, 'PUT')).status, 200);

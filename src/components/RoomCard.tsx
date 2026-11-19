@@ -33,7 +33,7 @@ export function RoomCard({ room, onFavoriteChange, priority = false }: { room: R
       setFavoriteFeedback(!isFavorite);
       onFavoriteChange?.(room.roomId, !isFavorite);
       notify(isFavorite ? 'เอาห้องออกจากรายการโปรดแล้ว' : 'บันทึกห้องโปรดแล้ว');
-    } catch (caught) { if (!(caught instanceof SessionChangedError)) notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ'); }
+    } catch (caught) { if (!(caught instanceof SessionChangedError)) notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ', 'error'); }
     finally { favoriteLocked.current = false; setSaving(false); }
   };
 

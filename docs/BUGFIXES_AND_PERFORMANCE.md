@@ -48,3 +48,17 @@ the previous development command, and start one `npm run dev` instance.
   and remained identical; the 34 demo listings were preserved.
 
 No schema migration or application data reset is needed.
+
+## Room card follow-up
+
+- `DELETE /api/rooms/:id/favorite` returns success when the favorite is already
+  absent, including after its owner deleted the room. Stale cards can then
+  refresh the list. Authentication and per-user deletion remain required;
+  adding a favorite for a missing room still returns 404.
+- Toasts distinguish success, error and informational messages. Failed favorite
+  and listing actions use an alert icon and the existing danger color. Favorite
+  failures retain the previous heart state and allow retry; obsolete sessions
+  cannot display late favorite feedback.
+- Regression coverage uses real HTTP requests against isolated PostgreSQL test
+  schemas, plus component interactions in jsdom. This follow-up has not been
+  visually rechecked in a browser.
