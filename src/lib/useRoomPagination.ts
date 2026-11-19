@@ -18,6 +18,8 @@ export function useRoomPagination(load: (params: URLSearchParams) => Promise<Roo
   const [resultKey, setResultKey] = useState('');
   const canonicalRequest = useRef<string | null>(null);
   const generation = useRef(0);
+  const previousQuery = useRef<string | null>(null);
+  const query = params.get('q') || '';
   const key = JSON.stringify([searchKey, overridesKey, revision]);
 
   useEffect(() => {
@@ -30,6 +32,9 @@ export function useRoomPagination(load: (params: URLSearchParams) => Promise<Roo
       return;
     }
     canonicalRequest.current = null;
+    // Debounce typing, not initial loads, page buttons, filters or history navigation.
+    const requestDelay = previousQuery.current !== null && previousQuery.current !== query && navigationType !== 'POP' ? delay : 0;
+    previousQuery.current = query;
     let active = true;
     const requestGeneration = ++generation.current;
     setLoading(true); setError('');
@@ -64,9 +69,9 @@ export function useRoomPagination(load: (params: URLSearchParams) => Promise<Roo
       } finally {
         if (active && generation.current === requestGeneration) setLoading(false);
       }
-    }, delay);
+    }, requestDelay);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [key, searchKey, overridesKey, revision, load, pageSize, delay, setParams, location.key, navigationType]);
+  }, [key, searchKey, overridesKey, revision, load, pageSize, delay, query, setParams, location.key, navigationType]);
 
   useLayoutEffect(() => {
     const pending = readyScroll.current;
