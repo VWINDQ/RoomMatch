@@ -17,11 +17,12 @@ Object.assign(globalThis, {
 });
 const { createRoot } = await import('react-dom/client');
 const { MemoryRouter, Route, Routes } = await import('react-router-dom');
-const { AppProvider } = await import('../src/AppContext.tsx');
+const { AppProvider, useApp } = await import('../src/AppContext.tsx');
+const { Toast } = await import('../src/components/Toast.tsx');
 const { RoomCard } = await import('../src/components/RoomCard.tsx');
 const { RoomDetailPage } = await import('../src/pages/RoomDetailPage.tsx');
 const { default: App } = await import('../src/App.tsx');
-const { api } = await import('../src/lib/api.ts');
+const { api, SessionChangedError } = await import('../src/lib/api.ts');
 window.scrollTo = () => {};
 window.HTMLElement.prototype.scrollTo = () => {};
 window.HTMLElement.prototype.scrollIntoView = () => {};
@@ -40,13 +41,18 @@ beforeEach(() => { localStorage.clear(); sessionStorage.clear(); root = createRo
 afterEach(async () => { await act(async () => root.unmount()); mock.restoreAll(); });
 after(() => dom.window.close());
 
+function ToastFeedback() {
+  const { toast, toastTone } = useApp();
+  return createElement(Toast, { message: toast, tone: toastTone });
+}
+
 async function mount(surface, isFavorite = false) {
   const value = { ...room, isFavorite };
   mock.method(api, 'room', async () => value);
   const page = surface === 'card' ? createElement(RoomCard, { room: value })
     : createElement(Routes, null, createElement(Route, { path: '/rooms/:id', element: createElement(RoomDetailPage) }));
   await act(async () => root.render(createElement(MemoryRouter, { initialEntries: ['/rooms/1'] },
-    createElement(AppProvider, null, page))));
+    createElement(AppProvider, null, page, createElement(ToastFeedback)))));
 }
 const favorite = () => document.querySelector('button[aria-pressed]');
 const hasFeedback = () => favorite().classList.contains('has-favorite-feedback');
@@ -86,6 +92,35 @@ for (const surface of ['card', 'detail']) {
     assert.equal(favorite().getAttribute('aria-pressed'), 'false');
     assert.equal(favorite().disabled, false);
     assert.equal(hasFeedback(), false);
+  });
+
+  test(`${surface}: failed favorite keeps its state and shows an error toast; retry shows success`, async () => {
+    let failing = true;
+    mock.method(api, 'addFavorite', async () => { if (failing) throw new Error('บันทึกไม่สำเร็จ'); });
+    await mount(surface);
+    await act(async () => favorite().click());
+    const feedback = document.querySelector('.toast');
+    assert.equal(feedback.textContent, 'บันทึกไม่สำเร็จ');
+    assert.equal(feedback.getAttribute('role'), 'alert');
+    assert.ok(feedback.classList.contains('toast-error'));
+    assert.equal(feedback.querySelector('.lucide-circle-check'), null);
+    assert.equal(favorite().getAttribute('aria-pressed'), 'false');
+    assert.equal(favorite().disabled, false);
+    failing = false;
+    await act(async () => favorite().click());
+    assert.equal(favorite().getAttribute('aria-pressed'), 'true');
+    assert.equal(document.querySelector('.toast').getAttribute('role'), 'status');
+    assert.ok(document.querySelector('.toast .lucide-circle-check'));
+    assert.equal(document.querySelector('.toast-error'), null);
+  });
+
+  test(`${surface}: an obsolete session cannot display favorite feedback`, async () => {
+    mock.method(api, 'addFavorite', async () => { throw new SessionChangedError(); });
+    await mount(surface);
+    await act(async () => favorite().click());
+    assert.equal(document.querySelector('.toast'), null);
+    assert.equal(favorite().getAttribute('aria-pressed'), 'false');
+    assert.equal(favorite().disabled, false);
   });
 }
 

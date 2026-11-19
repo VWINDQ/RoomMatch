@@ -76,7 +76,7 @@ function GuestOnly({ children }: { children: ReactNode }) {
 }
 
 function RoutedApp() {
-  const { toast } = useApp();
+  const { toast, toastTone } = useApp();
   return <><ScrollToTop/><Routes>
     <Route path="/auth/google/complete" element={<OAuthCallbackPage/>}/>
     <Route path="/login" element={<GuestOnly><LoginPage/></GuestOnly>}/>
@@ -89,7 +89,7 @@ function RoutedApp() {
       <Route path="/friends" element={<DeferredPage variant="friends"><FriendsPage/></DeferredPage>}/>
     </Route></Route>
     <Route path="*" element={<Navigate to="/rooms" replace/>}/>
-  </Routes><Toast message={toast}/></>;
+  </Routes><Toast message={toast} tone={toastTone}/></>;
 }
 
 export default function App() { return <AppProvider><RoutedApp/></AppProvider>; }

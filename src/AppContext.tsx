@@ -1,15 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, ApiError, SessionChangedError, subscribeUnauthorized, tokenStorage } from './lib/api';
 import type { User } from './types';
+import type { ToastTone } from './components/Toast';
 
 type RegisterPayload = { firstName: string; lastName: string; email: string; password: string; phone: string; gender?: string; dateOfBirth?: string; university?: string };
 type AppState = {
-  user: User | null; authLoading: boolean; authError: string; toast: string;
+  user: User | null; authLoading: boolean; authError: string; toast: string; toastTone: ToastTone;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   completeOAuth: () => Promise<void>;
   logout: () => boolean; registerLogoutGuard: (guard: () => boolean) => () => void;
-  refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string) => void;
+  refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string, tone?: ToastTone) => void;
 };
 
 const Context = createContext<AppState | null>(null);
@@ -19,6 +20,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authLoading, setAuthLoading] = useState(Boolean(tokenStorage.get()));
   const [authError, setAuthError] = useState('');
   const [toast, setToast] = useState('');
+  const [toastTone, setToastTone] = useState<ToastTone>('success');
   // A newer auth operation takes precedence over any pending account check.
   const authVersion = useRef(0);
   // Login and registration share a sequence independent of account refreshes.
@@ -28,7 +30,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     logoutGuard.current = guard;
     return () => { if (logoutGuard.current === guard) logoutGuard.current = null; };
   }, []);
-  const notify = useCallback((message: string) => setToast(message), []);
+  const notify = useCallback((message: string, tone: ToastTone = 'success') => { setToast(message); setToastTone(tone); }, []);
   const clearSession = useCallback(() => {
     signInVersion.current += 1;
     authVersion.current += 1;
@@ -40,7 +42,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const expireSession = useCallback((rejectedToken: string) => {
     if (tokenStorage.get() !== rejectedToken) return;
     clearSession();
-    notify('การเข้าสู่ระบบสิ้นสุด กรุณาเข้าสู่ระบบอีกครั้ง');
+    notify('การเข้าสู่ระบบสิ้นสุด กรุณาเข้าสู่ระบบอีกครั้ง', 'info');
   }, [clearSession, notify]);
   const logout = useCallback(() => {
     // Only an explicit logout may wait for unsaved edits; session expiry must not.
@@ -118,11 +120,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 2600); return () => window.clearTimeout(timer); }, [toast]);
 
   const value = useMemo<AppState>(() => ({
-    user, authLoading, authError, toast, notify, refreshUser, retryAuth, completeOAuth,
+    user, authLoading, authError, toast, toastTone, notify, refreshUser, retryAuth, completeOAuth,
     login: (email, password) => signIn(() => api.login({ email, password })),
     register: payload => signIn(() => api.register(payload)),
     logout, registerLogoutGuard,
-  }), [authError, authLoading, completeOAuth, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, user]);
+  }), [authError, authLoading, completeOAuth, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, toastTone, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

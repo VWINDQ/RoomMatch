@@ -25,7 +25,7 @@ export function MyListingsPage() {
     if (!deleting || deleteLocked.current || statusActions.isPending(deleting.roomId)) return;
     deleteLocked.current = true; setBusy(true);
     try { await api.deleteRoom(deleting.roomId); setDeleting(null); refresh(); notify('ลบประกาศแล้ว'); }
-    catch (caught) { if (caught instanceof SessionChangedError) return; notify(caught instanceof Error ? caught.message : 'ลบประกาศไม่สำเร็จ'); }
+    catch (caught) { if (caught instanceof SessionChangedError) return; notify(caught instanceof Error ? caught.message : 'ลบประกาศไม่สำเร็จ', 'error'); }
     finally { deleteLocked.current = false; setBusy(false); }
   };
   const [pendingRooms, setPendingRooms] = useState(new Set<string>());
@@ -37,7 +37,7 @@ export function MyListingsPage() {
       refresh();
       notify(updated.status === 'inactive' ? 'พักประกาศแล้ว' : updated.status === 'full' ? 'เปิดประกาศแล้ว (ห้องเต็ม)' : 'เปิดประกาศแล้ว');
     },
-    onError: message => notify(message),
+    onError: message => notify(message, 'error'),
   }));
   const roomLocked = (roomId: string) => statusActions.isPending(roomId) || deleting?.roomId === roomId;
   return <div className="page my-listings-page" {...filterClickGuard}>

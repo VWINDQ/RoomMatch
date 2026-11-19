@@ -7,7 +7,7 @@ import { RoomGallery } from '../components/RoomGallery';
 import { ProfilePhoto } from '../components/ProfilePhoto';
 import { Price } from '../components/RoomCard';
 import { Button, EmptyState, Modal, StatusBadge } from '../components/UI';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, SessionChangedError } from '../lib/api';
 import { roomReturn } from '../lib/roomNavigation';
 import type { Room } from '../types';
 
@@ -39,7 +39,7 @@ export function RoomDetailPage() {
       setRoom(current => current?.roomId === room.roomId ? { ...current, isFavorite: !wasFavorite } : current);
       setFavoriteFeedback(!wasFavorite);
       notify(wasFavorite ? 'เอาห้องออกจากรายการโปรดแล้ว' : 'บันทึกห้องโปรดแล้ว');
-    } catch (caught) { notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ'); }
+    } catch (caught) { if (!(caught instanceof SessionChangedError)) notify(caught instanceof Error ? caught.message : 'อัปเดตรายการโปรดไม่สำเร็จ', 'error'); }
     finally { setSavingFavorite(false); }
   };
   const [withdrawOpen, setWithdrawOpen] = useState(false); const [withdrawing, setWithdrawing] = useState(false); const [withdrawError, setWithdrawError] = useState('');

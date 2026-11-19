@@ -1,0 +1,11 @@
+.toast {
+  pointer-events: none;
+}
+
+.toast > svg {
+  flex-shrink: 0;
+}
+
+.toast.toast-error {
+  background: var(--danger);
+}

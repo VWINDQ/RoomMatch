@@ -964,9 +964,8 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (request.method === 'DELETE' && pathMatch) {
         const user = await authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = await getRoomRow(db, roomId);
-        assert(room, 404, 'Room not found');
 
+        // A deleted room already cascades its favorites; allow stale cards to refresh.
         await db.prepare(`
           DELETE FROM ROOM_FAVORITE
           WHERE user_id = ? AND room_id = ?
