@@ -13,7 +13,8 @@
 
 ## มีแล้ว — ไม่ต้องกลับไปทำซ้ำ
 
-- สมัคร/เข้าสู่ระบบ, hash password ด้วย scrypt, token มีลายเซ็นและวันหมดอายุ
+- สมัคร/เข้าสู่ระบบ, hash password ด้วย Argon2id (บัญชี scrypt เดิมอัปเกรดเมื่อ login สำเร็จ), token มีลายเซ็นและวันหมดอายุ
+- Google OAuth / OpenID Connect แบบเลือกเปิดใช้ ดู [AUTHENTICATION.md](AUTHENTICATION.md)
 - ป้องกันใช้ signing secret ตัวอย่างใน production และไม่ seed demo อัตโนมัติเมื่อ `NODE_ENV=production`
 - โปรไฟล์/ไลฟ์สไตล์/preferences, บันทึก bundle ใน transaction
 - ห้อง create/edit/pause/delete, ค้นหา/กรองราคา/เรียง, public browse UI ซ่อนห้องเต็ม
@@ -38,8 +39,8 @@
 - [ ] ตรวจ password policy, common/breached-password screening และ sign-in timing/account enumeration
 - [ ] ทบทวนที่เก็บ token: localStorage ถูกอ่านได้โดย JavaScript พิจารณา session cookie แบบ
       HttpOnly/Secure/SameSite พร้อม CSRF protection เมื่อเปลี่ยนไปใช้ cookie authentication
-- [ ] benchmark และเพิ่ม password hashing cost/rehash ตอน login: ปัจจุบัน scrypt `N=16384,r=8,p=1`
-      ต่ำกว่าค่าชุด `N=2^17,r=8,p=1` ที่ OWASP แนะนำ ควรปรับ memory limit และ load test ร่วมด้วย
+- [ ] benchmark และ load test ค่า Argon2id ปัจจุบัน `m=65536,t=3,p=1` ตามทรัพยากร production
+      (อัปเกรด scrypt ตอน login สำเร็จแล้ว) พร้อมเพิ่ม rate limit สำหรับ authentication
 
 อ้างอิง: [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html),
 [Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)

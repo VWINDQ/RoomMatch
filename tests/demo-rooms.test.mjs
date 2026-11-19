@@ -23,7 +23,7 @@ test('development demos are idempotent and cleanup never cascades into user reco
   assert.equal(manifest.email, demoEmail);
   assert.equal('password' in manifest, false);
   const owner = (await client.query('SELECT * FROM "USER" WHERE user_id=$1', [added.ownerId])).rows[0];
-  assert.match(owner.password_hash, /^scrypt\$16384\$8\$1\$/);
+  assert.match(owner.password_hash, /^\$argon2id\$v=19\$m=65536,t=3,p=1\$/);
   const roomId = added.roomIds[0];
   for (const [insert, remove, params] of [
     ['INSERT INTO room_favorite(user_id,room_id) VALUES(1,$1)', 'DELETE FROM room_favorite WHERE user_id=1 AND room_id=$1', [roomId]],

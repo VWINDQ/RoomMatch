@@ -183,7 +183,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new SessionChangedError();
   }
   const headers = new Headers(options.headers);
-  const isSignInRequest = path === '/auth/login' || path === '/auth/register';
+  const isSignInRequest = path === '/auth/login' || path === '/auth/register' || path.startsWith('/auth/oauth/');
   const token = isSignInRequest ? null : sessionToken;
   const revision = tokenRevision;
   const assertCurrentSession = () => {
@@ -275,6 +275,8 @@ export const api = {
   async cancelFriendInvitation(connectionId: string) { const result = await request<JsonObject>(`/friends/connections/${encodeURIComponent(connectionId)}/cancel`, { method: 'POST' }); return normalizeConnection(result.connection); },
   async login(payload: { email: string; password: string }) { return parseAuthSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) })); },
   async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
+  async oauthProviders() { const result = await request<JsonObject>('/auth/oauth/providers'); return { google: result.google === true }; },
+  async completeOAuth() { return parseAuthSession(await request<unknown>('/auth/oauth/session', { method: 'POST', body: '{}' })); },
   async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
   roomsPage: (params: URLSearchParams) => requestRoomPage('/rooms', params),
   favoritesPage: (params: URLSearchParams) => requestRoomPage('/favorites', params),

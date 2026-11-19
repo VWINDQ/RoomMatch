@@ -83,7 +83,8 @@ The ER has no room-title attribute. To preserve the useful existing title field 
 
 ## Authentication contract
 
-- Passwords use `scrypt` with a per-password random salt and constant-time verification.
+- New passwords use Argon2id (`m=65536,t=3,p=1`) with random salts and constant-time verification. Legacy scrypt hashes upgrade after successful login.
+- Optional Google OpenID Connect uses PKCE/state/nonce and verified ID tokens, with separate identity, attempt and one-time ticket tables. Existing emails are never automatically linked. See [AUTHENTICATION.md](AUTHENTICATION.md) for setup and account behavior.
 - Authentication uses a short stateless HMAC-signed bearer token. No session table is introduced.
 - The signing secret comes from `ROOMMATCH_TOKEN_SECRET`; a random process-local secret is used only for local development when the variable is absent.
 - Protected routes return `401`; owner-only routes return `403`; validation and conflicts use `400`/`409` with `{ "error": "..." }`.

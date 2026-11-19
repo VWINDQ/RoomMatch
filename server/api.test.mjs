@@ -48,6 +48,8 @@ test('register, authenticate, and update one-to-one profile data', async () => {
   });
   assert.equal(registration.response.status, 201);
   assert.ok(registration.body.token);
+  const account = await database.prepare('SELECT password_hash FROM USER WHERE lower(email)=?').get('new.student@example.test');
+  assert.match(account.password_hash, /^\$argon2id\$v=19\$/);
 
   const headers = { Authorization: `Bearer ${registration.body.token}` };
   const lifestyle = await api('/api/lifestyle', {

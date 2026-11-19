@@ -7,6 +7,7 @@ type AppState = {
   user: User | null; authLoading: boolean; authError: string; toast: string;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+  completeOAuth: () => Promise<void>;
   logout: () => boolean; registerLogoutGuard: (guard: () => boolean) => () => void;
   refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string) => void;
 };
@@ -95,6 +96,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       throw caught;
     }
   }, [acceptSession]);
+  const completeOAuth = useCallback(() => signIn(() => api.completeOAuth()), [signIn]);
 
   useEffect(() => {
     const unsubscribe = tokenStorage.subscribe(() => {
@@ -116,11 +118,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 2600); return () => window.clearTimeout(timer); }, [toast]);
 
   const value = useMemo<AppState>(() => ({
-    user, authLoading, authError, toast, notify, refreshUser, retryAuth,
+    user, authLoading, authError, toast, notify, refreshUser, retryAuth, completeOAuth,
     login: (email, password) => signIn(() => api.login({ email, password })),
     register: payload => signIn(() => api.register(payload)),
     logout, registerLogoutGuard,
-  }), [authError, authLoading, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, user]);
+  }), [authError, authLoading, completeOAuth, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

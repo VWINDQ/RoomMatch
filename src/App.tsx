@@ -6,6 +6,7 @@ import { AppShell } from './components/Layout';
 import { Toast } from './components/Toast';
 import { Button } from './components/UI';
 import { LoginPage, RegisterPage } from './pages/AuthPages';
+import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { RoomsPage } from './pages/RoomsPage';
 
 const ListingFormPage = lazy(() => import('./pages/ListingFormPage').then(module => ({ default: module.ListingFormPage })));
@@ -77,6 +78,7 @@ function GuestOnly({ children }: { children: ReactNode }) {
 function RoutedApp() {
   const { toast } = useApp();
   return <><ScrollToTop/><Routes>
+    <Route path="/auth/google/complete" element={<OAuthCallbackPage/>}/>
     <Route path="/login" element={<GuestOnly><LoginPage/></GuestOnly>}/>
     <Route path="/register" element={<GuestOnly><RegisterPage/></GuestOnly>}/>
     <Route element={<ProtectedRoutes/>}><Route element={<AppShell/>}>
