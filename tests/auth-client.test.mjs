@@ -25,7 +25,8 @@ window.HTMLElement.prototype.scrollTo = () => {};
 window.HTMLElement.prototype.scrollIntoView = () => {};
 
 const { createRoot } = await import('react-dom/client');
-const { MemoryRouter, useLocation } = await import('react-router-dom');
+const { useLocation } = await import('react-router-dom');
+const { TestRouter: MemoryRouter } = await import('./helpers/test-router.mjs');
 const { AppProvider, useApp } = await import('../src/AppContext.tsx');
 const { api, ApiError, InvalidAuthResponseError, SessionChangedError, subscribeUnauthorized, tokenStorage } = await import('../src/lib/api.ts');
 const { default: App } = await import('../src/App.tsx');

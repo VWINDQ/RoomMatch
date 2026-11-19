@@ -5,8 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
 import { ProfilePhoto } from '../components/ProfilePhoto';
-import { Button, EmptyState, Input, Textarea } from '../components/UI';
-import { api, ApiError } from '../lib/api';
+import { Button, EmptyState, Input, Modal, Textarea } from '../components/UI';
+import { api, ApiError, SessionChangedError } from '../lib/api';
 import { FormFeedback, useFormFeedback } from '../components/FormFeedback';
 import { ImagePicker, savedImages, uploadSelectedImages, type SelectedImage } from '../components/ImagePicker';
 import { isWebUrl } from '../../shared/listingValidation.js';
@@ -14,14 +14,46 @@ import { calculateAge } from '../lib/age';
 import type { ProfileBundle } from '../types';
 import { BirthDateInput } from '../components/BirthDateInput';
 import { formatBirthDate, parseBirthDate } from '../lib/birthDate';
+import { useFormLeaveGuard } from '../lib/useFormLeaveGuard';
 
 export function ProfilePage() {
-  const navigate = useNavigate(); const { refreshUser, notify, logout } = useApp(); const [profile, setProfile] = useState<ProfileBundle | null>(null); const [editing, setEditing] = useState(false); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [reload, setReload] = useState(0);
+  const navigate = useNavigate(); const { refreshUser, notify, logout, registerLogoutGuard } = useApp(); const [profile, setProfile] = useState<ProfileBundle | null>(null); const [editing, setEditing] = useState(false); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [reload, setReload] = useState(0);
   const [images, setImages] = useState<SelectedImage[]>([]);
   const [checkingImages, setCheckingImages] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const submitLocked = useRef(false);
-  const summaryRef = useFormFeedback(errors, formRef);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const { blocker, hasChanges, markSaved, resetBlocker, proceed } = useFormLeaveGuard(formRef, images, saving || checkingImages, editing, profile);
+  const [logoutPending, setLogoutPending] = useState(false);
+  const pendingLogout = useRef(false);
+  const saveBeforeLeave = useRef(false);
+  useEffect(() => {
+    if (!editing) return;
+    return registerLogoutGuard(() => {
+      if (!hasChanges()) return false;
+      pendingLogout.current = true;
+      setLogoutPending(true);
+      return true;
+    });
+  }, [editing, hasChanges, registerLogoutGuard]);
+  const cancelLeave = () => {
+    saveBeforeLeave.current = false;
+    pendingLogout.current = false;
+    setLogoutPending(false);
+    resetBlocker();
+  };
+  const finishLeave = () => {
+    saveBeforeLeave.current = false;
+    if (pendingLogout.current) {
+      pendingLogout.current = false;
+      setLogoutPending(false);
+      markSaved();
+      if (logout()) navigate('/login');
+    } else proceed();
+  };
+  const leaving = blocker.state === 'blocked' || logoutPending;
+  const summaryRef = useFormFeedback(errors, formRef, !leaving);
   useEffect(() => { let active = true; setLoading(true); setError(''); api.profile().then(value => { if (active) { setProfile(value); setImages(savedImages([value.user.profileImage])); } }).catch(caught => active && setError(caught instanceof Error ? caught.message : 'โหลดโปรไฟล์ไม่สำเร็จ')).finally(() => active && setLoading(false)); return () => { active = false; }; }, [reload]);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (!profile || checkingImages || submitLocked.current) return; const data = new FormData(event.currentTarget); const required = ['firstName', 'lastName', 'phone'] as const; const nextErrors: Record<string, string> = {}; required.forEach(name => { if (!String(data.get(name)).trim()) nextErrors[name] = 'กรุณากรอกข้อมูลนี้'; });
@@ -42,20 +74,30 @@ export function ProfilePage() {
     }
     if (budgetMinRaw && budgetMaxRaw && budgetMin > budgetMax) nextErrors.budgetMax = 'งบสูงสุดต้องไม่น้อยกว่างบต่ำสุด';
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) return;
+    if (Object.keys(nextErrors).length) { cancelLeave(); return; }
     submitLocked.current = true;
     setSaving(true); try {
       const imageUrls = await uploadSelectedImages(images, uploaded => setImages(current => current.map(image => image.id === uploaded.id ? uploaded : image)));
+      if (!mounted.current) return;
       const profileImage = imageUrls[0]?.trim() || '';
       const updated = await api.updateProfile({ firstName: String(data.get('firstName')).trim(), lastName: String(data.get('lastName')).trim(), phone, gender: String(data.get('gender')), dateOfBirth, university: String(data.get('university')).trim(), profileImage, bio: String(data.get('bio')).trim(), instagram: String(data.get('instagram')).trim(), lineId: String(data.get('lineId')).trim(), ...(lifestyleName ? { lifestyleName } : {}), preference: { preferredGender: String(data.get('preferredGender')), preferredAgeMin: ageMinRaw ? ageMin : null, preferredAgeMax: ageMaxRaw ? ageMax : null, budgetMin: budgetMinRaw ? budgetMin : null, budgetMax: budgetMaxRaw ? budgetMax : null } });
-      setProfile(updated); setImages(savedImages([updated.user.profileImage])); await refreshUser(updated.user); setEditing(false); notify('บันทึกข้อมูลเรียบร้อยแล้ว');
-    } catch (caught) { setErrors({ ...(caught instanceof ApiError ? caught.fieldErrors : {}), form: caught instanceof Error ? caught.message : 'บันทึกข้อมูลไม่สำเร็จ' }); } finally { submitLocked.current = false; setSaving(false); }
+      if (!mounted.current) return;
+      await refreshUser(updated.user);
+      if (!mounted.current) return;
+      setProfile(updated); setImages(savedImages([updated.user.profileImage])); setEditing(false); notify('บันทึกข้อมูลเรียบร้อยแล้ว');
+      if (saveBeforeLeave.current) finishLeave();
+      else { pendingLogout.current = false; setLogoutPending(false); markSaved(); }
+    } catch (caught) {
+      if (!mounted.current || caught instanceof SessionChangedError) return;
+      cancelLeave();
+      setErrors({ ...(caught instanceof ApiError ? caught.fieldErrors : {}), form: caught instanceof Error ? caught.message : 'บันทึกข้อมูลไม่สำเร็จ' });
+    } finally { submitLocked.current = false; if (mounted.current) setSaving(false); }
   };
   if (loading) return <div className="page"><Skeleton variant="profile"/></div>;
   if (error || !profile) return <div className="page"><EmptyState icon={<RefreshCw/>} title="โหลดโปรไฟล์ไม่สำเร็จ" text={error} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
   const { user, lifestyle, preference } = profile; const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}` || 'R';
   const age = calculateAge(user.dateOfBirth);
-  return <div className="page profile-page"><PageHeader title="โปรไฟล์ของฉัน" subtitle="ข้อมูลส่วนตัว ไลฟ์สไตล์ ความต้องการ และช่องทางการติดต่อของคุณ" actions={<Button variant="quiet" disabled={saving} onClick={() => { logout(); navigate('/login'); }}><LogOut size={17}/>ออกจากระบบ</Button>}/>
+  return <div className="page profile-page"><PageHeader title="โปรไฟล์ของฉัน" subtitle="ข้อมูลส่วนตัว ไลฟ์สไตล์ ความต้องการ และช่องทางการติดต่อของคุณ" actions={<Button variant="quiet" disabled={saving} onClick={() => { if (logout()) navigate('/login'); }}><LogOut size={17}/>ออกจากระบบ</Button>}/>
     <section className="profile-summary"><div className="profile-avatar"><ProfilePhoto src={user.profileImage} fallback={initials}/></div><div className="profile-identity"><div><h2>{user.firstName} {user.lastName}</h2><span>{user.university || 'นักศึกษา'}</span></div><p><Mail size={16}/>{user.email}</p></div>{!editing && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={17}/>แก้ไขโปรไฟล์</Button>}</section>
     {!editing ? <div className="profile-section-grid api-profile-view"><ProfileCard icon={<UserRound/>} title="ข้อมูลส่วนตัว"><dl className="profile-data-list profile-personal-data"><div><dt>เบอร์โทร</dt><dd><Phone size={16}/>{user.phone}</dd></div><div><dt>เพศ</dt><dd>{genderLabel(user.gender)}</dd></div><div className="profile-half-field"><dt>วันเกิด</dt><dd>{formatBirthDate(user.dateOfBirth) || 'ยังไม่ระบุ'}</dd></div><div className="profile-half-field"><dt>อายุ</dt><dd>{age === null ? 'ยังไม่ระบุ' : `${age} ปี`}</dd></div><div><dt>เกี่ยวกับฉัน</dt><dd>{user.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</dd></div></dl></ProfileCard>
       <ProfileCard icon={<HeartHandshake/>} title="ไลฟ์สไตล์และความต้องการ"><dl className="profile-data-list"><div><dt>ไลฟ์สไตล์</dt><dd>{lifestyle?.lifestyleName || 'ยังไม่ระบุ'}</dd></div><div><dt>เพศที่สะดวกแชร์ห้อง</dt><dd>{genderLabel(preference?.preferredGender)}</dd></div><div><dt>ช่วงอายุ</dt><dd>{ageRange(preference?.preferredAgeMin, preference?.preferredAgeMax)}</dd></div><div><dt>งบประมาณ</dt><dd>{budgetRange(preference?.budgetMin, preference?.budgetMax)}</dd></div></dl></ProfileCard>
@@ -75,8 +117,22 @@ export function ProfilePage() {
       </div></section>
       <section className="form-section"><header><span>2</span><div><h2>ไลฟ์สไตล์และความต้องการ</h2><p>ช่วยให้การจับคู่มีบริบทที่ชัดเจนขึ้น</p></div></header><div className="form-section-body"><Input label="ไลฟ์สไตล์" name="lifestyleName" maxLength={400} defaultValue={lifestyle?.lifestyleName} placeholder="เช่น ตื่นเช้า • ไม่สูบบุหรี่ • ชอบห้องเงียบ"/><label className="field"><span className="field-label">เพศที่สะดวกแชร์ห้อง</span><select name="preferredGender" defaultValue={preference?.preferredGender || 'any'}><option value="any">ไม่จำกัด</option><option value="male">ชาย</option><option value="female">หญิง</option><option value="non_binary">นอนไบนารี</option><option value="other">อื่น ๆ</option></select></label><div className="two-fields"><Input label="อายุต่ำสุด" name="preferredAgeMin" type="number" min={18} max={120} defaultValue={preference?.preferredAgeMin ?? ''} error={errors.preferredAgeMin}/><Input label="อายุสูงสุด" name="preferredAgeMax" type="number" min={18} max={120} defaultValue={preference?.preferredAgeMax ?? ''} error={errors.preferredAgeMax}/><Input label="งบต่ำสุด" name="budgetMin" type="number" min={0} defaultValue={preference?.budgetMin ?? ''} error={errors.budgetMin}/><Input label="งบสูงสุด" name="budgetMax" type="number" min={0} defaultValue={preference?.budgetMax ?? ''} error={errors.budgetMax}/></div></div></section>
       <section className="form-section"><header><span>3</span><div><h2>ช่องทางติดต่อ</h2><p>แชร์หลังจับคู่เพื่อคุยรายละเอียดกันต่อ</p></div></header><div className="form-section-body"><Input label="LINE ID" name="lineId" defaultValue={user.lineId}/><Input label="Instagram" name="instagram" defaultValue={user.instagram}/></div></section>
-      <footer className="profile-actions"><FormFeedback errors={errors} summaryRef={summaryRef}/><div className="form-action-buttons"><Button type="button" variant="quiet" onClick={() => { setEditing(false); setImages(savedImages([user.profileImage])); setErrors({}); }}>ยกเลิก</Button><Button disabled={checkingImages} loading={saving}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : 'บันทึกการเปลี่ยนแปลง'}</Button></div></footer>
+      <footer className="profile-actions"><FormFeedback errors={errors} summaryRef={summaryRef}/><div className="form-action-buttons"><Button type="button" variant="quiet" onClick={() => { markSaved(); setEditing(false); setImages(savedImages([user.profileImage])); setErrors({}); }}>ยกเลิก</Button><Button disabled={checkingImages} loading={saving}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : 'บันทึกการเปลี่ยนแปลง'}</Button></div></footer>
     </fieldset></form>}
+    {leaving && <Modal title="ยังไม่ได้บันทึกการแก้ไขโปรไฟล์" onClose={cancelLeave} actions={<>
+      <Button type="button" variant="quiet" disabled={saving || checkingImages} onClick={() => {
+        setEditing(false); setImages(savedImages([user.profileImage])); setErrors({}); finishLeave();
+      }}>ยกเลิกการแก้ไข</Button>
+      <Button type="button" disabled={checkingImages} loading={saving} onClick={() => {
+        if (submitLocked.current || checkingImages) return;
+        saveBeforeLeave.current = true;
+        formRef.current?.requestSubmit();
+      }}>บันทึกและไปต่อ</Button>
+    </>}>
+      <p>คุณมีข้อมูลโปรไฟล์ที่ยังไม่ได้บันทึก ต้องการยกเลิกการแก้ไข หรือบันทึกก่อน{logoutPending ? 'ออกจากระบบ' : 'ไปหน้าที่เลือก'}?</p>
+      <p>ปิดหน้าต่างนี้เพื่อกลับไปแก้ไขต่อ</p>
+      {(saving || checkingImages) && <p role="status">{checkingImages ? 'กำลังตรวจไฟล์ภาพ…' : 'กำลังบันทึกข้อมูล กรุณารอสักครู่…'}</p>}
+    </Modal>}
   </div>;
 }
 
