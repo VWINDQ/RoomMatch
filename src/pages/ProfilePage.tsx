@@ -17,6 +17,7 @@ import { useFormLeaveGuard } from '../lib/useFormLeaveGuard';
 import { AccountProfileFields } from '../components/AccountProfileFields';
 import { readUniversity } from '../components/UniversityPicker';
 import { validateAccountProfile } from '../../shared/accountProfile.js';
+import './ProfilePage.css';
 
 function profileFieldError(name: string, value: string) {
   if (name === 'firstName') return value.trim() ? '' : 'กรุณากรอกชื่อ';
@@ -151,7 +152,7 @@ export function ProfilePage() {
   };
   const leaveDestination = localLeave === 'cancel' ? 'กลับไปดูโปรไฟล์' : localLeave === 'logout' ? 'ออกจากระบบ' : 'ไปหน้าที่เลือก';
   const age = calculateAge(user.dateOfBirth);
-  return <div className="page profile-page"><PageHeader title="โปรไฟล์ของฉัน" subtitle={user.profileSetupPending ? 'กรอกข้อมูลให้ครบเพื่อเริ่มใช้งาน RoomMatch' : 'ข้อมูลส่วนตัว ไลฟ์สไตล์ ความต้องการ และช่องทางการติดต่อของคุณ'} actions={<Button variant="quiet" disabled={saving} onClick={() => { if (logout()) navigate('/login'); }}><LogOut size={17}/>ออกจากระบบ</Button>}/>
+  return <div className="page profile-page"><PageHeader title="โปรไฟล์ของฉัน" subtitle={user.profileSetupPending ? 'กรอกข้อมูลให้ครบเพื่อเริ่มใช้งาน RoomMatch' : 'ข้อมูลส่วนตัว ไลฟ์สไตล์ ความต้องการ และช่องทางการติดต่อของคุณ'}/>
     <section className="profile-summary"><div className="profile-avatar"><ProfilePhoto src={user.profileImage} fallback={initials}/></div><div className="profile-identity"><div><h2>{user.firstName} {user.lastName}</h2><span>{user.university || (user.accountType === 'general' ? 'ผู้ใช้ทั่วไป' : 'สมาชิก RoomMatch')}</span></div><p><Mail size={16}/>{user.email}</p></div>{!editing && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={17}/>แก้ไขโปรไฟล์</Button>}</section>
     {!editing ? <div className="profile-section-grid api-profile-view"><ProfileCard icon={<UserRound/>} title="ข้อมูลส่วนตัว"><dl className="profile-data-list profile-personal-data"><div><dt>เบอร์โทร</dt><dd><Phone size={16}/>{user.phone}</dd></div><div><dt>เพศ</dt><dd>{genderLabel(user.gender)}</dd></div><div className="profile-half-field"><dt>วันเกิด</dt><dd>{formatBirthDate(user.dateOfBirth) || 'ยังไม่ระบุ'}</dd></div><div className="profile-half-field"><dt>อายุ</dt><dd>{age === null ? 'กรอกวันเกิดในโปรไฟล์เพื่อคำนวณอายุ' : `${age} ปี`}</dd></div><div><dt>เกี่ยวกับฉัน</dt><dd>{user.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</dd></div></dl></ProfileCard>
       <ProfileCard icon={<HeartHandshake/>} title="ไลฟ์สไตล์และความต้องการ"><dl className="profile-data-list"><div><dt>ไลฟ์สไตล์</dt><dd>{lifestyle?.lifestyleName || 'ยังไม่ระบุ'}</dd></div><div><dt>เพศที่สะดวกแชร์ห้อง</dt><dd>{genderLabel(preference?.preferredGender)}</dd></div><div><dt>ช่วงอายุ</dt><dd>{ageRange(preference?.preferredAgeMin, preference?.preferredAgeMax)}</dd></div><div><dt>งบประมาณ</dt><dd>{budgetRange(preference?.budgetMin, preference?.budgetMax)}</dd></div></dl></ProfileCard>
@@ -183,6 +184,7 @@ export function ProfilePage() {
         markSaved(); discardEdits();
       }}>ยกเลิก</Button>}<Button disabled={checkingImages} loading={saving} onMouseDown={event => { if (event.button === 0) event.preventDefault(); }}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : 'บันทึกการเปลี่ยนแปลง'}</Button></div></footer>
     </fieldset></form>}
+    <footer className="profile-sign-out"><Button variant="quiet" disabled={saving} onClick={() => { if (logout()) navigate('/login'); }}><LogOut size={18} aria-hidden="true"/>ออกจากระบบ</Button></footer>
     {leaving && <Modal className="form-leave-modal" title="ยังไม่ได้บันทึกการแก้ไขโปรไฟล์" onClose={cancelLeave} actions={<>
       <Button type="button" variant="secondary" disabled={saving || checkingImages} onClick={() => {
         discardEdits(); finishLeave();
