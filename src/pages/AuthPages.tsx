@@ -209,14 +209,14 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
               <>
                 <div className="two-fields">
                   <Input
-                    label="ชื่อ"
+                    label="ชื่อ *"
                     name="firstName"
                     autoComplete="given-name"
                     error={fieldErrors.firstName}
                     required
                   />
                   <Input
-                    label="นามสกุล"
+                    label="นามสกุล *"
                     name="lastName"
                     autoComplete="family-name"
                     error={fieldErrors.lastName}
@@ -225,7 +225,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
                 </div>
 
                 <Input
-                  label="เบอร์โทรศัพท์"
+                  label="เบอร์โทรศัพท์ *"
                   name="phone"
                   type="tel"
                   inputMode="numeric"
@@ -267,7 +267,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
             )}
 
             <Input
-              label="อีเมล"
+              label={mode === 'register' ? 'อีเมล *' : 'อีเมล'}
               name="email"
               type="email"
               autoComplete="email"
@@ -277,7 +277,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
             />
 
             <label className="field">
-              <span className="field-label">รหัสผ่าน</span>
+              <span className="field-label">รหัสผ่าน{mode === 'register' && <> <span className="required-marker" aria-hidden="true">*</span></>}</span>
               <span className="password-field">
                 <input
                   name="password"

@@ -49,7 +49,7 @@ export function UniversityPicker({ university, error, onSelect }: { university: 
 
   return <>
     <div className="field university-picker">
-      <label htmlFor={id} className="field-label">มหาวิทยาลัย</label>
+      <label htmlFor={id} className="field-label">มหาวิทยาลัย <span className="required-marker" aria-hidden="true">*</span></label>
       <input ref={input} id={id} name="universityQuery" role="combobox" autoComplete="off" aria-autocomplete="list"
         aria-expanded={open} aria-controls={open ? `${id}-options` : undefined}
         aria-activedescendant={open && active >= 0 ? `${id}-option-${active}` : undefined}
@@ -68,6 +68,6 @@ export function UniversityPicker({ university, error, onSelect }: { university: 
       </div>}
       {!custom && error && <span id={`${id}-error`} className="field-error">{error}</span>}
     </div>
-    {custom && <Input label="ชื่อมหาวิทยาลัย" name="university" placeholder="กรอกชื่อมหาวิทยาลัย" required error={error}/>}
+    {custom && <Input label="ชื่อมหาวิทยาลัย *" name="university" placeholder="กรอกชื่อมหาวิทยาลัย" required error={error}/>}
   </>;
 }

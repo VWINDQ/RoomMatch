@@ -10,7 +10,7 @@ export function AccountProfileFields({ accountType, onAccountTypeChange, onUnive
   const errorId = useId();
   return <>
     <label className="field">
-      <span className="field-label">สถานะผู้ใช้</span>
+      <span className="field-label">สถานะผู้ใช้{required && <> <span className="required-marker" aria-hidden="true">*</span></>}</span>
       <select name="accountType" value={accountType} required={required} onChange={event => onAccountTypeChange(event.target.value)}
         aria-invalid={errors.accountType ? true : undefined} aria-describedby={errors.accountType ? errorId : undefined}>
         <option value="">เลือกสถานะผู้ใช้</option>

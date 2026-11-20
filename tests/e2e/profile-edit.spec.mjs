@@ -47,7 +47,7 @@ test('profile accepts a WebP named jpg, GIF and AVIF with working previews and p
   expect(pageErrors).toEqual([]);
 });
 
-test('profile saves birth date, contact details, URL and uploaded image across reloads', async ({ page, environment }, testInfo) => {
+test('profile saves birth date and contacts, preserves legacy images, and uploads images across reloads', async ({ page, environment }, testInfo) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await environment.db.prepare('UPDATE USER SET date_of_birth=?, phone=? WHERE user_id=1').run('2000-12-25', '0890000000');
@@ -74,14 +74,14 @@ test('profile saves birth date, contact details, URL and uploaded image across r
   await expect(page.locator('[name="phone"]')).toHaveAttribute('aria-invalid', 'true');
   await noOverflow(page);
   await phone.fill('0812345678');
-  await page.getByLabel('URL รูปโปรไฟล์', { exact: true }).fill(`${imageHost}/updated-profile.svg`);
-  await page.getByLabel('ไลฟ์สไตล์', { exact: true }).fill('ก'.repeat(400));
+  await expect(page.locator('input[name="profileImage"]')).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'ไลฟ์สไตล์', exact: true }).fill('ก'.repeat(400));
   await page.getByRole('textbox', { name: 'เกี่ยวกับฉัน', exact: true }).fill('ทดสอบบันทึกโปรไฟล์');
   await save();
   await page.reload();
   await expect(page.locator('.profile-personal-data')).toContainText('29/02/2000');
   await expect(page.locator('.profile-personal-data')).toContainText('0812345678');
-  await expect(page.locator('.profile-avatar img')).toHaveAttribute('src', `${imageHost}/updated-profile.svg`);
+  await expect(page.locator('.profile-avatar img')).toHaveAttribute('src', `${imageHost}/profile-1.svg`);
   await noOverflow(page);
 
   await edit();
@@ -106,7 +106,7 @@ test('profile saves birth date, contact details, URL and uploaded image across r
   await page.getByRole('button', { name: 'ยกเลิก', exact: true }).click();
   await unsavedDialog.getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true }).click();
   await edit();
-  await expect(page.getByLabel('URL รูปโปรไฟล์', { exact: true })).toHaveValue(uploadedUrl);
+  await expect(page.locator('.image-picker-preview img')).toHaveAttribute('src', uploadedUrl);
   await noOverflow(page);
   await capture(page, testInfo, 'profile-editor-restored');
   await page.getByLabel('ลบรูปโปรไฟล์', { exact: true }).click();

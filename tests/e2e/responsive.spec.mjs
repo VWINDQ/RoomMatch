@@ -40,12 +40,12 @@ test('navigation and create-listing controls are usable', async ({ page, environ
 test('profile preferences and validation remain reachable', async ({ page, environment }, testInfo) => {
   await openRoute(page, environment, routes.find(route => route.name === 'profile'));
   await page.getByRole('button', { name: 'แก้ไขโปรไฟล์', exact: true }).click();
-  await page.getByLabel('ชื่อ', { exact: true }).fill('');
+  await page.getByRole('textbox', { name: 'ชื่อ', exact: true }).fill('');
   await page.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง', exact: true }).click();
   await expect(page.getByText('กรุณากรอกข้อมูลนี้', { exact: true }).first()).toBeVisible();
   await noOverflow(page);
   for (const label of ['ไลฟ์สไตล์', 'อายุต่ำสุด', 'อายุสูงสุด', 'งบต่ำสุด', 'งบสูงสุด', 'LINE ID', 'Instagram']) {
-    const input = page.getByLabel(label, { exact: true });
+    const input = page.getByRole('textbox', { name: label, exact: true }).or(page.getByRole('spinbutton', { name: label, exact: true }));
     await reachable(input); await input.focus(); await expect(input).toBeFocused();
   }
   await reachable(page.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง', exact: true }));
