@@ -95,6 +95,14 @@ test('profile renders, retains birth date and age, and saves a complete edit', a
   assert.equal(field('dateOfBirth').value, '25/12/2000');
 });
 
+test('a profile without a birthday explains how to enable the age display', async () => {
+  profile.user.dateOfBirth = '';
+  await mountEditor();
+  assert.equal(field('dateOfBirth').value, '');
+  await act(async () => button('ยกเลิก').click());
+  assert.match(document.querySelector('.profile-personal-data').textContent, /กรอกวันเกิดในโปรไฟล์เพื่อคำนวณอายุ/);
+});
+
 test('invalid birth dates show visible field feedback and block saving; empty date remains optional', async () => {
   await mountEditor();
   for (const value of ['25/12/3000', '29/02/2001', '2000-12-25']) {

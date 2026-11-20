@@ -33,6 +33,9 @@
 .form-feedback>span { display: block; }
 .form-feedback:focus { outline: 2px solid #873c2a; outline-offset: 2px; }
 .listing-form .field,.profile-editor .field { scroll-margin-top: 28px; scroll-margin-bottom: 220px; }
+.register-form .field { min-width: 0; }
+.register-form .field-error { overflow-wrap: anywhere; }
+.register-form select[aria-invalid="true"], .register-form .password-field:has(input[aria-invalid="true"]) { border-color: var(--danger); }
 .listing-form,.profile-editor { padding-bottom: 24px; }
 .profile-actions>.form-feedback { display: block; }
 .profile-actions>.form-action-buttons { display: flex; }

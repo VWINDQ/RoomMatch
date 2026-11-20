@@ -21,6 +21,7 @@ async function api(path, token, method = 'GET', payload) {
 async function account(name) {
   const result = await api('/auth/register', null, 'POST', {
     firstName: name, lastName: 'FriendTest', email: `${name}@friend.test`, phone: '0800000000', password: 'friend-test-password',
+    dateOfBirth: '2000-02-29',
   });
   assert.equal(result.status, 201);
   return { token: result.body.token, id: result.body.user.userId };

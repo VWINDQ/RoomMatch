@@ -43,6 +43,7 @@ async function register({ firstName, email }) {
       phone: '0890000000',
       email,
       password: 'journey-password',
+      dateOfBirth: '2000-02-29',
     }),
   });
   assert.equal(result.response.status, 201);

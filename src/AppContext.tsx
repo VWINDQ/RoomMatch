@@ -3,7 +3,7 @@ import { api, ApiError, SessionChangedError, subscribeUnauthorized, tokenStorage
 import type { User } from './types';
 import type { ToastTone } from './components/Toast';
 
-type RegisterPayload = { firstName: string; lastName: string; email: string; password: string; phone: string; gender?: string; dateOfBirth?: string; university?: string };
+type RegisterPayload = { firstName: string; lastName: string; email: string; password: string; phone: string; gender?: string; dateOfBirth: string; university?: string };
 type AppState = {
   user: User | null; authLoading: boolean; authError: string; toast: string; toastTone: ToastTone;
   login: (email: string, password: string) => Promise<void>;

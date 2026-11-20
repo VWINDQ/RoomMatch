@@ -65,6 +65,7 @@ async function register(name) {
       email: `${name.toLowerCase()}@favorite.test`,
       phone: '0800000000',
       password: 'favorite-test-password',
+      dateOfBirth: '2000-02-29',
     }),
   });
 

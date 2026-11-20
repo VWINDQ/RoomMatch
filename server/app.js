@@ -130,6 +130,18 @@ function isoDate(value, field) {
   return parsed;
 }
 
+function registrationBirthDate(value) {
+  let dateOfBirth;
+  try {
+    dateOfBirth = isoDate(value, 'dateOfBirth');
+  } catch (error) {
+    if (error instanceof HttpError) error.fieldErrors = { dateOfBirth: 'กรุณากรอกวันเกิดให้ถูกต้องและไม่เป็นวันในอนาคต' };
+    throw error;
+  }
+  if (!dateOfBirth) throw new HttpError(400, 'dateOfBirth is required', { dateOfBirth: 'กรุณากรอกวันเกิด' });
+  return dateOfBirth;
+}
+
 function splitStoredDescription(stored = '') {
   const [title = '', ...body] = stored.split('\n');
   return { title, description: body.join('\n').trim() };
@@ -547,7 +559,9 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         assert(EMAIL_PATTERN.test(email), 400, 'email must be valid');
         const password = text(body.password, 'password', { required: true, max: 256 });
         assert(password.length >= 8, 400, 'password must be at least 8 characters');
-        assert(!(await db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email)), 409, 'Email is already registered');
+        const dateOfBirth = registrationBirthDate(body.dateOfBirth);
+        const duplicateEmail = () => new HttpError(409, 'Email is already registered', { email: 'อีเมลนี้มีบัญชีแล้ว กรุณาเข้าสู่ระบบหรือใช้อีเมลอื่น' });
+        if (await db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email)) throw duplicateEmail();
 
         const passwordHash = await hashPassword(password);
         let result;
@@ -562,7 +576,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
             lastName,
             phone,
             text(body.gender, 'gender', { max: 50 }),
-            isoDate(body.dateOfBirth, 'dateOfBirth'),
+            dateOfBirth,
             passwordHash,
             text(body.university, 'university', { max: 255 }),
             nullableWebUrl(body.profileImage, 'profileImage'),
@@ -572,7 +586,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
             text(body.lineId, 'lineId', { max: 100 }),
           );
         } catch (error) {
-          if (error.code === '23505') throw new HttpError(409, 'Email is already registered');
+          if (error.code === '23505') throw duplicateEmail();
           throw error;
         }
         const user = await queryUser(db, Number(result.insertId));

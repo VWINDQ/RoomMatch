@@ -1,9 +1,9 @@
 import { Input } from './UI';
 import { formatBirthDate } from '../lib/birthDate';
 
-export function BirthDateInput({ defaultValue = '', error }: { defaultValue?: string; error?: string }) {
+export function BirthDateInput({ defaultValue = '', error, required = false }: { defaultValue?: string; error?: string; required?: boolean }) {
   return <Input
-    label="วันเกิด (ค.ศ.)"
+    label={required ? 'วันเกิด (ค.ศ.) *' : 'วันเกิด (ค.ศ.)'}
     name="dateOfBirth"
     type="text"
     autoComplete="bday"
@@ -14,5 +14,6 @@ export function BirthDateInput({ defaultValue = '', error }: { defaultValue?: st
     maxLength={10}
     defaultValue={formatBirthDate(defaultValue)}
     error={error}
+    required={required}
   />;
 }

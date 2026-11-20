@@ -69,7 +69,7 @@ for (const name of ['login', 'register']) {
     await openRoute(page, environment, routes.find(route => route.name === name));
     const submit = page.getByRole('button', { name: name === 'login' ? 'เข้าสู่ระบบ' : 'สร้างบัญชี', exact: true });
     await submit.click();
-    // Auth forms use native required-field validation, not custom field errors.
+    if (name === 'register') await expect(page.locator('.register-form .field-error')).toHaveCount(6);
     await expect(page.locator('form input:invalid').first()).toBeVisible();
     expect(await page.locator('form').evaluate(form => form.checkValidity())).toBe(false);
     await noOverflow(page);
@@ -78,12 +78,13 @@ for (const name of ['login', 'register']) {
     await expect(page.locator('input[name=password]')).toHaveAttribute('type', 'text');
     await page.getByRole('button', { name: 'ซ่อนรหัสผ่าน', exact: true }).click();
     await expect(page.locator('input[name=password]')).toHaveAttribute('type', 'password');
-    await page.getByLabel('อีเมล', { exact: true }).fill('layout-only@responsive.test');
+    await page.locator('input[name=email]').fill('layout-only@responsive.test');
     await page.locator('input[name=password]').fill(randomBytes(16).toString('hex'));
     if (name === 'register') {
-      await page.getByLabel('ชื่อ', { exact: true }).fill('ทดสอบชื่อภาษาไทยยาวสำหรับตรวจแบบฟอร์ม');
-      await page.getByLabel('นามสกุล', { exact: true }).fill('นามสกุลทดสอบ');
-      await page.getByLabel('เบอร์โทรศัพท์', { exact: true }).fill('0800000000');
+      await page.locator('input[name=firstName]').fill('ทดสอบชื่อภาษาไทยยาวสำหรับตรวจแบบฟอร์ม');
+      await page.locator('input[name=lastName]').fill('นามสกุลทดสอบ');
+      await page.locator('input[name=phone]').fill('0800000000');
+      await page.locator('input[name=dateOfBirth]').fill('29/02/2000');
     }
     await page.route(`**/api/auth/${name}`, route => route.fulfill({ status: 400,
       json: { error: 'ทดสอบข้อความตรวจสอบข้อมูลภาษาไทยยาว '.repeat(8) } }));
