@@ -10,6 +10,8 @@ export type User = {
   gender: string;
   dateOfBirth: string;
   university: string;
+  accountType?: string;
+  profileSetupPending?: boolean;
   profileImage: string;
   bio: string;
   email: string;

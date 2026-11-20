@@ -95,6 +95,14 @@ test('profile renders, retains birth date and age, and saves a complete edit', a
   assert.equal(field('dateOfBirth').value, '25/12/2000');
 });
 
+test('a profile without a birthday explains how to enable the age display', async () => {
+  profile.user.dateOfBirth = '';
+  await mountEditor();
+  assert.equal(field('dateOfBirth').value, '');
+  await act(async () => button('ยกเลิก').click());
+  assert.match(document.querySelector('.profile-personal-data').textContent, /กรอกวันเกิดในโปรไฟล์เพื่อคำนวณอายุ/);
+});
+
 test('invalid birth dates show visible field feedback and block saving; empty date remains optional', async () => {
   await mountEditor();
   for (const value of ['25/12/3000', '29/02/2001', '2000-12-25']) {
@@ -142,6 +150,8 @@ test('cancelling an image edit restores the saved image when reopening the form'
   await mountEditor();
   await chooseImage();
   await act(async () => button('ยกเลิก').click());
+  assert.ok(dialog());
+  await discard();
   await act(async () => button('แก้ไขโปรไฟล์').click());
   assert.equal(field('profileImage').value, profile.user.profileImage);
   await submit();
@@ -345,6 +355,8 @@ test('refresh warns only for unsaved changes and explicit cancel resets the next
   await change('bio', 'Unsaved');
   assert.equal(warns(), true);
   await act(async () => button('ยกเลิก').click());
+  assert.equal(warns(), true);
+  await discard();
   assert.equal(warns(), false);
   await act(async () => button('แก้ไขโปรไฟล์').click());
   assert.equal(field('bio').value, '');

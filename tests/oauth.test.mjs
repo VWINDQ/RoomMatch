@@ -118,6 +118,7 @@ test('Google login verifies identity and exchanges a one-time HttpOnly ticket fo
   const body = await session.json();
   assert.equal(verifyToken(body.token), Number(body.user.userId));
   assert.equal(body.user.email, 'google@example.test');
+  assert.equal(body.user.profileSetupPending, true);
   assert.equal(body.user.password_hash, undefined);
   assert.equal((await f.exchange(cookie)).status, 401);
   const account = await f.db.prepare('SELECT * FROM USER').get();
@@ -125,7 +126,26 @@ test('Google login verifies identity and exchanges a one-time HttpOnly ticket fo
   const passwordLogin = await f.request('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: account.email, password: 'anything' }) });
   assert.equal(passwordLogin.status, 401);
   const repeat = await f.callback(await f.start('/rooms/5?tab=photos#image'), { claims: { email: 'changed@example.test' } });
-  assert.equal(new URL(repeat.headers.get('location')).searchParams.get('returnTo'), '/rooms/5?tab=photos#image');
+  assert.equal(new URL(repeat.headers.get('location')).searchParams.get('returnTo'), '/profile');
+  const headers = { Authorization: `Bearer ${body.token}`, 'Content-Type': 'application/json' };
+  assert.equal((await f.request('/api/friends', { headers })).status, 403);
+  for (const dateOfBirth of ['', '2001-02-29', '2999-01-01']) {
+    const invalid = await f.request('/api/profile', { method: 'PATCH', headers, body: JSON.stringify({ dateOfBirth, accountType: 'student', phone: '0812345678' }) });
+    assert.equal(invalid.status, 400);
+    const { fieldErrors } = await invalid.json();
+    assert.ok(fieldErrors.dateOfBirth);
+    assert.ok(fieldErrors.university);
+  }
+  const completed = await f.request('/api/profile', { method: 'PATCH', headers, body: JSON.stringify({ dateOfBirth: '2000-02-29', accountType: 'general', university: 'Stale', email: 'ignored@example.test', phone: '0812345678' }) });
+  assert.equal(completed.status, 200);
+  const { user } = await completed.json();
+  assert.equal(user.profileSetupPending, false);
+  assert.equal(user.dateOfBirth, '2000-02-29');
+  assert.equal(user.university, null);
+  assert.equal(user.email, 'google@example.test');
+  assert.equal((await f.request('/api/friends', { headers })).status, 200);
+  const returning = await f.callback(await f.start('/rooms/5?tab=photos#image'));
+  assert.equal(new URL(returning.headers.get('location')).searchParams.get('returnTo'), '/rooms/5?tab=photos#image');
   assert.equal((await f.db.prepare('SELECT count(*) AS count FROM USER').get()).count, 1);
 });
 
@@ -208,7 +228,8 @@ test('OAuth migration preserves existing users and hashes and applies exactly on
     const originalUsers = await db.prepare('SELECT * FROM USER ORDER BY user_id').all();
     await runMigrations(db);
     await runMigrations(db);
-    assert.deepEqual(await db.prepare('SELECT * FROM USER ORDER BY user_id').all(), originalUsers);
+    assert.deepEqual(await db.prepare('SELECT * FROM USER ORDER BY user_id').all(),
+      originalUsers.map(user => ({ ...user, account_type: null, profile_setup_pending: false })));
     assert.equal((await db.prepare("SELECT count(*) AS count FROM _roommatch_migrations WHERE filename='002_google_oauth.sql'").get()).count, 1);
     const user = await db.prepare("INSERT INTO USER(first_name,last_name,email,password_hash) VALUES('Google','User','migration@example.test',NULL) RETURNING user_id").get();
     await db.prepare("INSERT INTO oauth_identity(provider,subject,user_id) VALUES('google','migration-subject',?)").run(user.user_id);

@@ -22,20 +22,21 @@ intercepting anchor clicks/history globally.
 Reference: [React Router useBlocker](https://reactrouter.com/api/hooks/useBlocker).
 
 The blocker retains the selected navigation, including browser Back/Forward.
-The existing `Modal` displays **อยู่ต่อ** (reset) and **ทิ้งการแก้ไข** (proceed).
-Close, backdrop and Escape also stay. Its existing focus trap, focus restoration
-and viewport-constrained layout are reused without shared modal/CSS changes.
+The existing `Modal` displays **ยังไม่ได้บันทึกประกาศ** with **ยกเลิกการแก้ไข**
+and **บันทึกและไปต่อ**. Close, backdrop and Escape return to editing with the
+current values and selected images. The dialog reuses Modal's focus management
+and viewport limits, with centered styling scoped to the listing warning.
 
 `beforeunload` calls preventDefault/returnValue only if the current snapshot is
 dirty. Refresh, closing and full-document departures use the browser's native
 warning; its wording and availability are browser-controlled.
 
-Only a successful API save synchronously bypasses the guard before navigation.
-Validation/upload/save failures retain the baseline and the existing retry and
-duplicate-submit behavior. A successful save also clears a pending leave dialog.
-If the form unmounts through discard or a session change, its late async success
-cannot send the user away from their selected destination or show a stale toast.
-An upload finishing after unmount cannot initiate a new save from that form.
+Save and continue submits the same form and proceeds to the blocked destination
+after a successful API save. Validation, upload and save failures close the
+warning, expose the form feedback and preserve the edits for retry. Both action
+buttons are disabled while saving, and the submit handler prevents duplicate
+requests. An upload finishing after unmount cannot initiate a new save from that
+form.
 
 ## Automated coverage
 
@@ -56,7 +57,7 @@ or fallback connection is used.
 | Native beforeunload | Pristine/reverted reloads have no dialog; dirty reload and tab-close warn; dismissal preserves values; accepting reload discards them |
 | Pending save | Disabled inputs stay dirty, repeated submit sends once, successful response clears an open warning |
 | Cross-tab session | Switching accounts clears private form values; external logout reaches login without trapping the session |
-| Late response after discard | Selected Favorites destination and its controls remain after the real pending save response; no stale success toast |
+| Save and continue | Validation and API failures expose feedback on the form; retry submits once, persists the listing and reaches the selected destination |
 
 Existing node tests retain their assertions. The two static form-render harnesses
 use `createMemoryRouter`/`RouterProvider` to match the new required router context.

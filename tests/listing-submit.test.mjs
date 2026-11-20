@@ -73,7 +73,8 @@ async function fixture(t, editing = false, onSaveResponse = () => {}) {
     fieldsWithErrors: { current: new Set() }, status: 'available', listingFields: Object.keys(values).concat('images'),
     uploadSelectedImages, listingSaveFeedback,
     setImages: next => { images.splice(0, images.length, ...next); }, updateImageFeedback() {},
-    api, notify() {}, markSaved: () => { state.saved = true; }, returnToList: () => state.navigations.push('/my-listings'),
+    api, notify() {}, saveBeforeLeave: { current: false }, showSaveErrors: () => { state.focusErrors = true; },
+    markSaved: () => { state.saved = true; }, returnToList: () => state.navigations.push('/my-listings'),
   };
   const submit = new Function(...Object.keys(dependencies), `${compiled}\nreturn submit;`)(...Object.values(dependencies));
   const event = { preventDefault() {}, currentTarget: {} };

@@ -4,13 +4,14 @@ import { startRoomMatchServer } from '../server/app.js';
 import { openDatabase } from './support/postgres.mjs';
 
 let db, app, base, token;
-const account = { firstName: 'Profile', lastName: 'Validation', phone: '0890000000', email: 'profile-validation@example.test', password: 'profile-test-password' };
+const account = { firstName: 'Profile', lastName: 'Validation', phone: '0890000000', email: 'profile-validation@example.test', password: 'profile-test-password', accountType: 'general', dateOfBirth: '2000-02-29' };
 before(async () => {
   db = await openDatabase({ filename: ':memory:', seed: false });
   app = await startRoomMatchServer({ db, host: '127.0.0.1', port: 0 });
   base = `http://127.0.0.1:${app.server.address().port}/api`;
   const result = await request('/auth/register', account);
   assert.equal(result.status, 201);
+  assert.equal(result.body.user.dateOfBirth, account.dateOfBirth);
   token = result.body.token;
 });
 after(async () => {
@@ -45,4 +46,41 @@ test('registration enforces the same phone rule and does not create invalid acco
     assert.equal(result.status, 400, phone);
   }
   assert.equal((await db.prepare('SELECT count(*) AS count FROM USER').get()).count, 1);
+});
+
+test('registration rejects missing, invalid and future birthdays without creating an account', async () => {
+  for (const dateOfBirth of [undefined, null, '', '   ', '29/02/2000', '2001-02-29', '2999-12-25']) {
+    const result = await request('/auth/register', { ...account, email: 'invalid-birth-date@example.test', dateOfBirth });
+    assert.equal(result.status, 400, JSON.stringify(dateOfBirth));
+    assert.match(result.body.fieldErrors.dateOfBirth, /^กรุณากรอกวันเกิด/);
+  }
+  assert.equal((await db.prepare('SELECT count(*) AS count FROM USER').get()).count, 1);
+});
+
+test('an existing account can still sign in without a stored birthday', async () => {
+  await db.prepare('UPDATE USER SET date_of_birth = NULL, account_type = NULL WHERE email = ?').run(account.email);
+  const result = await request('/auth/login', { email: account.email, password: account.password });
+  assert.equal(result.status, 200);
+  assert.ok(result.body.token);
+  assert.equal(result.body.user.dateOfBirth, null);
+  assert.equal(result.body.user.accountType, null);
+  assert.equal(result.body.user.profileSetupPending, false);
+});
+
+test('registration validates status and stores university according to the selected status', async () => {
+  for (const [accountType, university, invalidField] of [[undefined, '', 'accountType'], ['invalid', '', 'accountType'], ['student', '   ', 'university']]) {
+    const result = await request('/auth/register', { ...account, email: 'invalid-status@example.test', accountType, university });
+    assert.equal(result.status, 400);
+    assert.ok(result.body.fieldErrors[invalidField]);
+  }
+  for (const [index, [accountType, university, stored]] of [
+    ['student', 'มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าธนบุรี', 'มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าธนบุรี'],
+    ['student', ' Other University ', 'Other University'],
+    ['general', 'Stale University', null],
+  ].entries()) {
+    const result = await request('/auth/register', { ...account, email: `account-type-${index}@example.test`, accountType, university });
+    assert.equal(result.status, 201);
+    assert.equal(result.body.user.accountType, accountType);
+    assert.equal(result.body.user.university, stored);
+  }
 });

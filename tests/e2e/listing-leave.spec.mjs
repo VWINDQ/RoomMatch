@@ -1,7 +1,7 @@
-import sharp from 'sharp';
+﻿import sharp from 'sharp';
 import { test, expect, signIn, reachable, capture, imageHost } from './fixtures.mjs';
 
-const dialogTitle = 'ทิ้งการแก้ไขที่ยังไม่บันทึก?';
+const dialogTitle = 'ยังไม่ได้บันทึกประกาศ';
 const titleInput = page => page.getByRole('textbox', { name: 'หัวข้อประกาศ', exact: false });
 const backButton = page => page.getByRole('button', { name: 'กลับไปประกาศของฉัน', exact: true });
 const warning = page => page.getByRole('dialog', { name: dialogTitle });
@@ -57,17 +57,17 @@ for (const editing of [false, true]) {
       const original = await input.inputValue();
       await input.fill(['price', 'capacity'].includes(name) ? '3' : 'changed');
       await backButton(page).click(); await expect(warning(page)).toBeVisible();
-      await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
+      await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
       await input.fill(original);
       await expect(input).toHaveValue(original);
     }
     const basis = page.getByRole('combobox', { name: /หน่วยราคา/ });
     const originalBasis = await basis.inputValue();
     await basis.selectOption('per_person');
-    await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
+    await backButton(page).click(); await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
     await basis.selectOption(originalBasis);
     await page.getByRole('button', { name: 'พักประกาศ', exact: true }).click();
-    await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
+    await backButton(page).click(); await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click(); await expect(warning(page)).toHaveCount(0);
     await page.getByRole('button', { name: 'เปิดรับคำขอ', exact: true }).click();
     if (!editing) {
       await page.getByRole('button', { name: 'สร้างประกาศ', exact: true }).click();
@@ -86,17 +86,24 @@ for (const editing of [false, true]) {
     const dialog = warning(page);
     await expect(dialog).toBeVisible();
     const close = dialog.getByRole('button', { name: 'ปิด', exact: true });
-    const stay = dialog.getByRole('button', { name: 'อยู่ต่อ', exact: true });
-    const discard = dialog.getByRole('button', { name: 'ทิ้งการแก้ไข', exact: true });
+    const save = dialog.getByRole('button', { name: 'บันทึกและไปต่อ', exact: true });
+    const discard = dialog.getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true });
     await expect(close).toBeFocused();
-    await page.keyboard.press('Shift+Tab'); await expect(discard).toBeFocused();
+    await page.keyboard.press('Shift+Tab'); await expect(save).toBeFocused();
     await page.keyboard.press('Tab'); await expect(close).toBeFocused();
     const bounds = await dialog.locator('.modal-card').boundingBox();
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize().height + 1);
-    for (const control of [close, stay, discard]) await reachable(control);
+    for (const element of [dialog.getByRole('heading'), dialog.locator('.modal-body'), dialog.locator('footer')]) {
+      const box = await element.boundingBox();
+      expect(Math.abs(box.x + box.width / 2 - (bounds.x + bounds.width / 2))).toBeLessThanOrEqual(1);
+    }
+    const discardBox = await discard.boundingBox();
+    const saveBox = await save.boundingBox();
+    expect(Math.abs((discardBox.x + saveBox.x + saveBox.width) / 2 - (bounds.x + bounds.width / 2))).toBeLessThanOrEqual(1);
+    for (const control of [close, discard, save]) await reachable(control);
     await capture(page, testInfo, `leave-${mode}-modal`);
-    await stay.click();
+    await close.click();
     await expect(dialog).toHaveCount(0); await expect(opener).toBeFocused();
     await expect(titleInput(page)).toHaveValue('ยังไม่บันทึก RM-13');
     await opener.click(); await expect(dialog).toBeVisible(); await page.keyboard.press('Escape');
@@ -119,17 +126,17 @@ test('RM-13 browser Back and Forward can stay or proceed to their original histo
   await page.goBack(); await expect(titleInput(page)).toBeVisible();
   await titleInput(page).fill('Forward edits');
   await page.goForward(); await expect(warning(page)).toBeVisible();
-  await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+  await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click();
   await expect(page).toHaveURL(/\/my-listings\/new$/);
   await expect(titleInput(page)).toHaveValue('Forward edits');
-  await page.goForward(); await warning(page).getByRole('button', { name: 'ทิ้งการแก้ไข', exact: true }).click();
+  await page.goForward(); await warning(page).getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true }).click();
   await expect(page).toHaveURL(/\/rooms$/);
   await page.goBack(); await expect(titleInput(page)).toHaveValue('');
   await titleInput(page).fill('Back edits');
   await page.goBack(); await expect(warning(page)).toBeVisible();
-  await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+  await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click();
   await expect(titleInput(page)).toHaveValue('Back edits');
-  await page.goBack(); await warning(page).getByRole('button', { name: 'ทิ้งการแก้ไข', exact: true }).click();
+  await page.goBack(); await warning(page).getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true }).click();
   await expect(page).toHaveURL(/\/my-listings$/);
 });
 
@@ -142,7 +149,7 @@ test('RM-13 selected files survive staying and removing all additions restores p
   const previews = page.locator('.image-picker-preview img');
   await expect(previews).toHaveCount(2);
   const originalSources = await previews.evaluateAll(images => images.map(image => image.src));
-  await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+  await backButton(page).click(); await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click();
   expect(await previews.evaluateAll(images => images.map(image => image.src))).toEqual(originalSources);
   await page.getByRole('button', { name: 'เลื่อนรูป 2 ไปก่อนหน้า', exact: true }).click();
   expect(await previews.evaluateAll(images => images.map(image => image.src))).toEqual([...originalSources].reverse());
@@ -155,19 +162,19 @@ test('RM-13 selected files survive staying and removing all additions restores p
 test('RM-13 saved image deletion and order are dirty, restoring order is pristine', async ({ page, environment }, testInfo) => {
   await openForm(page, true, environment, testInfo);
   await page.getByRole('button', { name: 'เลื่อนรูป 2 ไปก่อนหน้า', exact: true }).click();
-  await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+  await backButton(page).click(); await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click();
   await page.getByRole('button', { name: 'เลื่อนรูป 2 ไปก่อนหน้า', exact: true }).click();
   await backButton(page).click(); await expect(page).toHaveURL(/\/my-listings$/);
   const id = testInfo._rm13Rooms[0];
   await page.goto(`/my-listings/${id}/edit`); await expect(titleInput(page)).toHaveValue(payload.title);
   await page.getByRole('button', { name: 'ลบรูป 1', exact: true }).click();
   await backButton(page).click(); await expect(warning(page)).toBeVisible();
-  await warning(page).getByRole('button', { name: 'ทิ้งการแก้ไข', exact: true }).click();
+  await warning(page).getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true }).click();
   await expect(page).toHaveURL(/\/my-listings$/);
 });
 
 for (const editing of [false, true]) {
-  test(`RM-13 ${editing ? 'edit' : 'create'}: failed save stays dirty, successful retry leaves without warning`, async ({ page, environment }, testInfo) => {
+  test(`RM-13 ${editing ? 'edit' : 'create'}: failed save stays dirty, save and continue retries successfully`, async ({ page, environment }, testInfo) => {
     const id = await openForm(page, editing, environment, testInfo);
     if (!editing) {
       for (const [name, value] of Object.entries(payload)) {
@@ -197,9 +204,11 @@ for (const editing of [false, true]) {
     const save = page.getByRole('button', { name: editing ? 'บันทึกการแก้ไข' : 'สร้างประกาศ', exact: true });
     await save.click(); await expect(page.getByRole('alert')).toBeVisible();
     await expect(save).toBeEnabled();
-    await backButton(page).click(); await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+    await backButton(page).click(); await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click();
     await expect(titleInput(page)).toHaveValue('Saved after retry RM-13');
-    await save.click(); await expect(page).toHaveURL(/\/my-listings$/);
+    await backButton(page).click();
+    await warning(page).getByRole('button', { name: 'บันทึกและไปต่อ', exact: true }).click();
+    await expect(page).toHaveURL(/\/my-listings$/);
     await expect(warning(page)).toHaveCount(0);
     expect(attempts).toBe(2); expect(uploadCount).toBe(editing ? 0 : 1);
     await page.reload(); await expect(page.getByRole('heading', { name: 'Saved after retry RM-13', exact: true })).toBeVisible();
@@ -244,7 +253,7 @@ test('RM-13 pending save keeps the guard and submit lock, success clears a pendi
     await page.getByRole('button', { name: 'บันทึกการแก้ไข', exact: true }).click(); await saving;
     await page.locator('.listing-form').evaluate(form => { for (let i = 0; i < 5; i++) form.requestSubmit(); });
     await menu(page, '/favorites').click(); await expect(warning(page)).toBeVisible();
-    await warning(page).getByRole('button', { name: 'อยู่ต่อ', exact: true }).click();
+    await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click();
     await expect(titleInput(page)).toHaveValue('Pending save RM-13');
     await expect(titleInput(page)).toBeDisabled();
     await menu(page, '/rooms').click(); await expect(warning(page)).toBeVisible();
@@ -269,27 +278,43 @@ test('RM-13 external session changes unmount dirty forms without trapping the ot
   await otherTab.close();
 });
 
-test('RM-13 discarding during a pending save preserves the chosen destination after its response', async ({ page, environment }, testInfo) => {
+test('RM-13 save and continue stays on validation and API errors, then follows the selected destination once', async ({ page, environment }, testInfo) => {
   const id = await openForm(page, true, environment, testInfo);
-  await titleInput(page).fill('Already submitted RM-13');
-  let release, started;
+  const dialog = warning(page);
+  const save = dialog.getByRole('button', { name: 'บันทึกและไปต่อ', exact: true });
+  await titleInput(page).fill('');
+  await menu(page, '/favorites').click();
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(titleInput(page)).toBeFocused();
+  await expect(titleInput(page)).toHaveAttribute('aria-invalid', 'true');
+  await titleInput(page).fill('Saved from leave warning RM-13');
+  let release, started, requests = 0;
   const gate = new Promise(resolve => { release = resolve; });
   const saving = new Promise(resolve => { started = resolve; });
   await page.route(`**/api/rooms/${id}`, async route => {
     if (route.request().method() !== 'PATCH') return route.fallback();
+    requests++;
+    if (requests === 1) return route.fulfill({ status: 503, json: { error: 'Service temporarily unavailable' } });
     started(); await gate; await route.continue();
   });
   try {
-    await page.getByRole('button', { name: 'บันทึกการแก้ไข', exact: true }).click(); await saving;
     await menu(page, '/favorites').click();
-    await warning(page).getByRole('button', { name: 'ทิ้งการแก้ไข', exact: true }).click();
+    await save.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole('alert')).toBeVisible();
+    await expect(titleInput(page)).toHaveValue('Saved from leave warning RM-13');
+    await menu(page, '/favorites').click();
+    await save.click();
+    await saving;
+    await expect(save).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true })).toBeDisabled();
+    await page.locator('.listing-form').evaluate(form => form.requestSubmit());
+    release();
     await expect(page).toHaveURL(/\/favorites$/);
-    const response = page.waitForResponse(response => response.url().endsWith(`/api/rooms/${id}`) && response.request().method() === 'PATCH');
-    release(); await (await response).finished();
-    // Flush browser rendering after the actual response has completed.
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    await expect(page).toHaveURL(/\/favorites$/);
-    await expect(page.getByRole('heading', { name: 'ห้องโปรด', exact: true })).toBeVisible();
-    await expect(page.getByRole('status')).toHaveCount(0);
+    await expect(dialog).toHaveCount(0);
+    expect(requests).toBe(2);
+    const response = await page.request.get(`/api/rooms/${id}`, { headers: { Authorization: `Bearer ${environment.tokens.owner}` } });
+    expect((await response.json()).room.title).toBe('Saved from leave warning RM-13');
   } finally { release(); }
 });

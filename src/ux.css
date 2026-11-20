@@ -33,6 +33,13 @@
 .form-feedback>span { display: block; }
 .form-feedback:focus { outline: 2px solid #873c2a; outline-offset: 2px; }
 .listing-form .field,.profile-editor .field { scroll-margin-top: 28px; scroll-margin-bottom: 220px; }
+.register-form .field { min-width: 0; }
+.register-form .field-error { overflow-wrap: anywhere; }
+.register-form select[aria-invalid="true"], .register-form .password-field:has(input[aria-invalid="true"]) { border-color: var(--danger); }
+.university-picker { position: relative; min-width: 0; }
+.university-options { position: absolute; inset: calc(100% + 4px) 0 auto; z-index: 10; max-height: min(240px, 35dvh); overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-clay-sm); }
+.university-options > [role="option"] { padding: 10px 13px; min-height: 44px; font-size: .875rem; overflow-wrap: anywhere; cursor: pointer; }
+.university-options > [role="option"]:hover, .university-options > [data-active="true"], .university-options > [aria-selected="true"] { background: var(--pastel-blue); }
 .listing-form,.profile-editor { padding-bottom: 24px; }
 .profile-actions>.form-feedback { display: block; }
 .profile-actions>.form-action-buttons { display: flex; }
@@ -47,6 +54,13 @@
 .modal-card>header>.icon-button { flex-shrink: 0; }
 .modal-card>footer { flex-wrap: wrap; }
 .modal-body { min-height: 0; overflow-y: auto; overflow-wrap: anywhere; }
+.form-leave-modal { text-align: center; }
+.form-leave-modal > header { justify-content: center; padding-inline: 66px; min-height: 64px; }
+.form-leave-modal > header > .icon-button { position: absolute; top: 10px; right: 12px; }
+.form-leave-modal .modal-body { padding-bottom: 8px; }
+.form-leave-modal .modal-body p + p { margin-top: 8px; }
+.form-leave-modal > footer { justify-content: center; }
+.form-leave-modal > footer > .button { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .empty-actions,.request-history-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .empty-actions { justify-content: center; }
 .request-history-actions { max-width: 220px; }

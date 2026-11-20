@@ -111,6 +111,8 @@ node --env-file=.env --test tests/postgresql.test.mjs
   of editing an applied one. `database/migrations/` and `database/seed.sql` remain
   unchanged as legacy SQLite history/import fixtures.
 - `_roommatch_migrations` tracks PostgreSQL files, checksums and application times.
+- Start the API with `npm run dev:api` to apply `003_account_profile.sql` to the configured database. Existing rows keep their university and birth date and receive a null account type and no pending setup.
+- The same command applies `004_student_account_type.sql`, which combines both student types into `student` and preserves university names and unclassified accounts.
   An advisory lock serializes migration/seed runners and migrations are atomic.
 - PostgreSQL stores the reserved table name as **`"USER"`**. Other unquoted table
   names fold to lowercase. In a SQL client, use `SELECT * FROM "USER"` and

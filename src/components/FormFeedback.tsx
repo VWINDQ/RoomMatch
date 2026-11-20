@@ -7,7 +7,7 @@ export function useFormFeedback(errors: Record<string, string>, form: RefObject<
     if (!key || !focusOnError) return;
     const frame = requestAnimationFrame(() => {
       const controls = Array.from(form.current?.elements || []);
-      const field = controls.find(control => control instanceof HTMLElement && Boolean(errors[control.getAttribute('name') || '']));
+      const field = controls.find(control => control instanceof HTMLElement && Boolean(errors[control.dataset.errorField || control.getAttribute('name') || '']));
       const group = Array.from(form.current?.querySelectorAll<HTMLElement>('[data-error-field]') || []).find(element => Boolean(errors[element.dataset.errorField || '']));
       const target = field instanceof HTMLElement ? field : group || summary.current;
       target?.focus({ preventScroll: true });

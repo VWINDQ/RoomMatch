@@ -52,7 +52,7 @@ No live Google login can be verified until a real client and redirect URI exist.
 ## Account behavior
 
 - A new Google identity creates a user with `password_hash = NULL`, then opens
-  `/profile` so the user can complete their phone and other profile details.
+  `/profile` to collect the phone number, birth date and account type. Students select or enter a university name. The verified Google email is retained. The setup remains pending across sessions until a valid profile is saved.
   Google sometimes omits a family name; `-` is used until the user edits it.
 - Returning users are identified by the verified Google `sub`, not by email.
   Changing a Google email does not silently overwrite the RoomMatch profile.
@@ -61,7 +61,7 @@ No live Google login can be verified until a real client and redirect URI exist.
   existing account and adding/resetting a local password are not implemented.
 - Google-only accounts cannot use password login. Disabled accounts cannot
   complete either Google login or the subsequent session exchange.
-- A returning user goes back to the requested application route; redirect
+- A returning user with no pending setup goes back to the requested application route; redirect
   targets are restricted to RoomMatch routes.
 
 ## Flow and storage
