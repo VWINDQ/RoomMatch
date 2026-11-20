@@ -1,0 +1,23 @@
+.profile-sign-out { display: none; }
+
+/* Match the breakpoint where Layout hides the sidebar and its sign-out action. */
+@media (max-width: 1023px) {
+  .profile-sign-out {
+    display: flex;
+    justify-content: center;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .profile-sign-out .button {
+    width: min(100%, 320px);
+    min-height: 48px;
+    border: 1px solid var(--border-soft);
+    background: var(--surface);
+  }
+
+  .profile-sign-out .button:hover:not(:disabled) {
+    background: var(--primary-soft);
+  }
+}
