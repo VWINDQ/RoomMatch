@@ -5,6 +5,7 @@ const menu = (page, path) => page.locator(`nav a[href="${path}"]`).filter({ visi
 const edit = page => page.getByRole('button', { name: 'แก้ไขโปรไฟล์', exact: true }).click();
 const biographyInput = page => page.getByRole('textbox', { name: 'เกี่ยวกับฉัน', exact: true });
 const cancelEdit = page => page.getByRole('button', { name: 'ยกเลิก', exact: true });
+const logoutButton = page => page.getByRole('button', { name: 'ออกจากระบบ', exact: true }).filter({ visible: true });
 const readProfile = async (page, environment) => {
   const response = await page.request.get('/api/profile', { headers: { Authorization: `Bearer ${environment.tokens.owner}` } });
   expect(response.ok()).toBe(true);
@@ -129,7 +130,8 @@ test('profile warning supports keyboard, preserves edits when dismissed and disc
 });
 
 test('profile logout proceeds immediately when the form is unchanged', async ({ page }) => {
-  await page.locator('.profile-page').getByRole('button', { name: 'ออกจากระบบ', exact: true }).click();
+  await expect(logoutButton(page)).toHaveCount(1);
+  await logoutButton(page).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(warning(page)).toHaveCount(0);
 });
@@ -176,14 +178,12 @@ test('profile validation and API failure keep changes; retry saves and leaves', 
 
 test('profile logout waits for a decision and saves while the session is still valid', async ({ page, environment }) => {
   await biographyInput(page).fill('Saved before logout');
-  const logout = page.viewportSize().width >= 1024
-    ? page.locator('.desktop-rail').getByRole('button', { name: 'ออกจากระบบ', exact: true })
-    : page.locator('.profile-page').getByRole('button', { name: 'ออกจากระบบ', exact: true });
+  const logout = logoutButton(page);
   await logout.click();
   await expect(warning(page)).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('roommatch:token'))).toBe(environment.tokens.owner);
   await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click();
-  await page.locator('.profile-page').getByRole('button', { name: 'ออกจากระบบ', exact: true }).click();
+  await logoutButton(page).click();
   await warning(page).getByRole('button', { name: 'บันทึกและไปต่อ', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   expect(await page.evaluate(() => localStorage.getItem('roommatch:token'))).toBeNull();
