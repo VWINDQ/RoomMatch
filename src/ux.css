@@ -47,13 +47,13 @@
 .modal-card>header>.icon-button { flex-shrink: 0; }
 .modal-card>footer { flex-wrap: wrap; }
 .modal-body { min-height: 0; overflow-y: auto; overflow-wrap: anywhere; }
-.listing-leave-modal { text-align: center; }
-.listing-leave-modal > header { justify-content: center; padding-inline: 66px; min-height: 64px; }
-.listing-leave-modal > header > .icon-button { position: absolute; top: 10px; right: 12px; }
-.listing-leave-modal .modal-body { padding-bottom: 8px; }
-.listing-leave-modal .modal-body p + p { margin-top: 8px; }
-.listing-leave-modal > footer { justify-content: center; }
-.listing-leave-modal > footer > .button { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.form-leave-modal { text-align: center; }
+.form-leave-modal > header { justify-content: center; padding-inline: 66px; min-height: 64px; }
+.form-leave-modal > header > .icon-button { position: absolute; top: 10px; right: 12px; }
+.form-leave-modal .modal-body { padding-bottom: 8px; }
+.form-leave-modal .modal-body p + p { margin-top: 8px; }
+.form-leave-modal > footer { justify-content: center; }
+.form-leave-modal > footer > .button { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .empty-actions,.request-history-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .empty-actions { justify-content: center; }
 .request-history-actions { max-width: 220px; }

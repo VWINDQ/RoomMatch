@@ -4,6 +4,7 @@ const warning = page => page.getByRole('dialog', { name: 'ยังไม่ไ�
 const menu = (page, path) => page.locator(`nav a[href="${path}"]`).filter({ visible: true });
 const edit = page => page.getByRole('button', { name: 'แก้ไขโปรไฟล์', exact: true }).click();
 const biographyInput = page => page.getByRole('textbox', { name: 'เกี่ยวกับฉัน', exact: true });
+const cancelEdit = page => page.getByRole('button', { name: 'ยกเลิก', exact: true });
 const readProfile = async (page, environment) => {
   const response = await page.request.get('/api/profile', { headers: { Authorization: `Bearer ${environment.tokens.owner}` } });
   expect(response.ok()).toBe(true);
@@ -17,7 +18,7 @@ test.beforeEach(async ({ page, environment }) => {
   await edit(page);
 });
 
-test('profile unchanged, reverted and explicitly cancelled edits leave without a warning', async ({ page }) => {
+test('profile unchanged and reverted edits can be cancelled or left without a warning', async ({ page }) => {
   const firstName = page.getByLabel('ชื่อ', { exact: true });
   const original = await firstName.inputValue();
   await firstName.fill('Temporary edit');
@@ -26,11 +27,64 @@ test('profile unchanged, reverted and explicitly cancelled edits leave without a
   await expect(page).toHaveURL(/\/rooms$/);
   await page.goto('/profile');
   await edit(page);
-  await firstName.fill('Discard through the normal button');
-  await page.getByRole('button', { name: 'ยกเลิก', exact: true }).click();
+  await firstName.fill('Temporary edit');
+  await firstName.fill(original);
+  await cancelEdit(page).click();
+  await expect(firstName).toHaveCount(0);
   await menu(page, '/rooms').click();
   await expect(page).toHaveURL(/\/rooms$/);
   await expect(warning(page)).toHaveCount(0);
+});
+
+test('profile form cancel can preserve or discard edits and save back to the profile view', async ({ page, environment }) => {
+  const original = await readProfile(page, environment);
+  const biography = 'Saved from the profile cancel dialog';
+  await biographyInput(page).fill(biography);
+  await cancelEdit(page).click();
+  const dialog = warning(page);
+  await expect(dialog).toContainText('กลับไปดูโปรไฟล์');
+  await dialog.getByRole('button', { name: 'ปิด', exact: true }).click();
+  await expect(cancelEdit(page)).toBeFocused();
+  await expect(biographyInput(page)).toHaveValue(biography);
+  await cancelEdit(page).click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(biographyInput(page)).toHaveValue(biography);
+  await cancelEdit(page).click();
+  await dialog.getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true }).click();
+  await expect(biographyInput(page)).toHaveCount(0);
+  await expect(page).toHaveURL(/\/profile$/);
+  await edit(page);
+  await expect(biographyInput(page)).toHaveValue(original.user.bio);
+  await biographyInput(page).fill(biography);
+  await cancelEdit(page).click();
+  await dialog.getByRole('button', { name: 'บันทึกและไปต่อ', exact: true }).click();
+  await expect(biographyInput(page)).toHaveCount(0);
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.locator('.profile-personal-data')).toContainText(biography);
+  expect((await readProfile(page, environment)).user.bio).toBe(biography);
+});
+
+test('profile browser Back proceeds immediately when clean and follows the selected entry after discard', async ({ page }) => {
+  const openProfile = () => page.viewportSize().width >= 1024
+    ? menu(page, '/profile').click()
+    : page.getByRole('button', { name: 'เปิดโปรไฟล์', exact: true }).click();
+  await menu(page, '/rooms').click();
+  await openProfile();
+  await edit(page);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/rooms$/);
+  await expect(warning(page)).toHaveCount(0);
+  await openProfile();
+  await edit(page);
+  await biographyInput(page).fill('Unsaved before browser Back');
+  await page.goBack();
+  await expect(warning(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(biographyInput(page)).toHaveValue('Unsaved before browser Back');
+  await page.goBack();
+  await warning(page).getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true }).click();
+  await expect(page).toHaveURL(/\/rooms$/);
 });
 
 test('profile warning supports keyboard, preserves edits when dismissed and discards without saving', async ({ page, environment }, testInfo) => {
@@ -50,6 +104,18 @@ test('profile warning supports keyboard, preserves edits when dismissed and disc
   await page.keyboard.press('Tab');
   await expect(close).toBeFocused();
   await noOverflow(page);
+  const alignment = await dialog.locator('.modal-card').evaluate(card => {
+    const bounds = card.getBoundingClientRect();
+    const center = bounds.left + bounds.width / 2;
+    const elements = [...card.querySelectorAll('h2, .modal-body, footer .button')];
+    const boxes = elements.map(element => element.getBoundingClientRect());
+    const [discard, save] = boxes.slice(-2);
+    const centered = box => Math.abs(box.left + box.width / 2 - center) <= 1;
+    return centered(boxes[0]) && centered(boxes[1]) &&
+      boxes.every(box => box.left >= bounds.left && box.right <= bounds.right) &&
+      (discard.top === save.top ? Math.abs((discard.left + save.right) / 2 - center) <= 1 : centered(discard) && centered(save));
+  });
+  expect(alignment).toBe(true);
   await capture(page, testInfo, 'profile-unsaved-modal');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
@@ -60,6 +126,12 @@ test('profile warning supports keyboard, preserves edits when dismissed and disc
   await expect(page).toHaveURL(/\/rooms$/);
   expect(saves).toBe(0);
   expect((await readProfile(page, environment)).user.bio).toBe(original.user.bio);
+});
+
+test('profile logout proceeds immediately when the form is unchanged', async ({ page }) => {
+  await page.locator('.profile-page').getByRole('button', { name: 'ออกจากระบบ', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(warning(page)).toHaveCount(0);
 });
 
 test('profile saves before following the selected menu and survives reload', async ({ page, environment }) => {
@@ -81,7 +153,7 @@ test('profile validation and API failure keep changes; retry saves and leaves', 
   const phone = page.getByRole('textbox', { name: /^เบอร์โทรศัพท์/ });
   const replacement = await phone.inputValue() === '0898765432' ? '0812345678' : '0898765432';
   await phone.fill('1');
-  await menu(page, '/rooms').click();
+  await cancelEdit(page).click();
   await warning(page).getByRole('button', { name: 'บันทึกและไปต่อ', exact: true }).click();
   await expect(warning(page)).toHaveCount(0);
   await expect(page).toHaveURL(/\/profile$/);

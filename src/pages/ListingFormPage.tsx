@@ -140,7 +140,7 @@ export function ListingFormPage() {
       <section className="form-section"><header><span>3</span><div><h2>รูปภาพห้อง</h2><p>เลือกรูปจากเครื่องได้สูงสุด 12 รูป แล้วจัดลำดับรูปปกได้เลย</p></div></header><div className="form-section-body"><ImagePicker label="รูปภาพห้อง" images={images} onCheckingChange={setCheckingImages} onSelectionCancel={cancelImageSelection} onChange={changeImages} fieldName="images" required max={12} disabled={saving} error={errors.images}/></div></section>
       <footer className="listing-form-actions"><FormFeedback errors={errors.form ? { form: errors.form } : {}} summaryRef={summaryRef}/><div className="form-action-buttons"><Button type="button" variant="quiet" onClick={() => returnToList()}>ยกเลิก</Button><Button type="submit" disabled={saving || checkingImages} loading={saving}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : existing ? 'บันทึกการแก้ไข' : 'สร้างประกาศ'}</Button></div></footer>
     </fieldset></form>
-    {blocker.state === 'blocked' && <Modal className="listing-leave-modal" title="ยังไม่ได้บันทึกประกาศ" onClose={cancelLeave} actions={<>
+    {blocker.state === 'blocked' && <Modal className="form-leave-modal" title="ยังไม่ได้บันทึกประกาศ" onClose={cancelLeave} actions={<>
       <Button type="button" variant="secondary" disabled={saving} onClick={proceed}>ยกเลิกการแก้ไข</Button>
       <Button type="button" disabled={checkingImages} loading={saving} onClick={() => {
         if (submitLocked.current || checkingImages || !formRef.current) return;

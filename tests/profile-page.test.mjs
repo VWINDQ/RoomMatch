@@ -142,6 +142,8 @@ test('cancelling an image edit restores the saved image when reopening the form'
   await mountEditor();
   await chooseImage();
   await act(async () => button('ยกเลิก').click());
+  assert.ok(dialog());
+  await discard();
   await act(async () => button('แก้ไขโปรไฟล์').click());
   assert.equal(field('profileImage').value, profile.user.profileImage);
   await submit();
@@ -345,6 +347,8 @@ test('refresh warns only for unsaved changes and explicit cancel resets the next
   await change('bio', 'Unsaved');
   assert.equal(warns(), true);
   await act(async () => button('ยกเลิก').click());
+  assert.equal(warns(), true);
+  await discard();
   assert.equal(warns(), false);
   await act(async () => button('แก้ไขโปรไฟล์').click());
   assert.equal(field('bio').value, '');

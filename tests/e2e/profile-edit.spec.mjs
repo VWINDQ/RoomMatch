@@ -88,6 +88,12 @@ test('profile saves birth date, contact details, URL and uploaded image across r
   const buffer = await sharp({ create: { width: 32, height: 32, channels: 3, background: '#467aaf' } }).png().toBuffer();
   await page.locator('input[type="file"]').setInputFiles({ name: 'profile.png', mimeType: 'image/png', buffer });
   await expect(page.locator('.image-picker-preview img')).toHaveAttribute('src', /^blob:/);
+  await page.getByRole('button', { name: 'ยกเลิก', exact: true }).click();
+  const unsavedDialog = page.getByRole('dialog', { name: 'ยังไม่ได้บันทึกการแก้ไขโปรไฟล์' });
+  await expect(unsavedDialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(unsavedDialog).toHaveCount(0);
+  await expect(page.locator('.image-picker-preview img')).toHaveAttribute('src', /^blob:/);
   await save();
   await expect(page.locator('.profile-avatar img')).toHaveAttribute('src', /^\/uploads\/1\/.+\.webp$/);
   const uploadedUrl = await page.locator('.profile-avatar img').getAttribute('src');
@@ -98,6 +104,7 @@ test('profile saves birth date, contact details, URL and uploaded image across r
   await edit();
   await page.getByLabel('ลบรูปโปรไฟล์', { exact: true }).click();
   await page.getByRole('button', { name: 'ยกเลิก', exact: true }).click();
+  await unsavedDialog.getByRole('button', { name: 'ยกเลิกการแก้ไข', exact: true }).click();
   await edit();
   await expect(page.getByLabel('URL รูปโปรไฟล์', { exact: true })).toHaveValue(uploadedUrl);
   await noOverflow(page);
