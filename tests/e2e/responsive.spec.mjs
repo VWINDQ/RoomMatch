@@ -69,7 +69,7 @@ for (const name of ['login', 'register']) {
     await openRoute(page, environment, routes.find(route => route.name === name));
     const submit = page.getByRole('button', { name: name === 'login' ? 'เข้าสู่ระบบ' : 'สร้างบัญชี', exact: true });
     await submit.click();
-    if (name === 'register') await expect(page.locator('.register-form .field-error')).toHaveCount(6);
+    if (name === 'register') await expect(page.locator('.register-form .field-error')).toHaveCount(7);
     await expect(page.locator('form input:invalid').first()).toBeVisible();
     expect(await page.locator('form').evaluate(form => form.checkValidity())).toBe(false);
     await noOverflow(page);
@@ -85,6 +85,7 @@ for (const name of ['login', 'register']) {
       await page.locator('input[name=lastName]').fill('นามสกุลทดสอบ');
       await page.locator('input[name=phone]').fill('0800000000');
       await page.locator('input[name=dateOfBirth]').fill('29/02/2000');
+      await page.locator('select[name=accountType]').selectOption('general');
     }
     await page.route(`**/api/auth/${name}`, route => route.fulfill({ status: 400,
       json: { error: 'ทดสอบข้อความตรวจสอบข้อมูลภาษาไทยยาว '.repeat(8) } }));

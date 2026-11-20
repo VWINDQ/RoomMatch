@@ -8,6 +8,9 @@ import { ApiError, SessionChangedError } from '../lib/api';
 import { BirthDateInput } from '../components/BirthDateInput';
 import { parseBirthDate } from '../lib/birthDate';
 import { GoogleSignIn } from '../components/GoogleSignIn';
+import { AccountProfileFields } from '../components/AccountProfileFields';
+import { readUniversity } from '../components/UniversityPicker';
+import { validateAccountProfile } from '../../shared/accountProfile.js';
 
 const oauthErrors: Record<string, string> = {
   cancelled: 'ยกเลิกการเข้าสู่ระบบด้วย Google แล้ว คุณสามารถลองใหม่ได้',
@@ -25,6 +28,7 @@ const registrationFields = {
   phone: { label: 'เบอร์โทรศัพท์', max: 10, required: true },
   gender: { label: 'เพศ', max: 50, required: false },
   dateOfBirth: { label: 'วันเกิด', max: 10, required: true },
+  accountType: { label: 'สถานะผู้ใช้', max: 50, required: true },
   university: { label: 'มหาวิทยาลัย', max: 255, required: false },
   email: { label: 'อีเมล', max: 320, required: true },
   password: { label: 'รหัสผ่าน', max: 256, required: true },
@@ -64,6 +68,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   });
   const submissionVersion = useRef(0);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [accountType, setAccountType] = useState('');
   const [focusErrors, setFocusErrors] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
@@ -76,10 +81,14 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
 
   const validateField = (event: FocusEvent<HTMLFormElement> | FormEvent<HTMLFormElement>, onlyInvalid = false) => {
     const field = event.target;
-    if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement) || !isRegistrationField(field.name)) return;
-    const name = field.name;
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
+    if (field.name === 'universityQuery' && (onlyInvalid || field.form?.elements.namedItem('university'))) return;
+    const name = field.name === 'universityQuery' ? 'university' : field.name;
+    if (!isRegistrationField(name)) return;
     if (onlyInvalid && !fieldErrors[name]) return;
-    const message = registrationFieldError(name, field.value);
+    const message = name === 'accountType' || name === 'university'
+      ? validateAccountProfile(name === 'accountType' ? field.value : accountType, readUniversity(new FormData(event.currentTarget)))[name] || ''
+      : registrationFieldError(name, field.value);
     // Keep a server-side error (such as a taken email) until the value changes.
     if (!onlyInvalid && !message) return;
     setFocusErrors(false);
@@ -100,9 +109,11 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
     if (mode === 'register') {
       const errors: Record<string, string> = {};
       for (const name of Object.keys(registrationFields).filter(isRegistrationField)) {
+        if (name === 'accountType' || name === 'university') continue;
         const message = registrationFieldError(name, String(data.get(name) ?? ''));
         if (message) errors[name] = message;
       }
+      Object.assign(errors, validateAccountProfile(data.get('accountType'), readUniversity(data)));
       setFieldErrors(errors);
       setFocusErrors(true);
       if (Object.keys(errors).length) return;
@@ -125,7 +136,8 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
           phone: String(data.get('phone') ?? '').trim(),
           gender: String(data.get('gender') ?? ''),
           dateOfBirth: parseBirthDate(String(data.get('dateOfBirth') ?? '')),
-          university: String(data.get('university') ?? '').trim(),
+          accountType: String(data.get('accountType') ?? ''),
+          university: readUniversity(data),
         });
       }
 
@@ -243,12 +255,14 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
                   <BirthDateInput required error={fieldErrors.dateOfBirth} />
                 </div>
 
-                <Input
-                  label="มหาวิทยาลัย"
-                  name="university"
-                  error={fieldErrors.university}
-                  defaultValue="มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าธนบุรี"
-                />
+                <AccountProfileFields required accountType={accountType} errors={fieldErrors} onUniversitySelect={() => {
+                  setFocusErrors(false);
+                  setFieldErrors(({ university: _university, ...remaining }) => remaining);
+                }} onAccountTypeChange={value => {
+                  setAccountType(value);
+                  setFocusErrors(false);
+                  setFieldErrors(({ university: _university, ...remaining }) => remaining);
+                }}/>
               </>
             )}
 
@@ -257,7 +271,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
               name="email"
               type="email"
               autoComplete="email"
-              placeholder="name@mail.kmutt.ac.th"
+              placeholder={mode === 'register' ? 'name@example.com' : 'name@mail.kmutt.ac.th'}
               error={fieldErrors.email}
               required
             />

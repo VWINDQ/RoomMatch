@@ -84,6 +84,7 @@ export function normalizeUser(value: unknown): User {
   return {
     userId: text(source, 'userId', 'user_id', 'id'), firstName: text(source, 'firstName', 'first_name'), lastName: text(source, 'lastName', 'last_name'),
     phone: text(source, 'phone'), gender: text(source, 'gender'), dateOfBirth: text(source, 'dateOfBirth', 'date_of_birth'), university: text(source, 'university'),
+    accountType: text(source, 'accountType'), profileSetupPending: source.profileSetupPending === true,
     profileImage: text(source, 'profileImage', 'profile_image'), bio: text(source, 'bio'), email: text(source, 'email'), instagram: text(source, 'instagram'),
     lineId: text(source, 'lineId', 'line_id'), isActive: Boolean(pick(source, 'isActive', 'is_active') ?? true),
   };

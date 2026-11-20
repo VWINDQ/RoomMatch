@@ -13,6 +13,34 @@ import { createToken } from '../server/auth.js';
 const fkError = (error) => error.code === '23503';
 const uniqueError = (error) => error.code === '23505';
 
+test('account profile migration preserves legacy records without classifying their email or university', async () => {
+  const db = await openDatabase({ filename: ':memory:', seed: false, migrate: false });
+  const directory = mkdtempSync(join(tmpdir(), 'roommatch-account-migration-'));
+  try {
+    for (const file of ['001_initial_schema.sql', '002_google_oauth.sql', '003_account_profile.sql']) {
+      writeFileSync(join(directory, file), readFileSync(new URL(`../database/postgresql/migrations/${file}`, import.meta.url)));
+    }
+    await runMigrations(db, directory);
+    const legacy = await db.prepare(`INSERT INTO USER(first_name,last_name,email,password_hash,university)
+      VALUES('Existing','Student','old@mail.kmutt.ac.th','legacy-hash','Legacy University') RETURNING *`).get();
+    const students = await Promise.all([
+      ['kmutt_student', 'มหาวิทยาลัยเทคโนโลยีพระจอมเกล้าธนบุรี'], ['other_student', 'Unlisted University'],
+    ].map(([type, university]) => db.prepare(`INSERT INTO USER(first_name,last_name,email,password_hash,university,account_type)
+      VALUES('Existing','Student',?,'legacy-hash',?,?) RETURNING user_id, university`).get(`${type}@example.test`, university, type)));
+    await runMigrations(db);
+    await runMigrations(db);
+    const { account_type, profile_setup_pending, ...retained } = await db.prepare('SELECT * FROM USER WHERE user_id=?').get(legacy.user_id);
+    assert.deepEqual(retained, Object.fromEntries(Object.entries(legacy).filter(([name]) => !['account_type', 'profile_setup_pending'].includes(name))));
+    assert.equal(account_type, null);
+    assert.equal(profile_setup_pending, false);
+    for (const student of students) {
+      assert.deepEqual(await db.prepare('SELECT account_type, university FROM USER WHERE user_id=?').get(student.user_id),
+        { account_type: 'student', university: student.university });
+    }
+    await assert.rejects(db.prepare("UPDATE USER SET account_type='general' WHERE user_id=?").run(legacy.user_id), error => error.code === '23514');
+  } finally { await db.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
 test('SQL binding leaves string literals, identifiers, comments and function bodies intact', () => {
   assert.equal(compileSql(`SELECT '?' AS "?", user_id FROM USER WHERE email = ? -- USER ?\nAND first_name = ? /* ? USER */`), `SELECT '?' AS "?", user_id FROM "USER" WHERE email = $1 -- USER ?\nAND first_name = $2 /* ? USER */`);
   assert.equal(compileSql('DO $$ BEGIN RAISE NOTICE \'USER ?\'; END $$;'), 'DO $$ BEGIN RAISE NOTICE \'USER ?\'; END $$;');
@@ -77,7 +105,7 @@ test('SQLite import preserves every business row, credentials, image paths, hist
     for (const table of BUSINESS_TABLES) {
       const actual = await db.prepare(`SELECT * FROM ${tableIdentifier(table)} ORDER BY 1, 2`).all();
       const normalized = expected.get(table).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value && ['created_at','updated_at','requested_at','responded_at','joined_at','matched_at'].includes(key) ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : value + 'Z').toISOString() : value])));
-      assert.deepEqual(actual, normalized, table);
+      assert.deepEqual(actual, table === 'USER' ? normalized.map(row => ({ ...row, account_type: null, profile_setup_pending: false })) : normalized, table);
       assert.equal(counts[table], normalized.length);
     }
     assert.deepEqual(readFileSync(source), before);

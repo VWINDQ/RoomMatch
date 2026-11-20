@@ -64,6 +64,7 @@ function ProtectedRoutes() {
   const { user, authLoading, authError, retryAuth } = useApp(); const location = useLocation();
   if (authLoading) return <SessionSkeleton/>;
   if (authError) return <main className="route-loading"><p>{authError}</p><button className="button button-primary" onClick={retryAuth}>ลองเชื่อมต่ออีกครั้ง</button></main>;
+  if (user?.profileSetupPending && location.pathname !== '/profile') return <Navigate to="/profile" replace/>;
   return user ? <Outlet key={user.userId}/> : <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }}/>;
 }
 

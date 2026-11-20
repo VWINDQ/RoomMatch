@@ -3,7 +3,7 @@ import { formatBirthDate } from '../lib/birthDate';
 
 export function BirthDateInput({ defaultValue = '', error, required = false }: { defaultValue?: string; error?: string; required?: boolean }) {
   return <Input
-    label={required ? 'วันเกิด (ค.ศ.) *' : 'วันเกิด (ค.ศ.)'}
+    label="วันเกิด (ค.ศ.)"
     name="dateOfBirth"
     type="text"
     autoComplete="bday"

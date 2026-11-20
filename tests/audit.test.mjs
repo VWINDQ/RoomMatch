@@ -16,7 +16,7 @@ test('empty database, invalid inputs, database failures, and durable profile per
     const result = await fetch(`${url}${path}`, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: result.status, body: await result.json() };
   };
-  const registration = { firstName: 'Audit', lastName: 'Student', phone: '0890000000', email: 'audit@regression.test', password: 'local-test-password', dateOfBirth: '2000-02-29' };
+  const registration = { firstName: 'Audit', lastName: 'Student', phone: '0890000000', email: 'audit@regression.test', password: 'local-test-password', accountType: 'general', dateOfBirth: '2000-02-29' };
   try {
     for (const invalid of [{ ...registration, email: 'bad' }, { ...registration, password: 'short' }, { ...registration, firstName: '' }, { ...registration, dateOfBirth: '2099-01-01' }]) {
       assert.equal((await api('/auth/register', 'POST', invalid)).status, 400);

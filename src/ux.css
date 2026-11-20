@@ -36,6 +36,10 @@
 .register-form .field { min-width: 0; }
 .register-form .field-error { overflow-wrap: anywhere; }
 .register-form select[aria-invalid="true"], .register-form .password-field:has(input[aria-invalid="true"]) { border-color: var(--danger); }
+.university-picker { position: relative; min-width: 0; }
+.university-options { position: absolute; inset: calc(100% + 4px) 0 auto; z-index: 10; max-height: min(240px, 35dvh); overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow-clay-sm); }
+.university-options > [role="option"] { padding: 10px 13px; min-height: 44px; font-size: .875rem; overflow-wrap: anywhere; cursor: pointer; }
+.university-options > [role="option"]:hover, .university-options > [data-active="true"], .university-options > [aria-selected="true"] { background: var(--pastel-blue); }
 .listing-form,.profile-editor { padding-bottom: 24px; }
 .profile-actions>.form-feedback { display: block; }
 .profile-actions>.form-action-buttons { display: flex; }

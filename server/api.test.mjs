@@ -42,7 +42,7 @@ test('register, authenticate, and update one-to-one profile data', async () => {
       firstName: 'New',
       lastName: 'Student',
       phone: '0800000000',
-      dateOfBirth: '2000-02-29',
+      accountType: 'general', dateOfBirth: '2000-02-29',
       email: 'new.student@example.test',
       password: 'safe-password',
     }),

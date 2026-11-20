@@ -66,16 +66,16 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
         WHERE i.provider = 'google' AND i.subject = ?`).get(claims.sub);
       if (existing) {
         assert(existing.is_active, 403, 'account_unavailable');
-        return { user: existing, created: false };
+        return existing;
       }
       const email = claims.email.toLowerCase();
       // Matching email alone is not authorization to link a pre-existing account.
       assert(!(await db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email)), 409, 'email_exists');
       const name = value => typeof value === 'string' ? value.trim().slice(0, 100) : '';
-      const user = await db.prepare(`INSERT INTO USER(first_name, last_name, email, password_hash)
-        VALUES (?, ?, ?, NULL) RETURNING *`).get(name(claims.given_name) || name(claims.name) || 'Google', name(claims.family_name) || '-', email);
+      const user = await db.prepare(`INSERT INTO USER(first_name, last_name, email, password_hash, profile_setup_pending)
+        VALUES (?, ?, ?, NULL, TRUE) RETURNING *`).get(name(claims.given_name) || name(claims.name) || 'Google', name(claims.family_name) || '-', email);
       await db.prepare("INSERT INTO oauth_identity(provider, subject, user_id) VALUES ('google', ?, ?)").run(claims.sub, user.user_id);
-      return { user, created: true };
+      return user;
     });
   }
 
@@ -121,12 +121,12 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
         const tokens = await oidc.authorizationCodeGrant(client, incoming, {
           expectedState: state, expectedNonce: attempt.nonce, pkceCodeVerifier: attempt.code_verifier, idTokenExpected: true,
         });
-        const { user, created } = await resolveAccount(tokens.claims());
+        const user = await resolveAccount(tokens.claims());
         const ticket = opaqueToken();
         await db.prepare(`INSERT INTO oauth_ticket(ticket_hash, user_id, expires_at)
           VALUES (?, ?, clock_timestamp() + interval '1 minute')`).run(digest(ticket), user.user_id);
         const target = new URL('/auth/google/complete', configuration.origin);
-        target.searchParams.set('returnTo', created ? '/profile' : safeReturnTo(attempt.return_to));
+        target.searchParams.set('returnTo', user.profile_setup_pending ? '/profile' : safeReturnTo(attempt.return_to));
         redirect(response, target.href, [cookie('state', '', 0), cookie('ticket', ticket, 60)]);
       } catch (error) {
         const knownErrors = new Set(['invalid_state', 'invalid_identity', 'email_exists', 'account_unavailable', 'cancelled', 'failed']);

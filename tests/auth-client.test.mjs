@@ -16,6 +16,8 @@ globalThis.localStorage = dom.window.localStorage;
 globalThis.sessionStorage = dom.window.sessionStorage;
 globalThis.FormData = dom.window.FormData;
 globalThis.HTMLElement = dom.window.HTMLElement;
+globalThis.HTMLInputElement = dom.window.HTMLInputElement;
+globalThis.HTMLSelectElement = dom.window.HTMLSelectElement;
 globalThis.MutationObserver = dom.window.MutationObserver;
 globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
 globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
@@ -180,7 +182,7 @@ test('a real expired signed token ends the session and a fresh login works again
     const registration = await nativeFetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...credentials, firstName: 'Auth', lastName: 'Test', phone: '0890000000', dateOfBirth: '2000-02-29' }),
+      body: JSON.stringify({ ...credentials, firstName: 'Auth', lastName: 'Test', phone: '0890000000', accountType: 'general', dateOfBirth: '2000-02-29' }),
     });
     assert.equal(registration.status, 201);
     const account = await registration.json();
@@ -623,7 +625,7 @@ test('external account changes keep the displayed user and real API identity in 
     for (const email of ['first-tab@example.test', 'second-tab@example.test']) {
       const registration = await nativeFetch(`${baseUrl}/api/auth/register`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...credentials, email, firstName: 'Tab', lastName: 'Test', phone: '0890000000', dateOfBirth: '2000-02-29' }),
+        body: JSON.stringify({ ...credentials, email, firstName: 'Tab', lastName: 'Test', phone: '0890000000', accountType: 'general', dateOfBirth: '2000-02-29' }),
       });
       assert.equal(registration.status, 201);
       accounts.push(await registration.json());
@@ -945,6 +947,11 @@ for (const method of ['login', 'register']) {
       document.querySelector('[name="lastName"]').value = user.lastName;
       document.querySelector('[name="phone"]').value = '0890000000';
       document.querySelector('[name="dateOfBirth"]').value = '29/02/2000';
+      const select = document.querySelector('[name="accountType"]');
+      await act(async () => {
+        select.value = 'general';
+        select.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+      });
     }
     document.querySelector('[name="email"]').value = credentials.email;
     document.querySelector('[name="password"]').value = credentials.password;

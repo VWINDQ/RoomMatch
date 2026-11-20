@@ -13,6 +13,7 @@ import { canViewRoomMembers, createRoomMatchesHandler, listRoomMembers } from '.
 import { roomPagination, selectRoomPage } from './roomPagination.js';
 import { createImageStorage } from './uploads.js';
 import { validateListing, isWebUrl } from '../shared/listingValidation.js';
+import { validateAccountProfile } from '../shared/accountProfile.js';
 
 function assertListing(body, options) {
   const fieldErrors = validateListing(body, options);
@@ -142,6 +143,21 @@ function registrationBirthDate(value) {
   return dateOfBirth;
 }
 
+function accountDetails(body, requireBirthDate) {
+  const fieldErrors = validateAccountProfile(body.accountType, body.university);
+  let dateOfBirth;
+  if (requireBirthDate) {
+    try { dateOfBirth = registrationBirthDate(body.dateOfBirth); }
+    catch (error) {
+      if (!(error instanceof HttpError)) throw error;
+      Object.assign(fieldErrors, error.fieldErrors);
+    }
+  }
+  if (Object.keys(fieldErrors).length) throw new HttpError(400, 'Invalid account profile fields', fieldErrors);
+  const university = body.accountType === 'student' ? body.university.trim() : null;
+  return { accountType: body.accountType, university, dateOfBirth };
+}
+
 function splitStoredDescription(stored = '') {
   const [title = '', ...body] = stored.split('\n');
   return { title, description: body.join('\n').trim() };
@@ -165,6 +181,8 @@ function userDto(row, { privateFields = false } = {}) {
       gender: row.gender,
       dateOfBirth: row.date_of_birth,
       university: row.university,
+      accountType: row.account_type,
+      profileSetupPending: row.profile_setup_pending,
       bio: row.bio,
       email: row.email,
       instagram: row.instagram,
@@ -306,7 +324,7 @@ async function queryUser(db, userId) {
   return await db.prepare('SELECT * FROM USER WHERE user_id = ?').get(userId);
 }
 
-async function authenticate(db, request, { optional = false } = {}) {
+async function authenticate(db, request, { optional = false, allowPending = false } = {}) {
   const token = bearerToken(request);
   if (!token) {
     if (optional) return null;
@@ -315,6 +333,10 @@ async function authenticate(db, request, { optional = false } = {}) {
   const userId = verifyToken(token);
   const user = await queryUser(db, userId);
   assert(user && user.is_active, 401, 'Authentication required');
+  if (user.profile_setup_pending && !allowPending) {
+    if (optional) return null;
+    throw new HttpError(403, 'กรุณากรอกโปรไฟล์ให้ครบก่อนใช้งาน');
+  }
   return user;
 }
 
@@ -544,7 +566,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (await handleOAuth(request, response, url)) return;
 
       if (request.method === 'POST' && pathname === '/api/uploads/images') {
-        const user = await authenticate(db, request);
+        const user = await authenticate(db, request, { allowPending: true });
         const imageUrl = await imageStorage.upload(request, user.user_id);
         sendJson(response, 201, { imageUrl }, request);
         return;
@@ -559,7 +581,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         assert(EMAIL_PATTERN.test(email), 400, 'email must be valid');
         const password = text(body.password, 'password', { required: true, max: 256 });
         assert(password.length >= 8, 400, 'password must be at least 8 characters');
-        const dateOfBirth = registrationBirthDate(body.dateOfBirth);
+        const { accountType, university, dateOfBirth } = accountDetails(body, true);
         const duplicateEmail = () => new HttpError(409, 'Email is already registered', { email: 'อีเมลนี้มีบัญชีแล้ว กรุณาเข้าสู่ระบบหรือใช้อีเมลอื่น' });
         if (await db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email)) throw duplicateEmail();
 
@@ -569,8 +591,8 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           result = await db.prepare(`
             INSERT INTO USER (
               first_name, last_name, phone, gender, date_of_birth, password_hash,
-              university, profile_image, bio, email, instagram, line_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING user_id
+              university, profile_image, bio, email, instagram, line_id, account_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING user_id
           `).run(
             firstName,
             lastName,
@@ -578,12 +600,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
             text(body.gender, 'gender', { max: 50 }),
             dateOfBirth,
             passwordHash,
-            text(body.university, 'university', { max: 255 }),
+            university,
             nullableWebUrl(body.profileImage, 'profileImage'),
             text(body.bio, 'bio', { max: 1_000 }),
             email,
             text(body.instagram, 'instagram', { max: 100 }),
             text(body.lineId, 'lineId', { max: 100 }),
+            accountType,
           );
         } catch (error) {
           if (error.code === '23505') throw duplicateEmail();
@@ -611,13 +634,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'GET' && pathname === '/api/auth/me') {
-        const user = await authenticate(db, request);
+        const user = await authenticate(db, request, { allowPending: true });
         sendJson(response, 200, { user: userDto(user, { privateFields: true }) }, request);
         return;
       }
 
       if (request.method === 'GET' && pathname === '/api/profile') {
-        const user = await authenticate(db, request);
+        const user = await authenticate(db, request, { allowPending: true });
         const lifestyle = await db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id);
         const preference = await db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id);
         sendJson(response, 200, {
@@ -629,8 +652,16 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'PATCH' && pathname === '/api/profile') {
-        const user = await authenticate(db, request);
+        const user = await authenticate(db, request, { allowPending: true });
         const body = await readJson(request);
+        const pending = user.profile_setup_pending;
+        const changingAccount = pending || Object.hasOwn(body, 'accountType') || (user.account_type && Object.hasOwn(body, 'university'));
+        const account = changingAccount ? accountDetails({
+          accountType: Object.hasOwn(body, 'accountType') ? body.accountType : user.account_type,
+          university: Object.hasOwn(body, 'university') ? body.university : user.university,
+          dateOfBirth: body.dateOfBirth,
+        }, pending) : null;
+        if (pending) phoneNumber(body.phone);
         const fields = [
           ['firstName', 'first_name', (value) => text(value, 'firstName', { required: true, max: 100 })],
           ['lastName', 'last_name', (value) => text(value, 'lastName', { required: true, max: 100 })],
@@ -646,10 +677,19 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const updates = [];
         const values = [];
         for (const [apiName, columnName, parse] of fields) {
+          if ((account && apiName === 'university') || (pending && apiName === 'dateOfBirth')) continue;
           if (Object.hasOwn(body, apiName)) {
             updates.push(`${columnName} = ?`);
             values.push(parse(body[apiName]));
           }
+        }
+        if (account) {
+          updates.push('account_type = ?', 'university = ?');
+          values.push(account.accountType, account.university);
+        }
+        if (pending) {
+          updates.push('date_of_birth = ?', 'profile_setup_pending = FALSE');
+          values.push(account.dateOfBirth);
         }
         assert(updates.length > 0, 400, 'No editable profile fields were provided');
         const lifestyleName = Object.hasOwn(body, 'lifestyleName') ? text(body.lifestyleName, 'lifestyleName', { required: true, max: 400 }) : null;
@@ -657,7 +697,8 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         updates.push('updated_at = CURRENT_TIMESTAMP');
         await db.exec('BEGIN');
         try {
-          await db.prepare(`UPDATE USER SET ${updates.join(', ')} WHERE user_id = ?`).run(...values, user.user_id);
+          const result = await db.prepare(`UPDATE USER SET ${updates.join(', ')} WHERE user_id = ?${pending ? ' AND profile_setup_pending' : ''}`).run(...values, user.user_id);
+          assert(result.changes > 0, 409, 'กรุณาโหลดโปรไฟล์ล่าสุดแล้วลองอีกครั้ง');
           if (lifestyleName !== null) await db.prepare(`INSERT INTO LIFESTYLE (user_id, lifestyle_name) VALUES (?, ?)
             ON CONFLICT(user_id) DO UPDATE SET lifestyle_name = excluded.lifestyle_name`).run(user.user_id, lifestyleName);
           if (preferenceValues) await savePreference(db, user.user_id, preferenceValues);
