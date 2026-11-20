@@ -107,7 +107,7 @@ test('filter sheet scrolls, validates, applies and closes', async ({ page, envir
   await dialog.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('ราคาสูงสุด');
   await noOverflow(page);
-  await reachable(dialog.getByRole('spinbutton', { name: /^ที่ว่างขั้นต่ำในห้อง/ }));
+  await reachable(dialog.getByRole('spinbutton', { name: /^ที่ว่างสำหรับผู้พักใหม่อย่างน้อย/ }));
   await reachable(dialog.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }));
   await capture(page, testInfo, 'filter-sheet');
   await dialog.getByRole('button', { name: 'ล้างตัวกรอง', exact: true }).click();

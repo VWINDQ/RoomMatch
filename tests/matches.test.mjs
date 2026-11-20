@@ -46,7 +46,7 @@ async function api(path, userId, method = 'GET', payload) {
 async function room(ownerId = 1, capacity = 3) {
   const result = await api('/rooms', ownerId, 'POST', {
     title: 'ห้องทดสอบสมาชิก', description: 'ห้องที่ใช้ตรวจสมาชิกและแมตช์',
-    priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=KMUTT', price: 5000, capacity, images: ['https://example.test/room.jpg'],
+    priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=KMUTT', price: 5000, capacity, ownerIsResident: true, images: ['https://example.test/room.jpg'],
   });
   assert.equal(result.status, 201);
   return result.body.room.roomId;

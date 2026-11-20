@@ -38,7 +38,7 @@ test('blur validation checks only the supplied field and clears corrected or opt
   assert.deepEqual(Object.keys(validateListing({ capacity: '2' }, options)), ['capacity']);
   assert.deepEqual(Object.keys(validateListing({ title: '   ' }, options)), ['title']);
   assert.deepEqual(Object.keys(validateListing({ googleMapsUrl: 'https://' }, options)), ['googleMapsUrl']);
-  for (const [field, message] of [['title', 'กรุณากรอกหัวข้อประกาศ'], ['price', 'กรุณากรอกราคา'], ['capacity', 'กรุณากรอกจำนวนผู้พักรวมเจ้าของ'], ['googleMapsUrl', 'กรุณากรอกลิงก์แผนที่']]) {
+  for (const [field, message] of [['title', 'กรุณากรอกหัวข้อประกาศ'], ['price', 'กรุณากรอกราคา'], ['capacity', 'กรุณากรอกจำนวนผู้พัก'], ['googleMapsUrl', 'กรุณากรอกลิงก์แผนที่']]) {
     for (const value of ['', '   ']) assert.deepEqual(validateListing({ [field]: value }, options), { [field]: message });
   }
   for (const field of ['description', 'costNotes']) assert.deepEqual(validateListing({ [field]: '' }, options), {});

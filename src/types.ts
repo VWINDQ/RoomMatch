@@ -33,6 +33,8 @@ export type Room = {
   locality?: string;
   costNotes?: string;
   capacity: number;
+  ownerIsResident: boolean;
+  occupantCount: number;
   status: RoomStatus;
   createdAt: string;
   owner?: User;

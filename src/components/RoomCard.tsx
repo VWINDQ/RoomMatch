@@ -42,7 +42,7 @@ export function RoomCard({ room, onFavoriteChange, priority = false }: { room: R
       <div className="room-card-image"><RoomImage room={room} priority={priority}/><StatusBadge status={room.status}/></div><div className="room-card-copy">
         <div className="room-title-price"><h2>{room.title}</h2><Price amount={room.price} basis={room.priceBasis} compact/></div>
         <p className="location"><MapPin size={15}/><span>{room.locality || 'เจ้าของยังไม่ระบุย่าน · ดูแผนที่ในรายละเอียด'}</span></p>
-        <div className="room-card-meta"><span><UsersRound size={15}/>ว่าง {room.availableSlots} ที่ · จุ {room.capacity} คน</span><span><CalendarDays size={15}/>{room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH') : '-'}</span></div>
+        <div className="room-card-meta"><span><UsersRound size={15}/>ว่าง {room.availableSlots} ที่ · พักได้ {room.capacity} คน</span><span><CalendarDays size={15}/>{room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH') : '-'}</span></div>
       </div>
     </Link>
     {/* Keep the favorite control outside the native room link for mouse and keyboard use. */}

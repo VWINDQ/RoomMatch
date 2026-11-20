@@ -66,7 +66,7 @@ test('register → list → request → approve/reject → membership and match'
       description: 'A persisted room used by the complete API journey.',
       priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.65,100.49',
       price: 5900,
-      capacity: 2,
+      capacity: 2, ownerIsResident: true,
       images: [
         'https://images.example.test/journey-1.jpg',
         'https://images.example.test/journey-2.jpg',
@@ -147,7 +147,7 @@ test('register → list → request → approve/reject → membership and match'
       description: 'Keeps the rejection path independent.',
       priceBasis: 'per_room', locality: 'Test locality', googleMapsUrl: 'https://maps.google.com/?q=13.66,100.50',
       price: 5100,
-      capacity: 2,
+      capacity: 2, ownerIsResident: true,
       images: ['https://example.test/room.jpg'],
     }),
   });

@@ -105,7 +105,7 @@ test('SQLite import preserves every business row, credentials, image paths, hist
     for (const table of BUSINESS_TABLES) {
       const actual = await db.prepare(`SELECT * FROM ${tableIdentifier(table)} ORDER BY 1, 2`).all();
       const normalized = expected.get(table).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value && ['created_at','updated_at','requested_at','responded_at','joined_at','matched_at'].includes(key) ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : value + 'Z').toISOString() : value])));
-      assert.deepEqual(actual, table === 'USER' ? normalized.map(row => ({ ...row, account_type: null, profile_setup_pending: false })) : normalized, table);
+      assert.deepEqual(actual, table === 'USER' ? normalized.map(row => ({ ...row, account_type: null, profile_setup_pending: false })) : table === 'ROOM' ? normalized.map(row => ({ ...row, owner_is_resident: true })) : normalized, table);
       assert.equal(counts[table], normalized.length);
     }
     assert.deepEqual(readFileSync(source), before);

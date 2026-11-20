@@ -12,7 +12,7 @@ export async function listRoomMembers(db, roomId, userDto) {
     SELECT u.user_id, u.first_name, u.last_name, u.profile_image,
       'owner' AS membership_status, 0 AS role_order,
       room.created_at AS joined_at
-    FROM ROOM room JOIN USER u ON u.user_id = room.owner_id WHERE room.room_id = ?
+    FROM ROOM room JOIN USER u ON u.user_id = room.owner_id WHERE room.room_id = ? AND room.owner_is_resident
     UNION ALL
     SELECT u.user_id, u.first_name, u.last_name, u.profile_image,
       rm.status AS membership_status, 1 AS role_order,

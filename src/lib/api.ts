@@ -140,6 +140,8 @@ function normalizeRoom(value: unknown): Room {
     priceBasis: (pick(source, 'priceBasis', 'price_basis') ?? null) as Room['priceBasis'], locality: text(source, 'locality'), costNotes: text(source, 'costNotes', 'cost_notes'), isMember: Boolean(source.isMember),
     status: (text(source, 'status') || 'available') as Room['status'], createdAt: text(source, 'createdAt', 'created_at'), owner: source.owner ? normalizeUser(source.owner) : undefined,
     images, members: Array.isArray(rawMembers) ? rawMembers.map(normalizeMember) : undefined, memberCount: numeric(source, 'memberCount', 'member_count'),
+    ownerIsResident: Boolean(pick(source, 'ownerIsResident', 'owner_is_resident') ?? true),
+    occupantCount: pick(source, 'occupantCount', 'occupant_count') == null ? numeric(source, 'memberCount', 'member_count') + Number(pick(source, 'ownerIsResident', 'owner_is_resident') ?? true) : numeric(source, 'occupantCount', 'occupant_count'),
     availableSlots: numeric(source, 'availableSlots', 'available_slots'), isOwner: Boolean(source.isOwner ?? source.is_owner), isFavorite: Boolean(source.isFavorite ?? source.is_favorite),
     requestStatus: (pick(source, 'requestStatus', 'request_status') ?? null) as Room['requestStatus'],
     pendingRequestId: text(source, 'pendingRequestId', 'pending_request_id') || null,

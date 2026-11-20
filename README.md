@@ -72,7 +72,10 @@ Repository: <https://github.com/VWINDQ/RoomMatch>
 การตอบรับเป็นเพื่อนไม่ได้จองห้องหรือเพิ่มสมาชิกห้องให้อัตโนมัติ
 
 ผู้ใช้คนเดียวเป็นได้ทั้งผู้หาห้องและเจ้าของประกาศ ไม่ต้องแยกบัญชี
-ความจุห้อง **นับรวมเจ้าของ** เช่น ห้องจุ 3 คน รับเพื่อนเพิ่มได้ 2 คน
+**จำนวนผู้พัก** คือจำนวนคนสูงสุดที่ห้องรองรับ ผู้ลงประกาศไม่ถูกนับเป็นผู้พักอัตโนมัติ
+เช่น ห้อง 2 คนที่ปล่อยเช่าอย่างเดียวรับผู้พักได้ 2 คน หากเลือก **ฉันพักอยู่ในห้องนี้ด้วย**
+จะนับผู้ลงประกาศ 1 คนและรับเพิ่มได้อีก 1 คน ห้องเดิมคงจำนวนที่ว่างเดิมไว้และแก้ตัวเลือกนี้ได้
+ตัวกรองที่ว่างและการหาห้องด้วยกันตรวจจากผู้พักจริง ดู [กติกาจำนวนผู้พัก](docs/ROOM_OCCUPANCY.md)
 
 หน้า **รวมประกาศห้อง** แสดงเฉพาะห้องสถานะ `available` ทั้งการค้นหา กรองราคา และเรียงลำดับ
 เมื่อห้องเต็มจะไม่แสดงในรายการนี้เมื่อโหลดใหม่ แต่ข้อมูลประกาศยังอยู่ในประกาศของเจ้าของ
@@ -445,11 +448,12 @@ lines, preserving all eight ER entities without inventing another column.
 
 ## Capacity and approval rules
 
-Room capacity includes the owner. The owner exists only in `ROOM.owner_id`, not
-in `ROOM_MEMBER`, so available places are:
+Room capacity is the maximum number of residents. A listing owner counts only
+when `ownerIsResident` is true. New listings default to false; migration 005
+preserves legacy listings as resident-owner rooms. Available places are:
 
 ```text
-capacity - 1 - approved member count
+capacity - approved member count - (ownerIsResident ? 1 : 0)
 ```
 
 The approval API checks ownership, room activity, duplicates, self-matches, and
