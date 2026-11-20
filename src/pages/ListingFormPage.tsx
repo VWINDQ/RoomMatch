@@ -25,12 +25,21 @@ export function ListingFormPage() {
   const [checkingImages, setCheckingImages] = useState(false);
   const [loading, setLoading] = useState(Boolean(id)); const [loadError, setLoadError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [saving, setSaving] = useState(false); const [status, setStatus] = useState<RoomStatus>('available');
   const formRef = useRef<HTMLFormElement>(null);
-  const { blocker, markSaved } = useListingLeaveGuard(formRef, images, status, !loading && !loadError, existing);
+  const { blocker, markSaved, resetBlocker, proceed } = useListingLeaveGuard(formRef, images, status, !loading && !loadError, existing);
+  const saveBeforeLeave = useRef(false);
+  const cancelLeave = () => {
+    saveBeforeLeave.current = false;
+    resetBlocker();
+  };
+  const showSaveErrors = () => {
+    if (saveBeforeLeave.current) cancelLeave();
+    setFocusErrors(true);
+  };
   const submitLocked = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [focusErrors, setFocusErrors] = useState(false);
-  const summaryRef = useFormFeedback(errors, formRef, focusErrors);
+  const summaryRef = useFormFeedback(errors, formRef, focusErrors && blocker.state !== 'blocked');
   const fieldsWithErrors = useRef(new Set<string>());
   const cancelImageSelection = () => {
     if (saving || checkingImages) return;
@@ -78,13 +87,12 @@ export function ListingFormPage() {
     if (submitLocked.current || checkingImages) return;
     // Lock synchronously: React state and disabled controls update after this handler.
     submitLocked.current = true;
-    setFocusErrors(true);
     const values = Object.fromEntries(new FormData(event.currentTarget));
     const nextErrors = validateListing({ ...values, images: completedListingImageUrls(images) }, { minimumCapacity: existing ? existing.memberCount + 1 : 1 });
     Object.keys(nextErrors).forEach(field => fieldsWithErrors.current.add(field));
     setErrors(nextErrors);
     // Selected files can satisfy the image requirement only after successful upload.
-    if (Object.keys(nextErrors).some(field => field !== 'images') || (nextErrors.images && !images.some(image => image.file))) { submitLocked.current = false; return; }
+    if (Object.keys(nextErrors).some(field => field !== 'images') || (nextErrors.images && !images.some(image => image.file))) { showSaveErrors(); submitLocked.current = false; return; }
     // Upload is in progress, not a missing-image failure. Its own failure is reported below.
     setErrors({});
     setFocusErrors(false);
@@ -105,19 +113,19 @@ export function ListingFormPage() {
       });
       if (!mounted.current) return;
       const uploadedErrors = validateListing({ images: imageUrls }, { partial: true });
-      if (uploadedErrors.images) { setFocusErrors(true); setErrors(uploadedErrors); submitLocked.current = false; setSaving(false); return; }
+      if (uploadedErrors.images) { showSaveErrors(); setErrors(uploadedErrors); submitLocked.current = false; setSaving(false); return; }
       stage = 'save';
       if (existing) await api.updateRoom(existing.roomId, { ...payload, images: imageUrls });
       else await api.createRoom({ ...payload, images: imageUrls });
-      // Discard/session changes may unmount this form while a request is in flight.
+      // A session change may unmount this form while a request is in flight.
       if (!mounted.current) return;
       notify(existing ? 'บันทึกการแก้ไขแล้ว' : 'สร้างประกาศแล้ว');
       // Keep the lock through navigation so a successful save cannot be repeated.
-      markSaved();
-      returnToList();
+      if (saveBeforeLeave.current) proceed();
+      else { markSaved(); returnToList(); }
     } catch (caught) {
       const fields = listingSaveFeedback(caught, stage === 'upload' ? 'upload' : 'save', listingFields);
-      setFocusErrors(true);
+      showSaveErrors();
       Object.keys(fields).forEach(field => fieldsWithErrors.current.add(field));
       setErrors(fields);
       submitLocked.current = false;
@@ -132,6 +140,17 @@ export function ListingFormPage() {
       <section className="form-section"><header><span>3</span><div><h2>รูปภาพห้อง</h2><p>เลือกรูปจากเครื่องได้สูงสุด 12 รูป แล้วจัดลำดับรูปปกได้เลย</p></div></header><div className="form-section-body"><ImagePicker label="รูปภาพห้อง" images={images} onCheckingChange={setCheckingImages} onSelectionCancel={cancelImageSelection} onChange={changeImages} fieldName="images" required max={12} disabled={saving} error={errors.images}/></div></section>
       <footer className="listing-form-actions"><FormFeedback errors={errors.form ? { form: errors.form } : {}} summaryRef={summaryRef}/><div className="form-action-buttons"><Button type="button" variant="quiet" onClick={() => returnToList()}>ยกเลิก</Button><Button type="submit" disabled={saving || checkingImages} loading={saving}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : existing ? 'บันทึกการแก้ไข' : 'สร้างประกาศ'}</Button></div></footer>
     </fieldset></form>
-    {blocker.state === 'blocked' && <Modal title="ทิ้งการแก้ไขที่ยังไม่บันทึก?" onClose={() => blocker.reset()} actions={<><Button variant="quiet" onClick={() => blocker.reset()}>อยู่ต่อ</Button><Button variant="danger" onClick={() => blocker.proceed()}>ทิ้งการแก้ไข</Button></>}><p>ข้อมูลที่แก้ไขและรูปที่เลือกยังไม่ได้บันทึก หากออกจากหน้านี้จะสูญเสียการแก้ไข</p></Modal>}
+    {blocker.state === 'blocked' && <Modal className="listing-leave-modal" title="ยังไม่ได้บันทึกประกาศ" onClose={cancelLeave} actions={<>
+      <Button type="button" variant="secondary" disabled={saving} onClick={proceed}>ยกเลิกการแก้ไข</Button>
+      <Button type="button" disabled={checkingImages} loading={saving} onClick={() => {
+        if (submitLocked.current || checkingImages || !formRef.current) return;
+        saveBeforeLeave.current = true;
+        formRef.current.requestSubmit();
+      }}>บันทึกและไปต่อ</Button>
+    </>}>
+      <p>คุณมีข้อมูลประกาศที่ยังไม่ได้บันทึก ต้องการยกเลิกการแก้ไข หรือบันทึกก่อนไปหน้าที่เลือก?</p>
+      <p>ปิดหน้าต่างนี้เพื่อกลับไปแก้ไขต่อ</p>
+      {(saving || checkingImages) && <p role="status">{checkingImages ? 'กำลังตรวจไฟล์ภาพ…' : 'กำลังบันทึกข้อมูล กรุณารอสักครู่…'}</p>}
+    </Modal>}
   </div>;
 }

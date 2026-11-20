@@ -34,7 +34,7 @@ export function StatusBadge({ status }: { status: string }) {
   return <span className={`status ${status === 'available' || status === 'approved' ? 'available' : status === 'pending' ? 'pending' : 'unavailable'}`}><i />{labels[status] || status}</span>;
 }
 
-export function Modal({ title, children, onClose, actions }: { title: string; children: ReactNode; onClose: () => void; actions?: ReactNode }) {
+export function Modal({ title, children, onClose, actions, className = '' }: { title: string; children: ReactNode; onClose: () => void; actions?: ReactNode; className?: string }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -54,7 +54,7 @@ export function Modal({ title, children, onClose, actions }: { title: string; ch
   }, []);
   return <div ref={dialogRef} className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <button className="modal-scrim" onClick={onClose} aria-label="ปิดหน้าต่าง" />
-    <section className="modal-card">
+    <section className={className ? `modal-card ${className}` : 'modal-card'}>
       <header><h2 id="modal-title">{title}</h2><button className="icon-button" onClick={onClose} aria-label="ปิด"><X size={20}/></button></header>
       <div className="modal-body">{children}</div>{actions && <footer>{actions}</footer>}
     </section>
