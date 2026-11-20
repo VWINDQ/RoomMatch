@@ -19,7 +19,7 @@ test.beforeEach(async ({ page, environment }) => {
 });
 
 test('profile unchanged and reverted edits can be cancelled or left without a warning', async ({ page }) => {
-  const firstName = page.getByLabel('ชื่อ', { exact: true });
+  const firstName = page.getByRole('textbox', { name: 'ชื่อ', exact: true });
   const original = await firstName.inputValue();
   await firstName.fill('Temporary edit');
   await firstName.fill(original);
