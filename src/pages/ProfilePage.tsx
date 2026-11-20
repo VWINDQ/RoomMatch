@@ -9,7 +9,6 @@ import { Button, EmptyState, Input, Modal, Textarea } from '../components/UI';
 import { api, ApiError, SessionChangedError } from '../lib/api';
 import { FormFeedback, useFormFeedback } from '../components/FormFeedback';
 import { ImagePicker, savedImages, uploadSelectedImages, type SelectedImage } from '../components/ImagePicker';
-import { isWebUrl } from '../../shared/listingValidation.js';
 import { calculateAge } from '../lib/age';
 import type { ProfileBundle } from '../types';
 import { BirthDateInput } from '../components/BirthDateInput';
@@ -23,6 +22,7 @@ function profileFieldError(name: string, value: string) {
   if (name === 'firstName') return value.trim() ? '' : 'กรุณากรอกชื่อ';
   if (name === 'lastName') return value.trim() ? '' : 'กรุณากรอกนามสกุล';
   if (name === 'phone') return !value.trim() ? 'กรุณากรอกเบอร์โทรศัพท์' : /^\d{10}$/.test(value.trim()) ? '' : 'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก';
+  if (name === 'lifestyleName') return value.trim() ? '' : 'กรุณาระบุไลฟ์สไตล์ของคุณก่อนบันทึก';
   if (name === 'dateOfBirth') {
     if (!value.trim()) return 'กรุณากรอกวันเกิด';
     try { parseBirthDate(value); }
@@ -79,9 +79,10 @@ export function ProfilePage() {
     const accountField = name === 'accountType' || name === 'university';
     const setup = profile?.user.profileSetupPending;
     if (onlyInvalid && !errors[name]) return;
-    if (accountField ? !setup && !profile?.user.accountType && !accountType : !setup || !['firstName', 'lastName', 'phone', 'dateOfBirth'].includes(name)) return;
+    if (accountField ? !setup && !profile?.user.accountType && !accountType : !['firstName', 'lastName', 'phone', 'dateOfBirth', 'lifestyleName'].includes(name)) return;
     const accountErrors = accountField ? validateAccountProfile(name === 'accountType' ? field.value : accountType, readUniversity(new FormData(event.currentTarget))) : {};
-    const message = name === 'accountType' || name === 'university' ? accountErrors[name] : profileFieldError(name, field.value);
+    const optionalBlank = (name === 'dateOfBirth' && !setup) || (name === 'lifestyleName' && !profile?.lifestyle);
+    const message = accountField ? accountErrors[name] : optionalBlank && !field.value.trim() ? '' : profileFieldError(name, field.value);
     if (!message && !errors[name]) return;
     setFocusErrors(false);
     setErrors(current => {
@@ -95,8 +96,6 @@ export function ProfilePage() {
     event.preventDefault(); if (!profile || checkingImages || submitLocked.current) return; const data = new FormData(event.currentTarget); const required = ['firstName', 'lastName', 'phone'] as const; const nextErrors: Record<string, string> = {}; required.forEach(name => { if (!String(data.get(name)).trim()) nextErrors[name] = 'กรุณากรอกข้อมูลนี้'; });
     const phone = String(data.get('phone') ?? '').trim();
     if (phone && !/^\d{10}$/.test(phone)) nextErrors.phone = 'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก';
-    const imageUrl = images[0]?.url.trim() || '';
-    if (imageUrl && !imageUrl.startsWith('/uploads/') && !isWebUrl(imageUrl)) nextErrors.profileImage = 'URL รูปต้องเป็นลิงก์ http:// หรือ https:// ที่ถูกต้อง';
     let dateOfBirth = '';
     try { dateOfBirth = parseBirthDate(String(data.get('dateOfBirth') ?? '')); }
     catch (caught) { nextErrors.dateOfBirth = caught instanceof Error ? caught.message : 'วันเกิดไม่ถูกต้อง'; }
@@ -113,7 +112,7 @@ export function ProfilePage() {
     const ageMin = Number(ageMinRaw || 0); const ageMax = Number(ageMaxRaw || 0); const budgetMin = Number(budgetMinRaw || 0); const budgetMax = Number(budgetMaxRaw || 0);
     if (ageMinRaw && (!Number.isInteger(ageMin) || ageMin < 18 || ageMin > 120)) nextErrors.preferredAgeMin = 'กรอกอายุ 18–120 ปี'; if (ageMaxRaw && (!Number.isInteger(ageMax) || ageMax < 18 || ageMax > 120)) nextErrors.preferredAgeMax = 'กรอกอายุ 18–120 ปี'; if (ageMin && ageMax && ageMin > ageMax) nextErrors.preferredAgeMax = 'อายุสูงสุดต้องไม่น้อยกว่าอายุต่ำสุด';
     const lifestyleName = String(data.get('lifestyleName') || '').trim();
-    if (lifestyle && !lifestyleName) nextErrors.form = 'กรุณาระบุไลฟ์สไตล์ของคุณก่อนบันทึก';
+    if (lifestyle && !lifestyleName) nextErrors.lifestyleName = 'กรุณาระบุไลฟ์สไตล์ของคุณก่อนบันทึก';
     for (const [name, raw, amount] of [['budgetMin', budgetMinRaw, budgetMin], ['budgetMax', budgetMaxRaw, budgetMax]] as const) {
       if (raw && (!Number.isSafeInteger(amount) || amount < 0)) nextErrors[name] = 'กรอกงบประมาณเป็นจำนวนเต็มตั้งแต่ 0 บาท';
     }
@@ -159,11 +158,12 @@ export function ProfilePage() {
       <ProfileCard icon={<MessageCircle/>} title="ช่องทางติดต่อ"><div className="profile-contact-list"><Contact icon={<MessageCircle/>} label="LINE" value={user.lineId}/><Contact icon={<AtSign/>} label="Instagram" value={user.instagram}/><Contact icon={<Mail/>} label="อีเมลบัญชี" value={user.email}/></div></ProfileCard></div>
     : <form ref={formRef} className="profile-editor" onSubmit={submit} noValidate aria-busy={saving}
       onBlur={validateProfileField} onChange={event => validateProfileField(event, true)}><fieldset className="image-upload-fields" disabled={saving}>
+      <p className="field-hint"><span className="required-marker" aria-hidden="true">*</span> หมายถึงข้อมูลจำเป็น ช่องอื่นเว้นว่างได้</p>
       <section className="form-section"><header><span>1</span><div><h2>ข้อมูลส่วนตัว</h2><p>ข้อมูลพื้นฐานและคำแนะนำตัว</p></div></header><div className="form-section-body">
-        <div className="two-fields"><Input label="ชื่อ" name="firstName" maxLength={100} defaultValue={user.firstName} error={errors.firstName}/><Input label="นามสกุล" name="lastName" maxLength={100} defaultValue={user.lastName} error={errors.lastName}/></div>
-        <Input label="เบอร์โทรศัพท์" name="phone" type="tel" inputMode="numeric" maxLength={10} onInput={event => { event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 10); }} defaultValue={user.phone} error={errors.phone}/>
+        <div className="two-fields"><Input label="ชื่อ *" name="firstName" required maxLength={100} defaultValue={user.firstName} error={errors.firstName}/><Input label="นามสกุล *" name="lastName" required maxLength={100} defaultValue={user.lastName} error={errors.lastName}/></div>
+        <Input label="เบอร์โทรศัพท์ *" name="phone" required type="tel" inputMode="numeric" maxLength={10} onInput={event => { event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 10); }} defaultValue={user.phone} error={errors.phone}/>
         <div className="two-fields"><label className="field"><span className="field-label">เพศ</span><select name="gender" defaultValue={user.gender}><option value="">ไม่ระบุ</option><option value="male">ชาย</option><option value="female">หญิง</option><option value="non_binary">นอนไบนารี</option><option value="other">อื่น ๆ</option></select></label><BirthDateInput defaultValue={user.dateOfBirth} required={user.profileSetupPending} error={errors.dateOfBirth}/></div>
-        <AccountProfileFields required={Boolean(user.profileSetupPending || user.accountType)} accountType={accountType}
+        <AccountProfileFields required={Boolean(user.profileSetupPending || user.accountType || accountType)} accountType={accountType}
           university={clearedUniversity ? '' : user.university} errors={errors} onUniversitySelect={() => {
             setFocusErrors(false);
             setErrors(({ university: _university, ...remaining }) => remaining);
@@ -173,14 +173,10 @@ export function ProfilePage() {
             setFocusErrors(false);
             setErrors(({ university: _university, ...remaining }) => remaining);
           }}/>
-        <Input label="URL รูปโปรไฟล์" name="profileImage" type="url" maxLength={2048} value={images[0]?.url || ''} disabled={checkingImages} onChange={event => {
-          const url = event.currentTarget.value;
-          setImages(url ? [{ id: images[0]?.id || crypto.randomUUID(), url }] : []);
-        }} error={errors.profileImage}/>
         <ImagePicker label="รูปโปรไฟล์" images={images} onCheckingChange={setCheckingImages} onChange={setImages} disabled={saving} error={errors.profileImage} fieldName="profileImage"/>
         <Textarea label="เกี่ยวกับฉัน" name="bio" maxLength={1000} rows={4} defaultValue={user.bio}/>
       </div></section>
-      <section className="form-section"><header><span>2</span><div><h2>ไลฟ์สไตล์และความต้องการ</h2><p>ช่วยให้การจับคู่มีบริบทที่ชัดเจนขึ้น</p></div></header><div className="form-section-body"><Input label="ไลฟ์สไตล์" name="lifestyleName" maxLength={400} defaultValue={lifestyle?.lifestyleName} placeholder="เช่น ตื่นเช้า • ไม่สูบบุหรี่ • ชอบห้องเงียบ"/><label className="field"><span className="field-label">เพศที่สะดวกแชร์ห้อง</span><select name="preferredGender" defaultValue={preference?.preferredGender || 'any'}><option value="any">ไม่จำกัด</option><option value="male">ชาย</option><option value="female">หญิง</option><option value="non_binary">นอนไบนารี</option><option value="other">อื่น ๆ</option></select></label><div className="two-fields"><Input label="อายุต่ำสุด" name="preferredAgeMin" type="number" min={18} max={120} defaultValue={preference?.preferredAgeMin ?? ''} error={errors.preferredAgeMin}/><Input label="อายุสูงสุด" name="preferredAgeMax" type="number" min={18} max={120} defaultValue={preference?.preferredAgeMax ?? ''} error={errors.preferredAgeMax}/><Input label="งบต่ำสุด" name="budgetMin" type="number" min={0} defaultValue={preference?.budgetMin ?? ''} error={errors.budgetMin}/><Input label="งบสูงสุด" name="budgetMax" type="number" min={0} defaultValue={preference?.budgetMax ?? ''} error={errors.budgetMax}/></div></div></section>
+      <section className="form-section"><header><span>2</span><div><h2>ไลฟ์สไตล์และความต้องการ</h2><p>ช่วยให้การจับคู่มีบริบทที่ชัดเจนขึ้น</p></div></header><div className="form-section-body"><Input label={lifestyle ? 'ไลฟ์สไตล์ *' : 'ไลฟ์สไตล์'} name="lifestyleName" required={Boolean(lifestyle)} error={errors.lifestyleName} maxLength={400} defaultValue={lifestyle?.lifestyleName} placeholder="เช่น ตื่นเช้า • ไม่สูบบุหรี่ • ชอบห้องเงียบ"/><label className="field"><span className="field-label">เพศที่สะดวกแชร์ห้อง</span><select name="preferredGender" defaultValue={preference?.preferredGender || 'any'}><option value="any">ไม่จำกัด</option><option value="male">ชาย</option><option value="female">หญิง</option><option value="non_binary">นอนไบนารี</option><option value="other">อื่น ๆ</option></select></label><div className="two-fields"><Input label="อายุต่ำสุด" name="preferredAgeMin" type="number" min={18} max={120} defaultValue={preference?.preferredAgeMin ?? ''} error={errors.preferredAgeMin}/><Input label="อายุสูงสุด" name="preferredAgeMax" type="number" min={18} max={120} defaultValue={preference?.preferredAgeMax ?? ''} error={errors.preferredAgeMax}/><Input label="งบต่ำสุด" name="budgetMin" type="number" min={0} defaultValue={preference?.budgetMin ?? ''} error={errors.budgetMin}/><Input label="งบสูงสุด" name="budgetMax" type="number" min={0} defaultValue={preference?.budgetMax ?? ''} error={errors.budgetMax}/></div></div></section>
       <section className="form-section"><header><span>3</span><div><h2>ช่องทางติดต่อ</h2><p>แชร์หลังจับคู่เพื่อคุยรายละเอียดกันต่อ</p></div></header><div className="form-section-body"><Input label="LINE ID" name="lineId" defaultValue={user.lineId}/><Input label="Instagram" name="instagram" defaultValue={user.instagram}/></div></section>
       <footer className="profile-actions"><FormFeedback errors={errors} summaryRef={summaryRef}/><div className="form-action-buttons">{!user.profileSetupPending && <Button type="button" variant="quiet" onClick={() => {
         if (hasChanges()) { setLocalLeave('cancel'); return; }
