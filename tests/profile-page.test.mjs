@@ -53,14 +53,14 @@ async function mountEditor() {
   ] }], { initialEntries: ['/rooms', '/profile'], initialIndex: 1 });
   await act(async () => root.render(createElement(RouterProvider, { router })));
   assert.ok(document.querySelector('.profile-summary'));
-  await act(async () => button('แก้ไขโปรไฟล์').click());
+  if (button('แก้ไขโปรไฟล์')) await act(async () => button('แก้ไขโปรไฟล์').click());
 }
 async function change(name, value) {
   const input = field(name);
-  const prototype = input instanceof dom.window.HTMLTextAreaElement ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
+  const prototype = input instanceof dom.window.HTMLSelectElement ? dom.window.HTMLSelectElement.prototype : input instanceof dom.window.HTMLTextAreaElement ? dom.window.HTMLTextAreaElement.prototype : dom.window.HTMLInputElement.prototype;
   await act(async () => {
     Object.getOwnPropertyDescriptor(prototype, 'value').set.call(input, value);
-    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    input.dispatchEvent(new dom.window.Event(input instanceof dom.window.HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
   });
 }
 const submit = () => act(async () => document.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true })));
@@ -74,6 +74,70 @@ async function chooseImage() {
   });
   return file;
 }
+
+test('required profile fields have the same marker and required semantics while nullable fields stay optional', async () => {
+  profile.user.accountType = 'general';
+  await mountEditor();
+  for (const name of ['firstName', 'lastName', 'phone', 'accountType']) {
+    assert.equal(field(name).required, true, name);
+    const marker = field(name).closest('label').querySelector('.required-marker');
+    assert.equal(marker.textContent, '*', name);
+    assert.equal(marker.getAttribute('aria-hidden'), 'true');
+  }
+  for (const name of ['dateOfBirth', 'bio', 'lifestyleName', 'lineId', 'instagram', 'budgetMin', 'budgetMax']) {
+    assert.equal(field(name).required, false, name);
+    assert.equal(field(name).closest('label').querySelector('.required-marker'), null, name);
+  }
+  await change('firstName', '');
+  await submit();
+  assert.equal(save.mock.callCount(), 0);
+  assert.equal(field('firstName').getAttribute('aria-invalid'), 'true');
+  await change('firstName', 'Corrected');
+  assert.equal(field('firstName').getAttribute('aria-invalid'), null);
+});
+
+test('Google profile setup marks birthday and account type required and blocks incomplete submission', async () => {
+  Object.assign(profile.user, { profileSetupPending: true, dateOfBirth: '', phone: '' });
+  await mountEditor();
+  for (const name of ['dateOfBirth', 'accountType']) {
+    assert.equal(field(name).required, true, name);
+    assert.ok(field(name).closest('label').querySelector('.required-marker'), name);
+  }
+  await submit();
+  assert.equal(save.mock.callCount(), 0);
+  assert.equal(field('dateOfBirth').getAttribute('aria-invalid'), 'true');
+  assert.equal(field('accountType').getAttribute('aria-invalid'), 'true');
+});
+
+test('student university is required only while the student status is selected', async () => {
+  profile.user.accountType = 'general';
+  await mountEditor();
+  await change('accountType', 'student');
+  assert.equal(field('universityQuery').getAttribute('aria-required'), 'true');
+  assert.ok(document.querySelector('.university-picker label .required-marker'));
+  await submit();
+  assert.equal(save.mock.callCount(), 0);
+  assert.equal(field('universityQuery').getAttribute('aria-invalid'), 'true');
+  await change('accountType', 'general');
+  assert.equal(field('universityQuery'), null);
+  await submit();
+  assert.equal(save.mock.callCount(), 1);
+  assert.equal(save.mock.calls[0].arguments[0].university, '');
+});
+
+test('an existing lifestyle cannot be cleared and shows its required feedback next to the field', async () => {
+  profile.lifestyle = { lifestyleName: 'ตื่นเช้า' };
+  await mountEditor();
+  assert.equal(field('lifestyleName').required, true);
+  assert.ok(field('lifestyleName').closest('label').querySelector('.required-marker'));
+  await change('lifestyleName', '');
+  await submit();
+  assert.equal(save.mock.callCount(), 0);
+  assert.equal(field('lifestyleName').getAttribute('aria-invalid'), 'true');
+  assert.match(field('lifestyleName').closest('label').textContent, /กรุณาระบุไลฟ์สไตล์/);
+  await change('lifestyleName', 'ตื่นเช้า');
+  assert.equal(field('lifestyleName').getAttribute('aria-invalid'), null);
+});
 
 test('profile renders, retains birth date and age, and saves a complete edit', async () => {
   await mountEditor();
@@ -129,19 +193,17 @@ test('incomplete phone is rejected and a corrected ten-digit phone can be saved'
   assert.equal(save.mock.calls[0].arguments[0].phone, '0812345678');
 });
 
-test('edited image URLs are saved, invalid URLs are reported, and removing an image clears it', async () => {
+test('profile is file-only, preserves legacy images, and removing an image clears it', async () => {
   await mountEditor();
-  await change('profileImage', 'javascript:alert(1)');
+  assert.equal(field('profileImage'), null);
+  assert.equal(document.querySelector('input[type="url"]'), null);
+  assert.ok(document.querySelector('input[type="file"]'));
   await submit();
-  assert.equal(save.mock.callCount(), 0);
-  assert.equal(field('profileImage').getAttribute('aria-invalid'), 'true');
-  await change('profileImage', 'https://example.test/replacement.jpg');
-  await submit();
-  assert.equal(save.mock.calls[0].arguments[0].profileImage, 'https://example.test/replacement.jpg');
+  assert.equal(save.mock.calls[0].arguments[0].profileImage, 'https://example.test/original.jpg');
   assert.equal(upload.mock.callCount(), 0);
   await act(async () => button('แก้ไขโปรไฟล์').click());
   await act(async () => document.querySelector('[aria-label="ลบรูปโปรไฟล์"]').click());
-  assert.equal(field('profileImage').value, '');
+  assert.equal(document.querySelector('.image-picker img'), null);
   await submit();
   assert.equal(save.mock.calls[1].arguments[0].profileImage, '');
 });
@@ -153,7 +215,7 @@ test('cancelling an image edit restores the saved image when reopening the form'
   assert.ok(dialog());
   await discard();
   await act(async () => button('แก้ไขโปรไฟล์').click());
-  assert.equal(field('profileImage').value, profile.user.profileImage);
+  assert.equal(document.querySelector('.image-picker img').getAttribute('src'), profile.user.profileImage);
   await submit();
   assert.equal(upload.mock.callCount(), 0);
   assert.equal(save.mock.calls[0].arguments[0].profileImage, 'https://example.test/original.jpg');
