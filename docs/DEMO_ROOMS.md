@@ -13,7 +13,7 @@ node scripts/demo-rooms.mjs cleanup
 ```
 
 The script creates exactly 30 available rooms marked `[เดโม RM12]`, capacities
-2–5 including the owner, prices 2,500–7,000 baht, six districts, and both price
+2–5 residents, prices 2,500–7,000 baht, six districts, and both price
 bases. Each uses the existing `public/assets/room-main.png` through the supplied
 local web origin (default `http://localhost:5173`); keep that origin running.
 Listings pass the shared form/API validator and database constraints.
@@ -23,6 +23,10 @@ Password hashing uses the existing `hashPassword` scrypt implementation with a
 random password that is never printed or stored. This is a listing owner, not a
 login account for testers: browse with your existing account. No real user is
 assigned ownership, contact details or membership.
+
+New demo rooms use the rental default: their listing owner does not live there.
+Rooms created before migration 005 retain their original vacancy counts with
+`owner_is_resident = true`; this migration never resets existing demo records.
 
 Open `/rooms?q=%5Bเดโม%20RM12%5D` to see only these demos: 12 / 12 / 6 rooms.
 Search, price, district, price basis and minimum vacancies can be tried normally.

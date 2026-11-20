@@ -33,7 +33,7 @@ test('listing form marks required fields, keeps optional text optional and start
     assert.ok(textarea, name);
     assert.doesNotMatch(textarea, /\brequired=/, name);
   }
-  for (const label of ['หัวข้อประกาศ', 'ราคา / เดือน', 'จำนวนผู้พักรวมเจ้าของ', 'Google Maps URL', 'หน่วยราคา', 'ย่านหรือถนน', 'รูปภาพห้อง']) {
+  for (const label of ['หัวข้อประกาศ', 'ราคา / เดือน', 'จำนวนผู้พัก', 'Google Maps URL', 'หน่วยราคา', 'ย่านหรือถนน', 'รูปภาพห้อง']) {
     assert.ok(html.replace(/<[^>]*>/g, "").includes(`${label} *`), label);
   }
   assert.match(html, /aria-required="true"/);

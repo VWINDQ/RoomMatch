@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { test } from 'node:test';
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, basename } from 'node:path';
 import { openDatabase } from './support/postgres.mjs';
@@ -224,7 +224,10 @@ test('OAuth migration preserves existing users and hashes and applies exactly on
   const directory = mkdtempSync(join(tmpdir(), 'roommatch-oauth-migration-'));
   try {
     copyFileSync('database/postgresql/migrations/001_initial_schema.sql', join(directory, '001_initial_schema.sql'));
-    const db = await openDatabase({ filename: ':memory:', migrationsDirectory: directory, seed: true });
+    // This fixture represents a database before the residence column existed.
+    const seedPath = join(directory, 'legacy-seed.sql');
+    writeFileSync(seedPath, readFileSync('database/postgresql/seed.sql', 'utf8').replace(', owner_is_resident', '').replaceAll(', TRUE)', ')'));
+    const db = await openDatabase({ filename: ':memory:', migrationsDirectory: directory, seed: true, seedPath });
     const originalUsers = await db.prepare('SELECT * FROM USER ORDER BY user_id').all();
     await runMigrations(db);
     await runMigrations(db);

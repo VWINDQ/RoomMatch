@@ -109,7 +109,7 @@ export function createRoomRequestHandler(db, {
         assert(!(await db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, user.user_id)), 409, 'You are already a member of this room');
         assert(!(await db.prepare("SELECT 1 FROM ROOM_REQUEST WHERE room_id = ? AND user_id = ? AND status = 'pending'").get(roomId, user.user_id)), 409, 'A pending request already exists');
         assert(room.status !== 'inactive', 409, 'Inactive rooms cannot accept requests');
-        assert(room.status === 'available' && room.capacity > Number(room.member_count) + 1, 409, 'This room has no available place');
+        assert(room.status === 'available' && room.capacity > Number(room.member_count) + Number(room.owner_is_resident), 409, 'This room has no available place');
         const result = await db.prepare("INSERT INTO ROOM_REQUEST (user_id, room_id, status) VALUES (?, ?, 'pending') RETURNING request_id").run(user.user_id, roomId);
         row = await db.prepare(requestSelect('WHERE rr.request_id = ?')).get(Number(result.insertId));
         await db.exec('COMMIT');
@@ -150,7 +150,7 @@ export function createRoomRequestHandler(db, {
         assert(target, 404, 'Request not found');
         await getRoomRow(db, target.room_id, { lock: true });
         const joinRequest = await db.prepare(`
-          SELECT rr.*, room.owner_id, room.capacity, room.status AS room_status,
+          SELECT rr.*, room.owner_id, room.capacity, room.owner_is_resident, room.status AS room_status,
             (SELECT COUNT(*) FROM ROOM_MEMBER rm WHERE rm.room_id = room.room_id AND rm.status = 'approved') AS member_count
           FROM ROOM_REQUEST rr JOIN ROOM room ON room.room_id = rr.room_id WHERE rr.request_id = ? FOR UPDATE OF rr
         `).get(requestId);
@@ -163,7 +163,7 @@ export function createRoomRequestHandler(db, {
         } else {
           assert(joinRequest.user_id !== owner.user_id, 409, 'A room owner cannot match with themselves');
           assert(joinRequest.room_status !== 'inactive', 409, 'Inactive rooms cannot accept requests');
-          assert(Number(joinRequest.member_count) + 1 < joinRequest.capacity, 409, 'This room has reached capacity');
+          assert(Number(joinRequest.member_count) + Number(joinRequest.owner_is_resident) < joinRequest.capacity, 409, 'This room has reached capacity');
           assert(!(await db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(joinRequest.room_id, joinRequest.user_id)), 409, 'The requester is already a room member');
 
           const changed = await db.prepare("UPDATE ROOM_REQUEST SET status = 'approved', responded_at = clock_timestamp() WHERE request_id = ? AND status = 'pending'").run(requestId);
@@ -173,7 +173,7 @@ export function createRoomRequestHandler(db, {
           await db.prepare(`INSERT INTO MATCHES (initiator_user_id, completer_user_id, room_id) VALUES (?, ?, ?)
             ON CONFLICT(room_id, completer_user_id) DO UPDATE SET matched_at = clock_timestamp()`).run(owner.user_id, joinRequest.user_id, joinRequest.room_id);
           const matchId = (await db.prepare('SELECT match_id FROM MATCHES WHERE room_id = ? AND completer_user_id = ?').get(joinRequest.room_id, joinRequest.user_id)).match_id;
-          const occupancy = Number(joinRequest.member_count) + 2;
+          const occupancy = Number(joinRequest.member_count) + Number(joinRequest.owner_is_resident) + 1;
           if (occupancy >= joinRequest.capacity) {
             await db.prepare("UPDATE ROOM SET status = 'full' WHERE room_id = ?").run(joinRequest.room_id);
           }

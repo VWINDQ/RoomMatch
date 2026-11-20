@@ -1,0 +1,27 @@
+.owner-residence-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  cursor: pointer;
+}
+
+.owner-residence-option input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+
+.owner-residence-option input:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.owner-residence-option span { min-width: 0; }
+.owner-residence-option strong { display: block; font-size: .85rem; }
+.owner-residence-option small { display: block; margin-top: 4px; color: var(--text-secondary); line-height: 1.7; }

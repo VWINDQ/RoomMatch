@@ -35,16 +35,18 @@ export async function importSqlite({ source, connectionString, schema = 'public'
       }
       for (const table of BUSINESS_TABLES) {
         for (const row of rows.get(table)) {
+          // SQLite listings used the legacy resident-owner rule.
+          if (table === 'ROOM' && !Object.hasOwn(row, 'owner_is_resident')) row.owner_is_resident = true;
           const columns = Object.keys(row);
           await db.prepare(`INSERT INTO ${tableIdentifier(table)} (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`).run(...Object.values(row));
         }
         counts[table] = rows.get(table).length;
       }
       const invalid = await db.prepare(`SELECT
-        EXISTS (SELECT 1 FROM ROOM r WHERE r.capacity < 1 + (SELECT COUNT(*) FROM ROOM_MEMBER m WHERE m.room_id=r.room_id AND m.status='approved')) AS overbooked,
+        EXISTS (SELECT 1 FROM ROOM r WHERE r.capacity < (CASE WHEN r.owner_is_resident THEN 1 ELSE 0 END) + (SELECT COUNT(*) FROM ROOM_MEMBER m WHERE m.room_id=r.room_id AND m.status='approved')) AS overbooked,
         EXISTS (SELECT 1 FROM ROOM_MEMBER m JOIN ROOM r ON r.room_id=m.room_id WHERE m.user_id=r.owner_id OR (m.status='approved' AND NOT EXISTS (SELECT 1 FROM ROOM_REQUEST q WHERE q.user_id=m.user_id AND q.room_id=m.room_id AND q.status='approved'))) AS invalid_member,
         EXISTS (SELECT 1 FROM MATCHES m JOIN ROOM r ON r.room_id=m.room_id WHERE m.initiator_user_id<>r.owner_id OR NOT EXISTS (SELECT 1 FROM ROOM_MEMBER member WHERE member.room_id=m.room_id AND member.user_id=m.completer_user_id)) AS invalid_match,
-        EXISTS (SELECT 1 FROM ROOM r WHERE r.status<>'inactive' AND (r.status='full') <> (r.capacity <= 1 + (SELECT COUNT(*) FROM ROOM_MEMBER m WHERE m.room_id=r.room_id AND m.status='approved'))) AS invalid_status
+        EXISTS (SELECT 1 FROM ROOM r WHERE r.status<>'inactive' AND (r.status='full') <> (r.capacity <= (CASE WHEN r.owner_is_resident THEN 1 ELSE 0 END) + (SELECT COUNT(*) FROM ROOM_MEMBER m WHERE m.room_id=r.room_id AND m.status='approved'))) AS invalid_status
       `).get();
       if (Object.values(invalid).some(Boolean)) throw new Error(`SQLite business invariants failed: ${Object.keys(invalid).filter(key => invalid[key]).join(', ')}`);
       for (const table of BUSINESS_TABLES) await db.exec(`ALTER TABLE ${tableIdentifier(table)} ENABLE TRIGGER USER`);

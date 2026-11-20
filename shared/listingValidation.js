@@ -1,6 +1,7 @@
 // Shared by the browser and API; partial validation checks only supplied fields.
 export function validateListing(body, { partial = false, minimumCapacity = 1 } = {}) {
   const errors = {};
+  if (Object.hasOwn(body, 'ownerIsResident') && typeof body.ownerIsResident !== 'boolean') errors.ownerIsResident = 'กรุณาระบุว่าผู้ลงประกาศพักในห้องนี้หรือไม่';
   const textFields = {
     title: ['หัวข้อประกาศ', 200, true],
     description: ['รายละเอียดห้อง', 5000, false],
@@ -26,14 +27,14 @@ export function validateListing(body, { partial = false, minimumCapacity = 1 } =
     const raw = body[field];
     const present = (typeof raw === 'string' && raw.trim() !== '') || typeof raw === 'number';
     if (raw == null || (typeof raw === 'string' && !raw.trim())) {
-      errors[field] = field === 'price' ? 'กรุณากรอกราคา' : 'กรุณากรอกจำนวนผู้พักรวมเจ้าของ';
+      errors[field] = field === 'price' ? 'กรุณากรอกราคา' : 'กรุณากรอกจำนวนผู้พัก';
       continue;
     }
     const value = present ? Number(raw) : NaN;
     if (field === 'price' && (!Number.isSafeInteger(value) || value <= 0)) errors.price = 'กรุณากรอกราคาเป็นจำนวนเต็มมากกว่า 0 บาท';
     if (field === 'capacity') {
-      if (!Number.isInteger(value) || value < 1 || value > 100) errors.capacity = 'จำนวนผู้พักรวมเจ้าของต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 100 คน';
-      else if (value < minimumCapacity) errors.capacity = `จำนวนผู้พักต้องไม่น้อยกว่า ${minimumCapacity} คน (รวมเจ้าของและสมาชิกปัจจุบัน)`;
+      if (!Number.isInteger(value) || value < 1 || value > 100) errors.capacity = 'จำนวนผู้พักต้องเป็นจำนวนเต็มตั้งแต่ 1 ถึง 100 คน';
+      else if (value < minimumCapacity) errors.capacity = `จำนวนผู้พักต้องไม่น้อยกว่า ${minimumCapacity} คนที่พักอยู่แล้ว`;
     }
   }
   if ((!partial || Object.hasOwn(body, 'priceBasis')) && !['per_room', 'per_person'].includes(body.priceBasis)) errors.priceBasis = 'กรุณาเลือกหน่วยราคา';

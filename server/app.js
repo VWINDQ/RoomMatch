@@ -233,6 +233,10 @@ function preferenceDto(row) {
   } : null;
 }
 
+function occupants(row) {
+  return Number(row.member_count ?? 0) + (row.owner_is_resident ? 1 : 0);
+}
+
 function roomDto(row, images = [], options = {}) {
   const { title, description } = splitStoredDescription(row.description);
   const memberCount = Number(row.member_count ?? 0);
@@ -261,7 +265,9 @@ function roomDto(row, images = [], options = {}) {
       imageOrder: image.image_order,
     })),
     memberCount,
-    availableSlots: Math.max(0, row.capacity - 1 - memberCount),
+    ownerIsResident: Boolean(row.owner_is_resident),
+    occupantCount: occupants(row),
+    availableSlots: Math.max(0, row.capacity - occupants(row)),
     ...(options.currentUserId ? { isOwner: row.owner_id === options.currentUserId } : {}),
     ...(options.isMember !== undefined ? { isMember: options.isMember } : {}),
     ...(options.isFavorite !== undefined ? { isFavorite: options.isFavorite } : {}),
@@ -293,6 +299,7 @@ function roomSummary(row) {
   return {
     roomId: row.room_id,
     title: splitStoredDescription(row.room_description).title,
+    ...(row.room_owner_is_resident !== undefined ? { ownerIsResident: row.room_owner_is_resident } : {}),
   };
 }
 
@@ -392,7 +399,7 @@ function roomListFilters(searchParams) {
   assert(minPrice === null || maxPrice === null || minPrice <= maxPrice, 400, 'minPrice cannot exceed maxPrice');
   const minSlots = integer(searchParams.get('minSlots'), 'minSlots', { min: 1, max: 100 });
   if (minSlots !== null) {
-    conditions.push("r.capacity - 1 - (SELECT COUNT(*) FROM ROOM_MEMBER slots WHERE slots.room_id = r.room_id AND slots.status = 'approved') >= ?");
+    conditions.push("r.capacity - CASE WHEN r.owner_is_resident THEN 1 ELSE 0 END - (SELECT COUNT(*) FROM ROOM_MEMBER slots WHERE slots.room_id = r.room_id AND slots.status = 'approved') >= ?");
     parameters.push(minSlots);
   }
   const priceBasis = searchParams.get('priceBasis');
@@ -439,7 +446,7 @@ async function insertImages(db, roomId, images, startingOrder = 0) {
 
 function matchSelect() {
   return `
-    SELECT m.*, room.description AS room_description,
+    SELECT m.*, room.description AS room_description, room.owner_is_resident AS room_owner_is_resident,
       initiator.first_name AS initiator_first_name,
       initiator.last_name AS initiator_last_name,
       initiator.profile_image AS initiator_profile_image,
@@ -748,9 +755,9 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           assert(await db.prepare(`SELECT 1 FROM FRIEND_CONNECTION f JOIN USER other ON other.user_id = ? AND other.is_active = 1
             WHERE f.status = 'accepted' AND ((f.sender_id = ? AND f.recipient_id = ?) OR (f.sender_id = ? AND f.recipient_id = ?))`)
             .get(friendId, viewer.user_id, friendId, friendId, viewer.user_id), 403, 'Accepted friendship is required');
-          // Existing owners/members do not consume a second vacancy when searching together.
-          conditions.push(`r.capacity - 1 - (SELECT COUNT(*) FROM ROOM_MEMBER occupants WHERE occupants.room_id = r.room_id AND occupants.status = 'approved')
-            >= 2 - CASE WHEN r.owner_id IN (?, ?) THEN 1 ELSE 0 END
+          // Only people already living here are excluded from the places needed.
+          conditions.push(`r.capacity - CASE WHEN r.owner_is_resident THEN 1 ELSE 0 END - (SELECT COUNT(*) FROM ROOM_MEMBER occupants WHERE occupants.room_id = r.room_id AND occupants.status = 'approved')
+            >= 2 - CASE WHEN r.owner_is_resident AND r.owner_id IN (?, ?) THEN 1 ELSE 0 END
               - (SELECT COUNT(*) FROM ROOM_MEMBER existing WHERE existing.room_id = r.room_id AND existing.status = 'approved' AND existing.user_id IN (?, ?))`);
           parameters.push(viewer.user_id, friendId, viewer.user_id, friendId);
         }
@@ -825,15 +832,16 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
         const costNotes = text(body.costNotes, 'costNotes', { max: 1000 });
         const requestedStatus = body.status ?? 'available';
         assert(ROOM_STATUSES.has(requestedStatus), 400, 'status is invalid');
-        const status = requestedStatus === 'inactive' ? 'inactive' : capacity === 1 ? 'full' : 'available';
+        const ownerIsResident = body.ownerIsResident ?? false;
+        const status = requestedStatus === 'inactive' ? 'inactive' : capacity <= Number(ownerIsResident) ? 'full' : 'available';
         const images = listingImages(body, value => parseImages(value, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) })) ?? [];
 
         await db.exec('BEGIN');
         try {
           const result = await db.prepare(`
-            INSERT INTO ROOM (owner_id, google_maps_url, price, capacity, description, status, price_basis, locality, cost_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING room_id
-          `).run(user.user_id, googleMapsUrl, price, capacity, joinStoredDescription(title, description), status, priceBasis, locality, costNotes);
+            INSERT INTO ROOM (owner_id, google_maps_url, price, capacity, description, status, price_basis, locality, cost_notes, owner_is_resident)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING room_id
+          `).run(user.user_id, googleMapsUrl, price, capacity, joinStoredDescription(title, description), status, priceBasis, locality, costNotes, ownerIsResident);
           const roomId = Number(result.insertId);
           await insertImages(db, roomId, images);
           await db.exec('COMMIT');
@@ -862,7 +870,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
             assert(latest, 404, 'Room not found');
             assert(latest.owner_id === user.user_id, 403, 'Only the room owner can update this room');
             const status = body.status === 'inactive' ? 'inactive'
-              : latest.capacity <= Number(latest.member_count) + 1 ? 'full' : 'available';
+              : latest.capacity <= occupants(latest) ? 'full' : 'available';
             await db.prepare('UPDATE ROOM SET status = ? WHERE room_id = ?').run(status, roomId);
             await db.exec('COMMIT');
           } catch (error) {
@@ -893,15 +901,17 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           const locality = Object.hasOwn(body, 'locality') ? text(body.locality, 'locality', { max: 200 }) : existing.locality;
           const costNotes = Object.hasOwn(body, 'costNotes') ? text(body.costNotes, 'costNotes', { max: 1000 }) : existing.cost_notes;
           const memberCount = Number(existing.member_count);
-          if (capacity < memberCount + 1) throw new HttpError(409, 'capacity cannot be lower than current occupancy', validateListing({ capacity }, { partial: true, minimumCapacity: memberCount + 1 }));
+          const ownerIsResident = Object.hasOwn(body, 'ownerIsResident') ? body.ownerIsResident : existing.owner_is_resident;
+          const occupancy = memberCount + Number(ownerIsResident);
+          if (capacity < occupancy) throw new HttpError(409, 'capacity cannot be lower than current occupancy', validateListing({ capacity }, { partial: true, minimumCapacity: occupancy }));
           let status = Object.hasOwn(body, 'status') ? body.status : existing.status;
           assert(ROOM_STATUSES.has(status), 400, 'status is invalid');
-          if (status !== 'inactive') status = capacity <= memberCount + 1 ? 'full' : 'available';
+          if (status !== 'inactive') status = capacity <= occupancy ? 'full' : 'available';
           const images = listingImages(body, value => parseImages(value, { imageUrl: (value, field) => imageUrl(value, user.user_id, field) }));
 
           await db.prepare(`
-            UPDATE ROOM SET google_maps_url = ?, price = ?, capacity = ?, description = ?, status = ?, price_basis = ?, locality = ?, cost_notes = ? WHERE room_id = ?
-          `).run(googleMapsUrl, price, capacity, joinStoredDescription(title, description), status, priceBasis, locality, costNotes, roomId);
+            UPDATE ROOM SET google_maps_url = ?, price = ?, capacity = ?, description = ?, status = ?, price_basis = ?, locality = ?, cost_notes = ?, owner_is_resident = ? WHERE room_id = ?
+          `).run(googleMapsUrl, price, capacity, joinStoredDescription(title, description), status, priceBasis, locality, costNotes, ownerIsResident, roomId);
           if (images) {
             await db.prepare('DELETE FROM ROOM_IMAGE WHERE room_id = ?').run(roomId);
             await insertImages(db, roomId, images);

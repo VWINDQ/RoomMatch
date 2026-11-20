@@ -66,7 +66,7 @@ async function fixture(t, editing = false, onSaveResponse = () => {}) {
     return response;
   });
   const dependencies = {
-    checkingImages: false, saving: false, submitLocked: { current: false }, mounted: { current: true },
+    checkingImages: false, saving: false, ownerIsResident: false, minimumCapacity: 1, submitLocked: { current: false }, mounted: { current: true },
     setSaving: value => { state.saving = value; }, setFocusErrors: value => { state.focusErrors = value; }, setErrors: value => { state.errors = value; },
     FormData: class { constructor() { return Object.entries(values); } },
     validateListing, completedListingImageUrls, images, existing: editing ? { roomId: '1', memberCount: 0 } : null,

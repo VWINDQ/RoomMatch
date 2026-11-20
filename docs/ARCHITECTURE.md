@@ -59,7 +59,7 @@ The implementation follows the diagram's 1:1 `SHARES` relationship. A lifestyle 
 
 ### Capacity rule
 
-`ROOM.capacity` includes the owner. A room with capacity 2 has one place for its owner and one place for an approved member. Available places are `capacity - 1 - approved member count`.
+`ROOM.capacity` is the maximum number of residents. A two-person rental admits two residents when its owner does not live there; selecting `ownerIsResident` reserves one place for the owner. Available places are `capacity - approved member count - (ownerIsResident ? 1 : 0)`. Migration 005 adds `ROOM.owner_is_resident` and preserves the old assumption for existing listings.
 
 The approval transaction must:
 
@@ -184,11 +184,14 @@ consume it as a successful scroll. Favorite focus restoration uses preventScroll
 See [personal pagination reproduction and checks](PERSONAL_PAGINATION_QA.md) for
 the stale development API incident, exact boundary matrix and runtime safeguards.
 
-Room write payload fields are `title`, `description`, `googleMapsUrl`, `price`, `capacity`, `status`, and `images`. `title` is encoded into the first description line per the presentation convention.
+Room write payload fields include `title`, `description`, `googleMapsUrl`, `price`, `capacity`, `ownerIsResident`, `status`, and `images`. `title` is encoded into the first description line per the presentation convention.
 
 Listing validation is shared by the form and room create/update APIs in
 `shared/listingValidation.js`. Price is a positive safe integer in whole baht; capacity is
-1–100 including the owner and cannot be reduced below current occupancy.
+1–100 residents and cannot be reduced below current occupancy. The boolean
+`ownerIsResident` defaults to false for new listings. Only an owner explicitly
+marked as living there consumes one place; approved members consume one each.
+Migration 005 preserves the legacy owner-resident assumption for existing rooms.
 Text limits after trimming are title 200, description 5000, map URL 2048,
 locality 200, and cost notes 1000. Map URLs must be complete HTTP(S) URLs;
 no Google-only host restriction is imposed. Price basis, locality, and at least

@@ -164,7 +164,8 @@ test('room writes enforce ownership and title convention', async () => {
   });
   assert.equal(created.response.status, 201);
   assert.equal(created.body.room.title, 'Test room');
-  assert.equal(created.body.room.availableSlots, 1);
+  assert.equal(created.body.room.availableSlots, 2);
+  assert.equal(created.body.room.ownerIsResident, false);
 
   const anonymousDelete = await api(`/api/rooms/${created.body.room.roomId}`, { method: 'DELETE' });
   assert.equal(anonymousDelete.response.status, 401);
