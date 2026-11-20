@@ -1,7 +1,7 @@
 import { Skeleton } from '../components/Skeleton';
 import { ArrowLeft, CalendarDays, ExternalLink, Heart, MapPin, RefreshCw, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { RoomGallery } from '../components/RoomGallery';
 import { ProfilePhoto } from '../components/ProfilePhoto';
@@ -98,7 +98,7 @@ export function RoomDetailPage() {
   useEffect(() => { setWithdrawOpen(false); setWithdrawError(''); setRequestError(''); setRequestNeedsRefresh(false); setSending(false); }, [id]);
   if (loading) return <div className="page"><Skeleton variant="room-detail"/></div>;
   if (error || !room) return <div className="page"><EmptyState icon={<RefreshCw/>} title="เปิดประกาศนี้ไม่ได้" text={error || 'ไม่พบประกาศห้องนี้'} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
-  const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอพิจารณา' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
+  const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอเจ้าของห้องตอบกลับ' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
   return <div className="page detail-page"><button className="back-link" onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}><ArrowLeft size={18}/>{back.label}</button>
     <div className="detail-title"><div><StatusBadge status={room.status}/><h1>{room.title}</h1><p><MapPin size={16}/>{room.locality || 'เจ้าของยังไม่ระบุย่าน · ดูแผนที่ด้านล่าง'}</p></div></div><RoomGallery room={room}/>
     <div className="detail-layout"><div className="detail-main"><section><h2>เกี่ยวกับห้องนี้</h2><p className="description">{room.description || 'เจ้าของห้องยังไม่ได้เพิ่มรายละเอียด'}</p><div className="fact-row"><span><UsersRound/>จุ {room.capacity} คน (รวมเจ้าของ)</span><span><UserRound/>ว่าง {room.availableSlots} ที่</span><span><CalendarDays/>ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span></div></section>
@@ -113,7 +113,7 @@ export function RoomDetailPage() {
       {room.isMember && !room.isOwner && <Button variant="quiet" className="w-full" onClick={() => { setLeaveError(''); setLeaveOpen(true); }}>ออกจากห้องนี้</Button>}
       {room.requestStatus === 'approved' && !room.isMember && !room.isOwner && <p className="inline-note">คำขอเดิมได้รับอนุมัติ แต่ขณะนี้คุณไม่ได้เป็นสมาชิกห้องนี้ หากต้องการกลับเข้าพักให้ส่งคำขอใหม่</p>}
       {requestError && <p ref={requestFeedback} tabIndex={-1} className="form-alert" role="alert">{requestError}</p>}{requestNeedsRefresh && <Button variant="secondary" className="w-full" loading={sending} onClick={retryRequestStatus}><RefreshCw size={17}/>อัปเดตสถานะห้อง</Button>}
-      {room.requestStatus === 'rejected' && <p className="inline-note">คำขอก่อนหน้าไม่ได้รับการอนุมัติ</p>}<Link className="detail-text-link" to="/requests?view=sent">ดูสถานะคำขอทั้งหมด</Link>
+      {room.requestStatus === 'rejected' && <p className="inline-note">คำขอก่อนหน้าไม่ได้รับการอนุมัติ</p>}
     </aside></div>
     {withdrawOpen && <Modal title="ถอนคำขอเข้าพัก?" onClose={closeWithdrawal} actions={<><Button variant="quiet" disabled={withdrawing} onClick={closeWithdrawal}>{room.requestStatus === 'pending' ? 'เก็บคำขอไว้' : 'กลับไปดูสถานะ'}</Button><Button variant="danger" loading={withdrawing} disabled={room.requestStatus !== 'pending' || !room.pendingRequestId} onClick={withdraw}>ยืนยันถอนคำขอ</Button></>}><p>ถอนคำขอสำหรับ “{room.title}” เจ้าของห้องจะเห็นว่าคุณถอนแล้ว ประวัติจะยังอยู่และส่งคำขอใหม่ได้หากห้องยังว่าง</p>{room.requestStatus === 'pending' && !room.pendingRequestId && <p className="form-alert" role="alert">ยังโหลดรหัสคำขอไม่ได้ กรุณาปิดหน้าต่างแล้วรีเฟรชหน้านี้ก่อนลองอีกครั้ง</p>}{room.requestStatus !== 'pending' && <p className="inline-note" role="status">{room.requestStatus === 'approved' ? 'เจ้าของอนุมัติคำขอแล้ว การถอนครั้งนี้ไม่สำเร็จ' : 'คำขอนี้ไม่ได้รอพิจารณาแล้ว กรุณาตรวจสอบสถานะล่าสุด'}</p>}{withdrawError && <p ref={withdrawFeedback} tabIndex={-1} className="form-alert" role="alert">{withdrawError}</p>}</Modal>}
     {leaveOpen && <Modal title="ออกจากห้องนี้?" onClose={() => { if (!leaving) setLeaveOpen(false); }} actions={<><Button variant="quiet" disabled={leaving} onClick={() => setLeaveOpen(false)}>อยู่ในห้องต่อ</Button><Button variant="danger" loading={leaving} onClick={leave}>ยืนยันออกจากห้อง</Button></>}><p>คุณจะคืนที่ว่างและไม่เห็นสมาชิกหรือช่องทางติดต่อผ่านห้องนี้อีก ประวัติคำขอจะยังอยู่ หากกลับเข้าพักต้องให้เจ้าของอนุมัติใหม่</p><p className="inline-note">ควรคุยกับเจ้าของเรื่องการย้ายออกและค่าใช้จ่ายที่ตกลงกันก่อน</p>{leaveError && <p className="form-alert" role="alert">{leaveError}</p>}</Modal>}
