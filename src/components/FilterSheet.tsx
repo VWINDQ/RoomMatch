@@ -18,6 +18,7 @@ export function FilterSheetLayout({ open, title, onClose, onReset, onApply, chil
 }
 
 export function FilterSheet({ open, value, onChange, onClose, onApply }: { open: boolean; value: RoomFilters; onChange: (value: RoomFilters) => void; onClose: () => void; onApply: () => void }) {
+  const priceBasisHintId = useId();
   const [error, setError] = useState('');
   useEffect(() => { if (open) setError(''); }, [open]);
   const apply = () => {
@@ -29,9 +30,8 @@ export function FilterSheet({ open, value, onChange, onClose, onApply }: { open:
   };
   return <FilterSheetLayout open={open} title="เลือกห้องที่พอดีกับคุณ" onClose={onClose} onApply={apply} onReset={() => { setError(''); onChange({ minPrice: '', maxPrice: '', minSlots: '', priceBasis: '' }); }}>
       <fieldset><legend>ช่วงราคาต่อเดือน</legend><div className="price-fields"><Input label="ราคาต่ำสุด" inputMode="numeric" placeholder="2500" value={value.minPrice} onChange={event => onChange({ ...value, minPrice: event.target.value })}/><span>ถึง</span><Input label="ราคาสูงสุด" inputMode="numeric" placeholder="8000" value={value.maxPrice} onChange={event => onChange({ ...value, maxPrice: event.target.value })}/></div></fieldset>
-      <label className="field"><span className="field-label">หน่วยราคาที่ต้องการเทียบ</span><select value={value.priceBasis} onChange={event => onChange({ ...value, priceBasis: event.target.value })}><option value="">ทุกหน่วยราคา</option><option value="per_room">ทั้งห้อง / เดือน</option><option value="per_person">ต่อคน / เดือน</option></select></label>
+      <label className="field"><span className="field-label">หน่วยราคาที่ต้องการเทียบ</span><select aria-describedby={priceBasisHintId} value={value.priceBasis} onChange={event => onChange({ ...value, priceBasis: event.target.value })}><option value="">ทุกหน่วยราคา</option><option value="per_room">ทั้งห้อง / เดือน</option><option value="per_person">ต่อคน / เดือน</option></select><span id={priceBasisHintId} className="field-hint">ราคาอิงตามหน่วยในประกาศ เช่น ต่อคนหรือต่อห้อง ดูค่าใช้จ่ายเพิ่มเติมได้ในหน้ารายละเอียดห้อง</span></label>
       <Input label="ที่ว่างขั้นต่ำในห้อง" type="number" min={1} max={100} value={value.minSlots} onChange={event => onChange({ ...value, minSlots: event.target.value })} hint="เว้นว่างเพื่อดูทุกจำนวน เมื่อหากับเพื่อนระบบจะตรวจที่ว่างสำหรับทั้งคู่เพิ่มให้อัตโนมัติ"/>
-      <p className="field-hint">ราคาเป็นยอดตามประกาศ ตรวจหน่วยราคาและค่าใช้จ่ายเพิ่มเติมในรายละเอียดห้อง</p>
       {error && <p className="form-alert" role="alert">{error}</p>}
   </FilterSheetLayout>;
 }
