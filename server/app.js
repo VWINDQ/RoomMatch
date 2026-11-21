@@ -183,6 +183,7 @@ function userDto(row, { privateFields = false } = {}) {
       university: row.university,
       accountType: row.account_type,
       profileSetupPending: row.profile_setup_pending,
+      profileReminderSeen: row.profile_reminder_seen_at != null,
       bio: row.bio,
       email: row.email,
       instagram: row.instagram,
@@ -657,6 +658,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           lifestyle: lifestyleDto(lifestyle),
           preference: preferenceDto(preference),
         }, request);
+        return;
+      }
+
+      if (request.method === 'POST' && pathname === '/api/profile/reminder/acknowledge') {
+        const user = await authenticate(db, request, { allowPending: true });
+        await db.prepare('UPDATE USER SET profile_reminder_seen_at = clock_timestamp() WHERE user_id = ? AND profile_reminder_seen_at IS NULL').run(user.user_id);
+        sendJson(response, 200, { acknowledged: true }, request);
         return;
       }
 
