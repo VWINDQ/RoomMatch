@@ -92,6 +92,123 @@ function changeTokenInAnotherTab(token, { clear = false } = {}) {
   }));
 }
 
+async function mountLoginForm() {
+  await act(async () => root.render(createElement(StrictMode, null,
+    createElement(MemoryRouter, { initialEntries: ['/login'] }, createElement(App), createElement(LocationProbe)))));
+  return {
+    form: document.querySelector('.login-form'),
+    email: document.querySelector('[name="email"]'),
+    password: document.querySelector('[name="password"]'),
+  };
+}
+
+async function typeLoginField(field, value) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(field, value);
+    field.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+  });
+}
+
+test('login explains empty, malformed, short and oversized input without sending credentials', async () => {
+  const { form, email, password } = await mountLoginForm();
+  let attempts = 0;
+  const fallback = respond;
+  respond = (path, options) => {
+    if (path === '/api/auth/login') attempts++;
+    return fallback(path, options);
+  };
+  assert.equal(form.noValidate, true);
+  for (const [address, secret, invalidName, explanation] of [
+    ['', '', 'email', /อีเมลที่ใช้สมัคร/],
+    ['missing-domain@', credentials.password, 'email', /รูปแบบอีเมล.*name@example.com/],
+    ['bad address@example.test', credentials.password, 'email', /รูปแบบอีเมล/],
+    ['a'.repeat(321) + '@example.test', credentials.password, 'email', /320/],
+    [credentials.email, '', 'password', /รหัสผ่านที่ตั้งไว้/],
+    [credentials.email, 'short', 'password', /8 ตัวอักษร.*กรอกครบ/],
+    [credentials.email, 'a'.repeat(257), 'password', /256/],
+  ]) {
+    email.value = address;
+    password.value = secret;
+    await act(async () => form.requestSubmit());
+    const field = invalidName === 'email' ? email : password;
+    assert.equal(field.getAttribute('aria-invalid'), 'true');
+    assert.match(field.closest('label').querySelector('.field-error').textContent, explanation);
+    assert.equal(location.pathname, '/login');
+  }
+  assert.equal(attempts, 0);
+  assert.equal(tokenStorage.get(), null);
+});
+
+test('login validates touched fields and clears corrected errors without moving typing focus', async () => {
+  const { form, email, password } = await mountLoginForm();
+  await act(async () => form.requestSubmit());
+  await act(async () => email.focus());
+  await typeLoginField(email, credentials.email);
+  await act(async () => new Promise(resolve => requestAnimationFrame(resolve)));
+  assert.equal(email.getAttribute('aria-invalid'), null);
+  assert.equal(document.activeElement, email);
+  assert.equal(password.getAttribute('aria-invalid'), 'true');
+  await typeLoginField(password, credentials.password);
+  assert.equal(password.getAttribute('aria-invalid'), null);
+  await typeLoginField(email, 'missing-at-sign');
+  await act(async () => { email.focus(); email.blur(); });
+  assert.equal(email.getAttribute('aria-invalid'), 'true');
+  assert.match(email.closest('label').textContent, /name@example.com/);
+});
+
+test('credential failures offer the same safe guidance for different emails and preserve editable input', async () => {
+  const { form, email, password } = await mountLoginForm();
+  respond = async path => path === '/api/auth/login' ? json({ error: 'Invalid email or password' }, 401) : json({ google: false });
+  let firstMessage;
+  for (const address of ['existing@example.test', 'unknown@example.test']) {
+    email.value = address;
+    password.value = 'wrong-password';
+    await act(async () => form.requestSubmit());
+    const alert = document.querySelector('[role="alert"]');
+    assert.equal(alert.querySelector('strong').textContent, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+    assert.match(alert.textContent, /แป้นพิมพ์.*Caps Lock.*แสดงรหัสผ่าน/);
+    if (firstMessage) assert.equal(alert.textContent, firstMessage);
+    firstMessage = alert.textContent;
+    assert.equal(email.value, address);
+    assert.equal(password.value, 'wrong-password');
+    assert.equal(email.getAttribute('aria-invalid'), null);
+  }
+  await act(async () => document.querySelector('[aria-label="แสดงรหัสผ่าน"]').click());
+  assert.equal(password.type, 'text');
+  assert.equal(password.value, 'wrong-password');
+  await typeLoginField(password, 'corrected-password');
+  assert.equal(document.querySelector('[role="alert"]'), null);
+  assert.equal(tokenStorage.get(), null);
+});
+
+for (const [kind, status, headline, advice] of [
+  ['offline', 0, /เชื่อมต่อเซิร์ฟเวอร์/, /อินเทอร์เน็ต.*ลองอีกครั้ง/],
+  ['server outage', 503, /ขัดข้องชั่วคราว/, /ไม่ต้องเปลี่ยนอีเมลหรือรหัสผ่าน/],
+  ['rate limit', 429, /บ่อยเกินไป/, /รอสักครู่.*ไม่ต้องกด/],
+]) {
+  test(`login gives recovery instructions for ${kind} without marking credentials wrong`, async () => {
+    const { form, email, password } = await mountLoginForm();
+    email.value = credentials.email;
+    password.value = credentials.password;
+    respond = async path => {
+      if (path !== '/api/auth/login') return json({ google: false });
+      if (!status) throw new TypeError('Private connection diagnostics');
+      return json({ error: 'Private server diagnostics' }, status);
+    };
+    await act(async () => form.requestSubmit());
+    const alert = document.querySelector('[role="alert"]');
+    assert.match(alert.querySelector('strong').textContent, headline);
+    assert.match(alert.querySelector('p').textContent, advice);
+    assert.doesNotMatch(alert.textContent, /Private/);
+    assert.equal(email.value, credentials.email);
+    assert.equal(password.value, credentials.password);
+    assert.equal(email.getAttribute('aria-invalid'), null);
+    assert.equal(password.getAttribute('aria-invalid'), null);
+    assert.equal(location.pathname, '/login');
+    assert.equal(tokenStorage.get(), null);
+  });
+}
+
 test('another tab switching accounts hides the previous user until the new token is verified', async () => {
   await mountProvider();
   await act(async () => state.notify('Old account notification'));
@@ -376,7 +493,8 @@ test('expiration redirects to login, wrong password shows an error, and login re
   respond = async () => json({ error: 'Invalid email or password' }, 401);
   await act(async () => document.querySelector('form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })));
   assert.equal(location.pathname, '/login');
-  assert.equal(document.querySelector('[role="alert"]').textContent, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+  assert.equal(document.querySelector('[role="alert"] strong').textContent, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+  assert.match(document.querySelector('[role="alert"] p').textContent, /ภาษาแป้นพิมพ์.*Caps Lock/);
   assert.equal(tokenStorage.get(), null);
   document.querySelector('input[name="password"]').value = credentials.password;
   respond = async path => path === '/api/auth/login'
@@ -831,7 +949,7 @@ test('an obsolete form submission cannot end loading while the latest login is p
   assert.equal(stillLoading, true);
   assert.equal(obsoleteError, '');
   assert.equal(document.querySelector('button.w-full').disabled, false);
-  assert.equal(document.querySelector('[role="alert"]').textContent, 'เข้าสู่ระบบล่าสุดไม่สำเร็จ');
+  assert.equal(document.querySelector('[role="alert"] strong').textContent, 'อีเมลหรือรหัสผ่านไม่ถูกต้อง');
   assert.equal(location.pathname, '/login');
   assert.equal(tokenStorage.get(), null);
 });
@@ -959,7 +1077,10 @@ for (const method of ['login', 'register']) {
     await act(async () => document.querySelector('form').requestSubmit());
     assert.equal(location.pathname, route);
     assert.equal(tokenStorage.get(), null);
-    assert.equal(document.querySelector('[role="alert"]').textContent, invalidAuthMessage);
+    if (method === 'login') {
+      assert.equal(document.querySelector('[role="alert"] strong').textContent, 'เข้าสู่ระบบไม่สำเร็จ');
+      assert.match(document.querySelector('[role="alert"] p').textContent, /ลองเข้าสู่ระบบอีกครั้ง/);
+    } else assert.equal(document.querySelector('[role="alert"]').textContent, invalidAuthMessage);
     assert.equal(document.querySelector('button.w-full').disabled, false);
     assert.equal(Boolean(document.querySelector('.app-shell')), false);
     assert.equal(Boolean(document.querySelector('[role="status"]')), false);

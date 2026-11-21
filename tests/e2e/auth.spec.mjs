@@ -129,7 +129,8 @@ test('Google cancellation and disabled configuration keep password login usable'
   await page.getByLabel('อีเมล', { exact: true }).fill('invalid@example.test');
   await page.getByLabel('รหัสผ่าน', { exact: true }).fill('incorrect-password');
   await page.getByRole('button', { name: 'เข้าสู่ระบบ', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+  await expect(page.getByRole('alert')).toContainText('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+  await expect(page.getByRole('alert')).toContainText('Caps Lock');
   await noOverflow(page);
 });
 

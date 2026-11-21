@@ -55,6 +55,44 @@ function registrationFieldError(name: RegistrationField, raw: string) {
   return '';
 }
 
+function loginFieldError(name: 'email' | 'password', raw: string) {
+  const value = raw.trim();
+  if (!value) return name === 'email' ? 'กรอกอีเมลที่ใช้สมัครบัญชี เช่น name@example.com' : 'กรอกรหัสผ่านที่ตั้งไว้ตอนสมัครบัญชี';
+  if (name === 'email') {
+    if (value.length > 320) return 'อีเมลยาวเกิน 320 ตัวอักษร กรุณาตรวจสอบว่าคัดลอกข้อมูลมาเกินหรือไม่';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'รูปแบบอีเมลไม่ถูกต้อง ใช้รูปแบบ name@example.com โดยมี @ และชื่อโดเมน';
+  } else {
+    if (value.length < 8) return 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร กรุณาตรวจสอบว่ากรอกครบแล้ว';
+    if (value.length > 256) return 'รหัสผ่านยาวเกิน 256 ตัวอักษร กรุณาตรวจสอบว่าคัดลอกข้อมูลมาเกินหรือไม่';
+  }
+  return '';
+}
+
+function loginFailure(caught: unknown) {
+  if (caught instanceof ApiError) {
+    if (caught.status === 401 || caught.status === 403) return {
+      message: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง',
+      advice: 'ตรวจสอบอีเมลที่ใช้สมัคร ภาษาแป้นพิมพ์ และ Caps Lock หรือกดแสดงรหัสผ่านเพื่อตรวจสอบก่อนลองอีกครั้ง',
+    };
+    if (caught.networkError || caught.status === 0) return {
+      message: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้',
+      advice: 'ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองอีกครั้ง หากยังไม่ได้ ให้รอสักครู่ ข้อมูลที่กรอกยังอยู่',
+    };
+    if (caught.status === 429) return {
+      message: 'พยายามเข้าสู่ระบบบ่อยเกินไป',
+      advice: 'รอสักครู่ก่อนลองอีกครั้ง ไม่ต้องกดเข้าสู่ระบบซ้ำติดกัน ข้อมูลที่กรอกยังอยู่',
+    };
+    if (caught.status >= 500) return {
+      message: 'บริการเข้าสู่ระบบขัดข้องชั่วคราว',
+      advice: 'ข้อมูลที่กรอกยังอยู่ กรุณารอสักครู่แล้วลองอีกครั้ง โดยไม่ต้องเปลี่ยนอีเมลหรือรหัสผ่าน',
+    };
+  }
+  return {
+    message: 'เข้าสู่ระบบไม่สำเร็จ',
+    advice: 'ระบบยังตรวจสอบบัญชีไม่สำเร็จ ข้อมูลที่กรอกยังอยู่ กรุณาลองเข้าสู่ระบบอีกครั้ง',
+  };
+}
+
 function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -62,6 +100,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loginAdvice, setLoginAdvice] = useState('');
   const [error, setError] = useState(() => {
     const reason = new URLSearchParams(location.search).get('oauth_error') ?? '';
     return Object.hasOwn(oauthErrors, reason) ? oauthErrors[reason] : '';
@@ -69,7 +108,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
   const submissionVersion = useRef(0);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [accountType, setAccountType] = useState('');
-  const [focusErrors, setFocusErrors] = useState(false);
+  const [focusErrors, setFocusErrors] = useState(Boolean(error));
 
   const formRef = useRef<HTMLFormElement>(null);
   const formErrors = useMemo(() => {
@@ -77,11 +116,29 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
     if (error) feedback.form = error;
     return feedback;
   }, [error, fieldErrors]);
-  const summaryRef = useFormFeedback(formErrors, formRef, mode === 'login' || focusErrors || Boolean(error));
+  const summaryRef = useFormFeedback(formErrors, formRef, focusErrors);
 
   const validateField = (event: FocusEvent<HTMLFormElement> | FormEvent<HTMLFormElement>, onlyInvalid = false) => {
     const field = event.target;
     if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return;
+    if (mode === 'login') {
+      const name = field.name;
+      if (name !== 'email' && name !== 'password') return;
+      if (onlyInvalid) {
+        setError('');
+        setLoginAdvice('');
+      }
+      if (onlyInvalid && !fieldErrors[name]) return;
+      const message = loginFieldError(name, field.value);
+      setFocusErrors(false);
+      setFieldErrors(current => {
+        const next = { ...current };
+        if (message) next[name] = message;
+        else delete next[name];
+        return next;
+      });
+      return;
+    }
     if (field.name === 'universityQuery' && (onlyInvalid || field.form?.elements.namedItem('university'))) return;
     const name = field.name === 'universityQuery' ? 'university' : field.name;
     if (!isRegistrationField(name)) return;
@@ -105,7 +162,18 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
     event.preventDefault();
     if (mode === 'register' && loading) return;
     setError('');
+    setLoginAdvice('');
     const data = new FormData(event.currentTarget);
+    if (mode === 'login') {
+      const errors: Record<string, string> = {};
+      for (const name of ['email', 'password'] as const) {
+        const message = loginFieldError(name, String(data.get(name) ?? ''));
+        if (message) errors[name] = message;
+      }
+      setFieldErrors(errors);
+      setFocusErrors(true);
+      if (Object.keys(errors).length) return;
+    }
     if (mode === 'register') {
       const errors: Record<string, string> = {};
       for (const name of Object.keys(registrationFields).filter(isRegistrationField)) {
@@ -153,6 +221,13 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
       navigate(destination, { replace: true });
     } catch (caught) {
       if (caught instanceof SessionChangedError) return;
+      if (mode === 'login') {
+        const feedback = loginFailure(caught);
+        setError(feedback.message);
+        setLoginAdvice(feedback.advice);
+        setFocusErrors(true);
+        return;
+      }
       if (mode === 'register' && caught instanceof ApiError) {
         const errors = Object.fromEntries(Object.entries(caught.fieldErrors).filter(([name, message]) => isRegistrationField(name) && message));
         if (Object.keys(errors).length) {
@@ -161,6 +236,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
           return;
         }
       }
+      setFocusErrors(true);
       setError(
         caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ',
       );
@@ -201,10 +277,10 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
             <h2>{mode === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}</h2>
           </header>
 
-          <form ref={formRef} onSubmit={submit} className={mode === 'register' ? 'register-form' : undefined}
-            noValidate={mode === 'register'}
-            onBlur={mode === 'register' ? validateField : undefined}
-            onChange={mode === 'register' ? event => validateField(event, true) : undefined}>
+          <form ref={formRef} onSubmit={submit} className={mode === 'register' ? 'register-form' : 'login-form'}
+            noValidate
+            onBlur={validateField}
+            onChange={event => validateField(event, true)}>
             {mode === 'register' && (
               <>
                 <div className="two-fields">
@@ -271,7 +347,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
               name="email"
               type="email"
               autoComplete="email"
-              placeholder={mode === 'register' ? 'name@example.com' : 'name@mail.kmutt.ac.th'}
+              placeholder="name@example.com"
               error={fieldErrors.email}
               required
             />
@@ -314,14 +390,14 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
                 className="form-alert"
                 role="alert"
               >
-                {error}
+                {loginAdvice ? <><strong>{error}</strong><p>{loginAdvice}</p></> : error}
               </div>
             )}
 
-            <Button className="w-full" loading={loading} onMouseDown={mode === 'register' ? event => {
+            <Button className="w-full" loading={loading} onMouseDown={event => {
               // Validate on submit before a blur message can move the button under the pointer.
               if (event.button === 0) event.preventDefault();
-            } : undefined}>
+            }}>
               {mode === 'login' ? 'เข้าสู่ระบบ' : 'สร้างบัญชี'}
             </Button>
           </form>
