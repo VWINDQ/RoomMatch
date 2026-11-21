@@ -8,7 +8,7 @@ import { api } from '../lib/api';
 import { FormFeedback, useFormFeedback } from '../components/FormFeedback';
 import { ImagePicker, savedImages, uploadSelectedImages, type SelectedImage } from '../components/ImagePicker';
 import type { Room, RoomStatus } from '../types';
-import { completedListingImageUrls, validateListing } from '../../shared/listingValidation.js';
+import { validateListing } from '../../shared/listingValidation.js';
 import { cancelledImageSelectionErrors } from '../lib/listingImageFeedback';
 import { listingSaveFeedback } from '../lib/listingSaveFeedback';
 import { useListingLeaveGuard } from '../lib/useListingLeaveGuard';
@@ -54,7 +54,7 @@ export function ListingFormPage() {
     setErrors(current => cancelledImageSelectionErrors(current, images));
   };
   const updateImageFeedback = (next: SelectedImage[]) => {
-    const imageErrors = validateListing({ images: completedListingImageUrls(next) }, { partial: true });
+    const imageErrors = validateListing({ images: next }, { partial: true });
     setErrors(current => {
       const updated = { ...current };
       delete updated.images;
@@ -93,13 +93,10 @@ export function ListingFormPage() {
     // Lock synchronously: React state and disabled controls update after this handler.
     submitLocked.current = true;
     const values = Object.fromEntries(new FormData(event.currentTarget));
-    const nextErrors = validateListing({ ...values, ownerIsResident, images: completedListingImageUrls(images) }, { minimumCapacity });
+    const nextErrors = validateListing({ ...values, ownerIsResident, images }, { minimumCapacity });
     Object.keys(nextErrors).forEach(field => fieldsWithErrors.current.add(field));
     setErrors(nextErrors);
-    // Selected files can satisfy the image requirement only after successful upload.
-    if (Object.keys(nextErrors).some(field => field !== 'images') || (nextErrors.images && !images.some(image => image.file))) { showSaveErrors(); submitLocked.current = false; return; }
-    // Upload is in progress, not a missing-image failure. Its own failure is reported below.
-    setErrors({});
+    if (Object.keys(nextErrors).length) { showSaveErrors(); submitLocked.current = false; return; }
     setFocusErrors(false);
     const payload = {
       title: String(values.title).trim(), description: String(values.description || '').trim(),

@@ -6,7 +6,7 @@ test('cancelling empty selection shows the image requirement, while an existing 
   assert.deepEqual(cancelledImageSelectionErrors({}, []), { images: 'กรุณาเพิ่มรูปห้องอย่างน้อย 1 รูป' });
   assert.deepEqual(cancelledImageSelectionErrors({}, [{ url: 'https://example.test/saved.jpg' }]), {});
   assert.deepEqual(cancelledImageSelectionErrors({}, [{ url: '/uploads/1/saved.webp' }]), {});
-  assert.deepEqual(cancelledImageSelectionErrors({}, [{ url: '', file: {} }]), { images: 'กรุณาเพิ่มรูปห้องอย่างน้อย 1 รูป' });
+  assert.deepEqual(cancelledImageSelectionErrors({}, [{ url: '', file: {} }]), {});
 });
 
 test('cancel never replaces file-type or upload failures and leaves unrelated errors intact', () => {

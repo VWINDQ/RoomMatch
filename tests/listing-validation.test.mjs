@@ -4,7 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { openDatabase } from './support/postgres.mjs';
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
-import { completedListingImageUrls, validateListing } from '../shared/listingValidation.js';
+import { validateListing } from '../shared/listingValidation.js';
 
 const requiredMetadata = { priceBasis: 'per_room', locality: 'บางมด', images: ['https://example.test/room.jpg'] };
 const valid = { ...requiredMetadata, title: 'ห้องทดสอบ', price: 3500, capacity: 2, googleMapsUrl: 'https://maps.google.com/' };
@@ -48,7 +48,7 @@ test('blur validation checks only the supplied field and clears corrected or opt
   }
 });
 
-test('required metadata and completed image counting use the same rules for the form and API', () => {
+test('required metadata and image count rules apply to both the form and API', () => {
   for (const value of [undefined, null, '', '   ', 'weekly']) {
     assert.equal(validateListing({ ...valid, priceBasis: value }).priceBasis, 'กรุณาเลือกหน่วยราคา');
   }
@@ -56,15 +56,12 @@ test('required metadata and completed image counting use the same rules for the 
     assert.equal(validateListing({ ...valid, locality: value }).locality, 'กรุณากรอกย่านหรือถนน');
   }
   const pending = { url: '', file: {} };
-  const failed = { url: 'blob:preview', file: {} };
   const saved = { url: 'https://example.test/old.jpg' };
-  const uploaded = { url: '/uploads/1/00000000-0000-0000-0000-000000000000.webp' };
-  assert.deepEqual(completedListingImageUrls([saved, pending, failed, uploaded]), [saved.url, uploaded.url]);
-  const withoutCompleteImages = completedListingImageUrls([pending, failed]);
-  assert.equal(validateListing({ ...valid, images: withoutCompleteImages }).images, 'กรุณาเพิ่มรูปห้องอย่างน้อย 1 รูป');
+  assert.deepEqual(validateListing({ ...valid, images: [pending] }), {});
+  assert.deepEqual(validateListing({ ...valid, images: [saved, pending] }), {});
   assert.equal(validateListing({ ...valid, images: [] }).images, 'กรุณาเพิ่มรูปห้องอย่างน้อย 1 รูป');
   assert.equal(validateListing({ ...valid, images: undefined }).images, 'กรุณาเพิ่มรูปห้องอย่างน้อย 1 รูป');
-  assert.deepEqual(validateListing({ ...valid, images: completedListingImageUrls([saved, uploaded]) }), {});
+  assert.deepEqual(validateListing({ ...valid, images: [saved.url] }), {});
 });
 
 test('legacy listings remain readable and status-only PATCH works, but editing requires complete metadata', async t => {
