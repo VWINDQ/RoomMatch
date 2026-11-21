@@ -50,7 +50,7 @@ async function fixture(t, { seed = false, config = configuration } = {}) {
     assert.equal(target.origin, 'https://accounts.google.com');
     assert.equal(target.searchParams.get('scope'), 'openid email profile');
     assert.equal(target.searchParams.get('code_challenge_method'), 'S256');
-    const stateCookie = response.headers.getSetCookie().find(value => value.includes('_state='));
+    const stateCookie = response.headers.getSetCookie().find(value => /_state_[A-Za-z0-9_-]{43}=/.test(value));
     assert.match(stateCookie, /HttpOnly; Path=\/; SameSite=Lax; Max-Age=600/);
     return { state: target.searchParams.get('state'), nonce: target.searchParams.get('nonce'),
       challenge: target.searchParams.get('code_challenge'), cookie: stateCookie.split(';')[0] };
@@ -60,7 +60,7 @@ async function fixture(t, { seed = false, config = configuration } = {}) {
     codes.set(code, { ...attempt, ...options });
     return request(`/api/auth/oauth/google/callback?state=${attempt.state}&code=${code}`, { headers: { Cookie: attempt.cookie } });
   };
-  const exchange = (cookie, origin = config?.origin) => request('/api/auth/oauth/session', {
+  const exchange = (cookie, origin = config?.origin, flow = /_ticket_([A-Za-z0-9_-]{43})=/.exec(cookie)?.[1] ?? '') => request(`/api/auth/oauth/session?flow=${encodeURIComponent(flow)}`, {
     method: 'POST', headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' }, body: '{}',
   });
   return { db, request, start, callback, exchange, exchanges: () => exchanges };
@@ -104,10 +104,10 @@ test('Google login verifies identity and exchanges a one-time HttpOnly ticket fo
   const attempt = await f.start('/rooms/5?tab=photos#image');
   const callback = await f.callback(attempt);
   assert.equal(callback.status, 303);
-  assert.equal(callback.headers.get('location'), `${configuration.origin}/auth/google/complete?returnTo=%2Fprofile`);
+  assert.equal(callback.headers.get('location'), `${configuration.origin}/auth/google/complete?returnTo=%2Fprofile&flow=${attempt.state}`);
   assert.equal(callback.headers.get('cache-control'), 'no-store');
   assert.equal(callback.headers.get('referrer-policy'), 'no-referrer');
-  const ticket = callback.headers.getSetCookie().find(value => /_ticket=.+;/.test(value));
+  const ticket = callback.headers.getSetCookie().find(value => /_ticket_[A-Za-z0-9_-]{43}=.+;/.test(value));
   assert.match(ticket, /HttpOnly; Path=\/; SameSite=Strict; Max-Age=60/);
   const cookie = ticket.split(';')[0];
   const stored = await f.db.prepare('SELECT * FROM oauth_ticket').get();
@@ -203,11 +203,72 @@ test('concurrent first logins create one identity; tickets expire and recheck ac
   for (const response of callbacks) assert.match(response.headers.get('location'), /\/auth\/google\/complete/);
   assert.equal((await f.db.prepare('SELECT count(*) AS count FROM USER').get()).count, 1);
   assert.equal((await f.db.prepare('SELECT count(*) AS count FROM oauth_identity').get()).count, 1);
-  const cookies = callbacks.map(response => response.headers.getSetCookie().find(value => /_ticket=.+;/.test(value)).split(';')[0]);
+  const cookies = callbacks.map(response => response.headers.getSetCookie().find(value => /_ticket_[A-Za-z0-9_-]{43}=.+;/.test(value)).split(';')[0]);
   await f.db.prepare("UPDATE oauth_ticket SET expires_at=clock_timestamp()-interval '1 second' WHERE ticket_hash=?").run(digest(cookies[0].split('=')[1]));
   assert.equal((await f.exchange(cookies[0])).status, 401);
   await f.db.prepare('UPDATE USER SET is_active=0').run();
   assert.equal((await f.exchange(cookies[1])).status, 401);
+});
+
+test('two Google logins sharing a cookie jar exchange only their own tickets', async t => {
+  const f = await fixture(t);
+  const jar = new Map();
+  const cookies = () => [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+  const remember = response => {
+    for (const header of response.headers.getSetCookie()) {
+      const [pair] = header.split(';');
+      const separator = pair.indexOf('=');
+      const name = pair.slice(0, separator), value = pair.slice(separator + 1);
+      if (header.includes('Max-Age=0')) jar.delete(name);
+      else jar.set(name, value);
+    }
+  };
+  const first = await f.start();
+  const second = await f.start();
+  for (const attempt of [first, second]) {
+    const [name, value] = attempt.cookie.split('=');
+    jar.set(name, value);
+  }
+  assert.equal(jar.size, 2, 'both browser-binding cookies coexist');
+  const firstCallback = await f.callback({ ...first, cookie: cookies() });
+  remember(firstCallback);
+  // Completing one flow must preserve the other flow's browser binding.
+  const secondCallback = await f.callback({ ...second, cookie: cookies() }, {
+    claims: { sub: 'google-subject-2', email: 'second-google@example.test' },
+  });
+  remember(secondCallback);
+  for (const [response, attempt] of [[firstCallback, first], [secondCallback, second]]) {
+    assert.equal(new URL(response.headers.get('location')).searchParams.get('flow'), attempt.state);
+  }
+  assert.equal(jar.size, 2, 'both single-use tickets coexist');
+  assert.equal((await f.exchange(cookies(), configuration.origin, '')).status, 401);
+  assert.equal((await f.exchange(cookies(), configuration.origin, 'x'.repeat(43))).status, 401);
+  // Exchange in reverse order, as independently loading tabs may do.
+  const secondSession = await f.exchange(cookies(), configuration.origin, second.state);
+  assert.equal(secondSession.status, 200);
+  assert.equal((await secondSession.json()).user.email, 'second-google@example.test');
+  remember(secondSession);
+  const firstSession = await f.exchange(cookies(), configuration.origin, first.state);
+  assert.equal(firstSession.status, 200);
+  assert.equal((await firstSession.json()).user.email, 'google@example.test');
+  remember(firstSession);
+  assert.equal(jar.size, 0);
+  assert.equal((await f.exchange(cookies(), configuration.origin, first.state)).status, 401);
+});
+
+test('cancelling a Google login clears only its own cookies', async t => {
+  const f = await fixture(t);
+  const first = await f.start();
+  const cancelled = await f.start();
+  const sharedCookies = `${first.cookie}; ${cancelled.cookie}`;
+  const response = await f.request(`/api/auth/oauth/google/callback?state=${cancelled.state}&error=access_denied`, { headers: { Cookie: sharedCookies } });
+  assert.match(response.headers.get('location'), /oauth_error=cancelled$/);
+  for (const cookie of response.headers.getSetCookie()) {
+    assert.ok(cookie.split('=')[0].endsWith(cancelled.state));
+    assert.match(cookie, /Max-Age=0/);
+  }
+  const callback = await f.callback({ ...first, cookie: sharedCookies });
+  assert.equal(new URL(callback.headers.get('location')).searchParams.get('flow'), first.state);
 });
 
 test('HTTPS uses host-only Secure OAuth cookies', async t => {

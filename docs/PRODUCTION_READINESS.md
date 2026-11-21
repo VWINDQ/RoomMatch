@@ -31,13 +31,13 @@
 ### 1. บัญชีและ session
 
 - [ ] เพิ่ม rate limit ที่ login/register และ abuse limit ของ write APIs ไม่ใช่เฉพาะ upload
-- [ ] เพิ่ม server-side logout/revocation: ปัจจุบัน logout แค่ลบ token จาก localStorage
+- [ ] เพิ่ม server-side logout/revocation: ปัจจุบัน logout แค่ลบ token จาก sessionStorage ของแท็บนั้น
       token ที่ถูกคัดลอกยังใช้ได้จนหมดอายุ 7 วันหรือบัญชีถูกปิด
 - [ ] ออกแบบ session expiration/rotation และ revoke หลังเปลี่ยนรหัสผ่านหรือเหตุผิดปกติ
 - [ ] เพิ่มเปลี่ยนรหัสผ่านและลืมรหัสผ่าน พร้อม token แบบใช้ครั้งเดียว/หมดอายุ/ไม่เก็บ plaintext
 - [ ] ยืนยันอีเมลและกำหนดเงื่อนไขบัญชีนักศึกษา หากจะอ้างว่าสมาชิกเป็นนักศึกษาที่ตรวจสอบแล้ว
 - [ ] ตรวจ password policy, common/breached-password screening และ sign-in timing/account enumeration
-- [ ] ทบทวนที่เก็บ token: localStorage ถูกอ่านได้โดย JavaScript พิจารณา session cookie แบบ
+- [ ] ทบทวนที่เก็บ token: sessionStorage ถูกอ่านได้โดย JavaScript พิจารณา session cookie แบบ
       HttpOnly/Secure/SameSite พร้อม CSRF protection เมื่อเปลี่ยนไปใช้ cookie authentication
 - [ ] benchmark และ load test ค่า Argon2id ปัจจุบัน `m=65536,t=3,p=1` ตามทรัพยากร production
       (อัปเกรด scrypt ตอน login สำเร็จแล้ว) พร้อมเพิ่ม rate limit สำหรับ authentication

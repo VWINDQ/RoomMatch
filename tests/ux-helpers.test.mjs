@@ -80,14 +80,14 @@ test('API errors translate raw server messages at construction while keeping sta
   const compiled = (await transformWithOxc(source, 'src/lib/api.ts')).code
     .replace(/from ['"]\.\/apiErrors['"]/, `from '${pathToFileURL(resolve('src/lib/apiErrors.ts')).href}'`);
   const adapter = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
-  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
   const values = new Map();
-  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
     getItem: key => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
     removeItem: key => values.delete(key),
   } });
-  t.after(() => { if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage); else delete globalThis.localStorage; });
+  t.after(() => { if (previousStorage) Object.defineProperty(globalThis, 'sessionStorage', previousStorage); else delete globalThis.sessionStorage; });
   adapter.tokenStorage.set('test-session');
   const notifications = [];
   const unsubscribe = adapter.subscribeUnauthorized?.(token => notifications.push(token));

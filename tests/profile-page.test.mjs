@@ -6,7 +6,7 @@ import { act, createElement } from 'react';
 
 const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost/', pretendToBeVisual: true });
 Object.assign(globalThis, {
-  window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage,
+  window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, sessionStorage: dom.window.sessionStorage,
   HTMLElement: dom.window.HTMLElement, FormData: dom.window.FormData,
   HTMLInputElement: dom.window.HTMLInputElement, HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
   HTMLSelectElement: dom.window.HTMLSelectElement,
@@ -24,7 +24,7 @@ const { api, ApiError } = await import('../src/lib/api.ts');
 let root, profile, save, upload, router, app;
 function SessionProbe() { app = useApp(); return null; }
 beforeEach(() => {
-  localStorage.clear();
+  localStorage.clear(); sessionStorage.clear();
   profile = {
     user: { userId: '1', firstName: 'Profile', lastName: 'Test', email: 'profile@example.test',
       phone: '0890000000', gender: '', dateOfBirth: '2000-12-25', university: '',
@@ -372,15 +372,15 @@ test('browser history navigation continues to its original entry after saving', 
 for (const saveFirst of [false, true]) {
   test(`logout waits for the ${saveFirst ? 'save' : 'discard'} decision before clearing the session`, async () => {
     await mountEditor();
-    localStorage.setItem('roommatch:token', 'profile-test-session');
+    sessionStorage.setItem('roommatch:token', 'profile-test-session');
     await change('bio', 'Logout edit');
     await act(async () => { assert.equal(app.logout(), false); });
     assert.ok(dialog());
-    assert.equal(localStorage.getItem('roommatch:token'), 'profile-test-session');
+    assert.equal(sessionStorage.getItem('roommatch:token'), 'profile-test-session');
     if (saveFirst) await confirmSave();
     else await discard();
     assert.equal(router.state.location.pathname, '/login');
-    assert.equal(localStorage.getItem('roommatch:token'), null);
+    assert.equal(sessionStorage.getItem('roommatch:token'), null);
     assert.equal(save.mock.callCount(), saveFirst ? 1 : 0);
     assert.equal(profile.user.bio, saveFirst ? 'Logout edit' : '');
   });

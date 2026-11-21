@@ -44,11 +44,11 @@ async function fixture(t, editing = false, onSaveResponse = () => {}) {
   const bytes = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#fff' } }).png().toBuffer();
   const images = [{ id: 'selected', file: new File([bytes], 'test.png', { type: 'image/png' }), url: '' }];
   const values = { title: 'Repeated submit', description: 'Keep this text', price: '3500', capacity: '2', googleMapsUrl: 'https://maps.google.com/?q=Bangkok', priceBasis: 'per_room', locality: 'Bangkok', costNotes: '' };
-  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
   // Browser storage returns the same token until a session explicitly changes.
   const token = createToken(1);
-  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => token } });
-  t.after(() => { if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage); else delete globalThis.localStorage; });
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => token } });
+  t.after(() => { if (previousStorage) Object.defineProperty(globalThis, 'sessionStorage', previousStorage); else delete globalThis.sessionStorage; });
   const realFetch = globalThis.fetch;
   t.mock.method(globalThis, 'fetch', async (path, options) => {
     const uploading = path === '/api/uploads/images';

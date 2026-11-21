@@ -126,7 +126,7 @@ for (const surface of ['card', 'detail']) {
 
 test('late room results cannot steal focus from an open filter after returning from a room', { timeout: 5000 }, async () => {
   const results = deferred(), queryStarted = deferred();
-  localStorage.setItem('roommatch:token', 'focus-test-token');
+  sessionStorage.setItem('roommatch:token', 'focus-test-token');
   mock.method(api, 'me', async () => ({ userId: '1', firstName: 'Focus', lastName: 'Test' }));
   mock.method(api, 'ownerRequests', async () => []);
   mock.method(api, 'roomsPage', () => { queryStarted.resolve(); return results.promise; });

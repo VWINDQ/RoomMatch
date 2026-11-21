@@ -56,7 +56,7 @@ or fallback connection is used.
 | Create/edit save failure/retry | Real upload and API save; forced first save failure stays dirty; retry succeeds without warning; persisted title after refresh; no duplicate upload |
 | Native beforeunload | Pristine/reverted reloads have no dialog; dirty reload and tab-close warn; dismissal preserves values; accepting reload discards them |
 | Pending save | Disabled inputs stay dirty, repeated submit sends once, successful response clears an open warning |
-| Cross-tab session | Switching accounts clears private form values; external logout reaches login without trapping the session |
+| Cross-tab session | Each tab has its own account; another tab logging in or out preserves this tab's unsaved form. A session change within the current tab still clears private form values. |
 | Save and continue | Validation and API failures expose feedback on the form; retry submits once, persists the listing and reaches the selected destination |
 
 Existing node tests retain their assertions. The two static form-render harnesses

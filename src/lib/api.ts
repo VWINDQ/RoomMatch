@@ -25,6 +25,7 @@ async function requestRoomPage(path: string, params: URLSearchParams): Promise<R
   return { rooms: rooms.map(normalizeRoom), total, page, pageSize, totalPages };
 }
 
+// Each tab owns its login. Never fall back to the former shared localStorage token.
 const TOKEN_KEY = 'roommatch:token';
 let tokenRevision = 0;
 let observedToken: string | null | undefined;
@@ -58,13 +59,14 @@ export class ApiError extends Error {
   }
 
   function synchronizeToken() {
-    observedToken = localStorage.getItem(TOKEN_KEY);
+    observedToken = sessionStorage.getItem(TOKEN_KEY);
     tokenRevision += 1;
     for (const listener of tokenChangeListeners) listener();
   }
 
   function handleTokenStorage(event: StorageEvent) {
-    if (event.storageArea !== localStorage || (event.key !== TOKEN_KEY && event.key !== null)) return;
+    // sessionStorage events can come from same-origin frames in this tab only.
+    if (event.storageArea !== sessionStorage || (event.key !== TOKEN_KEY && event.key !== null)) return;
     synchronizeToken();
 }
 
@@ -221,14 +223,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const tokenStorage = {
-  get: () => localStorage.getItem(TOKEN_KEY),
+  get: () => sessionStorage.getItem(TOKEN_KEY),
   set: (token: string) => {
-    localStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(TOKEN_KEY, token);
     observedToken = token;
     tokenRevision += 1;
   },
   clear: () => {
-    localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     observedToken = null;
     tokenRevision += 1;
   },
@@ -280,7 +282,7 @@ export const api = {
   async login(payload: { email: string; password: string }) { return parseAuthSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) })); },
   async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
   async oauthProviders() { const result = await request<JsonObject>('/auth/oauth/providers'); return { google: result.google === true }; },
-  async completeOAuth() { return parseAuthSession(await request<unknown>('/auth/oauth/session', { method: 'POST', body: '{}' })); },
+  async completeOAuth(flow: string) { return parseAuthSession(await request<unknown>(`/auth/oauth/session?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: '{}' })); },
   async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
   async acknowledgeProfileReminder() {
     const result = object(await request<unknown>('/profile/reminder/acknowledge', { method: 'POST' }));

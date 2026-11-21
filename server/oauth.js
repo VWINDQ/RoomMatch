@@ -48,8 +48,10 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
     oidc.enableNonRepudiationChecks(client);
   }
   const secure = configuration?.origin.startsWith('https:');
-  const cookieName = kind => `${secure ? '__Host-' : ''}roommatch_oauth_${kind}`;
-  const cookie = (kind, value, maxAge) => `${cookieName(kind)}=${value}; HttpOnly; Path=/; SameSite=${kind === 'state' ? 'Lax' : 'Strict'}; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
+  // Cookies are shared by tabs, so every attempt needs its own state and ticket.
+  // The flow ID only selects a cookie; it cannot authenticate without its secret.
+  const cookieName = (kind, flow) => `${secure ? '__Host-' : ''}roommatch_oauth_${kind}_${flow}`;
+  const cookie = (kind, flow, value, maxAge) => `${cookieName(kind, flow)}=${value}; HttpOnly; Path=/; SameSite=${kind === 'state' ? 'Lax' : 'Strict'}; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
   const redirect = (response, location, cookies = []) => {
     response.writeHead(303, { Location: location, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'Set-Cookie': cookies });
     response.end();
@@ -103,13 +105,14 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
         redirect_uri: callbackUrl, scope: 'openid email profile', response_type: 'code', state, nonce,
         code_challenge: await oidc.calculatePKCECodeChallenge(verifier), code_challenge_method: 'S256', prompt: 'select_account',
       });
-      redirect(response, target.href, [cookie('state', browser, 600), cookie('ticket', '', 0)]);
+      redirect(response, target.href, [cookie('state', state, browser, 600)]);
       return true;
     }
     if (request.method === 'GET' && url.pathname === CALLBACK_PATH) {
-      const expiredCookies = [cookie('state', '', 0), cookie('ticket', '', 0)];
+      const state = url.searchParams.get('state');
+      const expiredCookies = validToken(state) ? [cookie('state', state, '', 0), cookie('ticket', state, '', 0)] : [];
       try {
-        const state = url.searchParams.get('state'), browser = readCookie(request, cookieName('state'));
+        const browser = validToken(state) ? readCookie(request, cookieName('state', state)) : null;
         assert(validToken(state) && validToken(browser) && url.searchParams.getAll('state').length === 1, 400, 'invalid_state');
         // Consume once, atomically, and require the browser that initiated this flow.
         const attempt = await db.prepare(`DELETE FROM oauth_attempt WHERE state_hash = ? AND browser_hash = ?
@@ -127,7 +130,8 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
           VALUES (?, ?, clock_timestamp() + interval '1 minute')`).run(digest(ticket), user.user_id);
         const target = new URL('/auth/google/complete', configuration.origin);
         target.searchParams.set('returnTo', user.profile_setup_pending ? '/profile' : safeReturnTo(attempt.return_to));
-        redirect(response, target.href, [cookie('state', '', 0), cookie('ticket', ticket, 60)]);
+        target.searchParams.set('flow', state);
+        redirect(response, target.href, [cookie('state', state, '', 0), cookie('ticket', state, ticket, 60)]);
       } catch (error) {
         const knownErrors = new Set(['invalid_state', 'invalid_identity', 'email_exists', 'account_unavailable', 'cancelled', 'failed']);
         const reason = error instanceof HttpError && knownErrors.has(error.message) ? error.message : error.code === '23505' ? 'email_exists' : 'failed';
@@ -139,11 +143,13 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
     }
     if (request.method === 'POST' && url.pathname === '/api/auth/oauth/session') {
       assert(request.headers.origin === configuration.origin && request.headers['content-type']?.split(';')[0] === 'application/json', 403, 'Invalid OAuth exchange origin');
-      const ticket = readCookie(request, cookieName('ticket'));
+      const flow = url.searchParams.get('flow');
+      assert(validToken(flow) && url.searchParams.getAll('flow').length === 1, 401, 'Google sign-in expired. Please try again.');
+      const ticket = readCookie(request, cookieName('ticket', flow));
       assert(validToken(ticket), 401, 'Google sign-in expired. Please try again.');
       const session = await db.prepare(`DELETE FROM oauth_ticket WHERE ticket_hash = ?
         AND expires_at > clock_timestamp() RETURNING user_id`).get(digest(ticket));
-      response.setHeader('Set-Cookie', cookie('ticket', '', 0));
+      response.setHeader('Set-Cookie', cookie('ticket', flow, '', 0));
       assert(session, 401, 'Google sign-in expired. Please try again.');
       const user = await db.prepare('SELECT * FROM USER WHERE user_id = ?').get(session.user_id);
       assert(user?.is_active, 401, 'Google sign-in expired. Please try again.');

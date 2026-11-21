@@ -263,17 +263,22 @@ test('RM-13 pending save keeps the guard and submit lock, success clears a pendi
   } finally { release(); }
 });
 
-test('RM-13 external session changes unmount dirty forms without trapping the other account', async ({ page, environment, context }, testInfo) => {
+test('RM-13 another tab changing accounts or logging out preserves the dirty listing', async ({ page, environment, context }, testInfo) => {
   await openForm(page, false, environment, testInfo);
   await titleInput(page).fill('Private unsaved owner values');
   const otherTab = await context.newPage();
+  await signIn(otherTab, environment, 'seeker');
   await otherTab.goto('/rooms');
-  await otherTab.evaluate(token => localStorage.setItem('roommatch:token', token), environment.tokens.seeker);
+  await expect(otherTab).toHaveURL(/\/rooms$/);
   await expect(warning(page)).toHaveCount(0);
   await expect(titleInput(page)).toBeVisible();
-  await expect(titleInput(page)).toHaveValue('');
-  await otherTab.evaluate(() => localStorage.removeItem('roommatch:token'));
-  await expect(page).toHaveURL(/\/login$/);
+  await expect(titleInput(page)).toHaveValue('Private unsaved owner values');
+  await otherTab.evaluate(() => sessionStorage.removeItem('roommatch:token'));
+  await otherTab.reload();
+  await expect(otherTab).toHaveURL(/\/login$/);
+  await expect(page).toHaveURL(/\/my-listings\/new$/);
+  await expect(titleInput(page)).toHaveValue('Private unsaved owner values');
+  expect(await page.evaluate(() => sessionStorage.getItem('roommatch:token'))).toBe(environment.tokens.owner);
   await expect(warning(page)).toHaveCount(0);
   await otherTab.close();
 });
