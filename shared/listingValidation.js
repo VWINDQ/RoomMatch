@@ -45,11 +45,6 @@ export function validateListing(body, { partial = false, minimumCapacity = 1 } =
   return errors;
 }
 
-// Selected files are not saved images until the upload has returned a URL.
-export function completedListingImageUrls(images) {
-  return images.filter(image => !image.file && typeof image.url === 'string' && image.url.trim()).map(image => image.url);
-}
-
 export function isWebUrl(value) {
   try {
     const url = new URL(value);

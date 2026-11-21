@@ -1,4 +1,4 @@
-import { completedListingImageUrls, validateListing } from '../../shared/listingValidation.js';
+import { validateListing } from '../../shared/listingValidation.js';
 
 export function cancelledImageSelectionErrors(
   current: Record<string, string>,
@@ -6,5 +6,5 @@ export function cancelledImageSelectionErrors(
   busy = false,
 ) {
   if (busy || current.images) return current;
-  return { ...current, ...validateListing({ images: completedListingImageUrls(images) }, { partial: true }) };
+  return { ...current, ...validateListing({ images }, { partial: true }) };
 }

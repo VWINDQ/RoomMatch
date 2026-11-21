@@ -47,7 +47,7 @@ test('listing form marks required fields, keeps optional text optional and start
   assert.match(imageHtml, /tabindex="-1"/);
   assert.match(imageHtml, /data-error-field="images"/);
   assert.match(imageHtml, /aria-invalid="true"/);
-  assert.match(imageHtml, /<span>0\/12 รูป<\/span>/);
+  assert.match(imageHtml, /<span>1\/12 รูป<\/span>/);
   const describedIds = imageHtml.match(/aria-describedby="([^"]+)"/)[1].split(' ');
   assert.equal(describedIds.length, 2);
   for (const id of describedIds) assert.ok(imageHtml.includes(`id="${id}"`));

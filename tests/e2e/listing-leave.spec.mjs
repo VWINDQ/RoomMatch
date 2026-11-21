@@ -174,6 +174,40 @@ test('RM-13 saved image deletion and order are dirty, restoring order is pristin
 });
 
 for (const editing of [false, true]) {
+  test(`listing image count and required feedback in ${editing ? 'edit' : 'create'}`, async ({ page, environment }, testInfo) => {
+    await openForm(page, editing, environment, testInfo);
+    const picker = page.getByRole('group', { name: 'รูปภาพห้อง', exact: true });
+    const count = picker.locator('.image-picker-heading > span');
+    const warning = picker.getByText('กรุณาเพิ่มรูปห้องอย่างน้อย 1 รูป', { exact: true });
+    const files = picker.locator('input[type=file]');
+    const bytes = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#987654' } }).png().toBuffer();
+    const image = name => ({ name, mimeType: 'image/png', buffer: bytes });
+    const remove = index => picker.getByRole('button', { name: `ลบรูป ${index}`, exact: true }).click();
+
+    await expect(count).toHaveText(editing ? '2/12 รูป' : '0/12 รูป');
+    if (editing) {
+      await remove(2);
+      await files.setInputFiles(image('new.png'));
+    } else {
+      await files.setInputFiles([image('first.png'), image('second.png')]);
+    }
+    await expect(count).toHaveText('2/12 รูป');
+    await remove(1);
+    await expect(count).toHaveText('1/12 รูป');
+    await expect(warning).toHaveCount(0);
+    await expect(picker.locator('.image-picker-cover')).toHaveCount(1);
+    await remove(1);
+    await expect(count).toHaveText('0/12 รูป');
+    await expect(warning).toBeVisible();
+
+    await page.locator('.listing-form').evaluate(form => form.requestSubmit());
+    await expect(warning).toBeVisible();
+    await expect(count).toBeVisible();
+    await files.setInputFiles(image('replacement.png'));
+    await expect(count).toHaveText('1/12 รูป');
+    await expect(warning).toHaveCount(0);
+  });
+
   test(`RM-13 ${editing ? 'edit' : 'create'}: failed save stays dirty, save and continue retries successfully`, async ({ page, environment }, testInfo) => {
     const id = await openForm(page, editing, environment, testInfo);
     if (!editing) {

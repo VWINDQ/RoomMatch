@@ -1,7 +1,6 @@
 import { ArrowLeft, ArrowRight, ImagePlus, Trash2 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import { completedListingImageUrls } from '../../shared/listingValidation.js';
 import { IMAGE_ACCEPT, IMAGE_FORMAT_LABEL } from '../../shared/imageUpload.js';
 import { selectImageFiles } from '../lib/imageSelection';
 import './ImagePicker.css';
@@ -72,7 +71,6 @@ export function ImagePicker({ images, onChange, max = 1, disabled = false, label
     }
   };
   const message = selectionError || error;
-  const imageCount = required ? completedListingImageUrls(images).length : images.length;
   const move = (index: number, direction: number) => {
     const next = [...images];
     [next[index], next[index + direction]] = [next[index + direction], next[index]];
@@ -80,7 +78,7 @@ export function ImagePicker({ images, onChange, max = 1, disabled = false, label
   };
   return <div className={`image-picker ${max === 1 ? 'image-picker-single' : ''}`} role="group" tabIndex={fieldName ? -1 : undefined} data-error-field={fieldName} aria-busy={checking} aria-label={label} aria-required={required || undefined} aria-invalid={message ? true : undefined} aria-describedby={message ? `${descriptionId} ${errorId}` : descriptionId}
     onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); event.stopPropagation(); void chooseFiles(Array.from(event.dataTransfer.files)); }}>
-    <div className="image-picker-heading"><strong>{label}{required && <> <span className="required-marker" aria-hidden="true">*</span></>}</strong><span>{imageCount}/{max} รูป</span></div>
+    <div className="image-picker-heading"><strong>{label}{required && <> <span className="required-marker" aria-hidden="true">*</span></>}</strong><span>{images.length}/{max} รูป</span></div>
     <p className="image-picker-hint" id={descriptionId}>{IMAGE_FORMAT_LABEL}{' '}<span className="image-picker-limit">ไม่เกิน 5 MB ต่อรูป</span>{max > 1 ? ' · รูปแรกใช้เป็นรูปปก' : ''}<br/>ภาพเคลื่อนไหวใช้เฟรมแรก · รูปจะอัปโหลดเมื่อกดบันทึก</p>
     {images.length > 0 && <ul className="image-picker-grid">{images.map((image, index) => <li key={image.id}>
       <div className="image-picker-preview"><ImagePreview image={image} label={max === 1 ? 'รูปโปรไฟล์ที่เลือก' : `รูปห้อง ${index + 1}`}/>{max > 1 && index === 0 && <span className="image-picker-cover">รูปปก</span>}</div>

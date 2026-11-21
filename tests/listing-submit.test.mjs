@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { openDatabase } from './support/postgres.mjs';
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
-import { validateListing, completedListingImageUrls } from '../shared/listingValidation.js';
+import { validateListing } from '../shared/listingValidation.js';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 import sharp from 'sharp';
@@ -69,7 +69,7 @@ async function fixture(t, editing = false, onSaveResponse = () => {}) {
     checkingImages: false, saving: false, ownerIsResident: false, minimumCapacity: 1, submitLocked: { current: false }, mounted: { current: true },
     setSaving: value => { state.saving = value; }, setFocusErrors: value => { state.focusErrors = value; }, setErrors: value => { state.errors = value; },
     FormData: class { constructor() { return Object.entries(values); } },
-    validateListing, completedListingImageUrls, images, existing: editing ? { roomId: '1', memberCount: 0 } : null,
+    validateListing, images, existing: editing ? { roomId: '1', memberCount: 0 } : null,
     fieldsWithErrors: { current: new Set() }, status: 'available', listingFields: Object.keys(values).concat('images'),
     uploadSelectedImages, listingSaveFeedback,
     setImages: next => { images.splice(0, images.length, ...next); }, updateImageFeedback() {},
@@ -82,6 +82,18 @@ async function fixture(t, editing = false, onSaveResponse = () => {}) {
 }
 
 for (const editing of [false, true]) {
+  test(`${editing ? 'edit' : 'create'}: saving with no images stops before upload or room write`, async t => {
+    const f = await fixture(t, editing);
+    f.images.length = 0;
+    f.state.uploadGate.resolve();
+    f.state.gate.resolve();
+    await f.submit();
+    assert.deepEqual(f.state.errors, { images: 'กรุณาเพิ่มรูปห้องอย่างน้อย 1 รูป' });
+    assert.equal(f.state.uploads, 0);
+    assert.equal(f.state.requests, 0);
+    assert.equal(f.state.focusErrors, true);
+  });
+
   test(`${editing ? 'edit' : 'create'}: repeated submits during upload/request and after success send once`, async t => {
     const f = await fixture(t, editing);
     const first = f.submit();
