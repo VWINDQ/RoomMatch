@@ -12,6 +12,7 @@ export type User = {
   university: string;
   accountType?: string;
   profileSetupPending?: boolean;
+  profileReminderSeen?: boolean;
   profileImage: string;
   bio: string;
   email: string;
