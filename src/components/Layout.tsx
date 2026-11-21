@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { OwnerRequestsProvider, useOwnerRequests } from '../OwnerRequestsContext';
 import { ProfilePhoto } from './ProfilePhoto';
-import { ProfileReminder } from './ProfileReminder';
 
 const destinations = [
   { to: '/rooms', label: 'รวมประกาศห้อง', mobile: 'ห้อง', icon: Home },
@@ -99,7 +98,6 @@ function ShellContent() {
     </aside>
     <header className="compact-header"><Logo/><button className="avatar" onClick={() => navigate('/profile')} aria-label="เปิดโปรไฟล์"><ProfilePhoto src={user?.profileImage || ''} fallback={initial}/></button></header>
     <main className="workspace" id="main-content" tabIndex={-1}><Outlet/></main><nav className="mobile-nav" aria-label="เมนูหลัก"><NavItems mobile/></nav>
-    <ProfileReminder key={user?.userId}/>
   </div>;
 }
 

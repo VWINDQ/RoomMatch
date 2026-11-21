@@ -1,10 +1,11 @@
 ﻿import { Skeleton } from '../components/Skeleton';
 import { AtSign, HeartHandshake, LogOut, Mail, MessageCircle, Pencil, Phone, RefreshCw, UserRound } from 'lucide-react';
 import { useEffect, useRef, useState, type FocusEvent, type FormEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
 import { ProfilePhoto } from '../components/ProfilePhoto';
+import { ProfileReminder } from '../components/ProfileReminder';
 import { Button, EmptyState, Input, Modal, Textarea } from '../components/UI';
 import { api, ApiError, SessionChangedError } from '../lib/api';
 import { FormFeedback, useFormFeedback } from '../components/FormFeedback';
@@ -33,18 +34,11 @@ function profileFieldError(name: string, value: string) {
 }
 
 export function ProfilePage() {
-  const location = useLocation();
   const navigate = useNavigate(); const { refreshUser, notify, logout, registerLogoutGuard } = useApp(); const [profile, setProfile] = useState<ProfileBundle | null>(null); const [editing, setEditing] = useState(false); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [reload, setReload] = useState(0);
   const [images, setImages] = useState<SelectedImage[]>([]);
   const [checkingImages, setCheckingImages] = useState(false);
   const [accountType, setAccountType] = useState('');
   const [clearedUniversity, setClearedUniversity] = useState(false);
-  useEffect(() => {
-    const state = location.state as { editProfile?: boolean } | null;
-    if (!state?.editProfile) return;
-    setEditing(true);
-    navigate(location.pathname + location.search + location.hash, { replace: true, state: { ...state, editProfile: undefined } });
-  }, [location, navigate]);
   const [focusErrors, setFocusErrors] = useState(true);
   const formRef = useRef<HTMLFormElement>(null);
   const submitLocked = useRef(false);
@@ -160,6 +154,7 @@ export function ProfilePage() {
   const leaveDestination = localLeave === 'cancel' ? 'กลับไปดูโปรไฟล์' : localLeave === 'logout' ? 'ออกจากระบบ' : 'ไปหน้าที่เลือก';
   const age = calculateAge(user.dateOfBirth);
   return <div className="page profile-page"><PageHeader title="โปรไฟล์ของฉัน" subtitle={user.profileSetupPending ? 'กรอกข้อมูลให้ครบเพื่อเริ่มใช้งาน RoomMatch' : 'ข้อมูลส่วนตัว ไลฟ์สไตล์ ความต้องการ และช่องทางการติดต่อของคุณ'}/>
+    <ProfileReminder onEdit={() => setEditing(true)}/>
     <section className="profile-summary"><div className="profile-avatar"><ProfilePhoto src={user.profileImage} fallback={initials}/></div><div className="profile-identity"><div><h2>{user.firstName} {user.lastName}</h2><span>{user.university || (user.accountType === 'general' ? 'ผู้ใช้ทั่วไป' : 'สมาชิก RoomMatch')}</span></div><p><Mail size={16}/>{user.email}</p></div>{!editing && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={17}/>แก้ไขโปรไฟล์</Button>}</section>
     {!editing ? <div className="profile-section-grid api-profile-view"><ProfileCard icon={<UserRound/>} title="ข้อมูลส่วนตัว"><dl className="profile-data-list profile-personal-data"><div><dt>เบอร์โทร</dt><dd><Phone size={16}/>{user.phone}</dd></div><div><dt>เพศ</dt><dd>{genderLabel(user.gender)}</dd></div><div className="profile-half-field"><dt>วันเกิด</dt><dd>{formatBirthDate(user.dateOfBirth) || 'ยังไม่ระบุ'}</dd></div><div className="profile-half-field"><dt>อายุ</dt><dd>{age === null ? 'กรอกวันเกิดในโปรไฟล์เพื่อคำนวณอายุ' : `${age} ปี`}</dd></div><div><dt>เกี่ยวกับฉัน</dt><dd>{user.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</dd></div></dl></ProfileCard>
       <ProfileCard icon={<HeartHandshake/>} title="ไลฟ์สไตล์และความต้องการ"><dl className="profile-data-list"><div><dt>ไลฟ์สไตล์</dt><dd>{lifestyle?.lifestyleName || 'ยังไม่ระบุ'}</dd></div><div><dt>เพศที่สะดวกแชร์ห้อง</dt><dd>{genderLabel(preference?.preferredGender)}</dd></div><div><dt>ช่วงอายุ</dt><dd>{ageRange(preference?.preferredAgeMin, preference?.preferredAgeMax)}</dd></div><div><dt>งบประมาณ</dt><dd>{budgetRange(preference?.budgetMin, preference?.budgetMax)}</dd></div></dl></ProfileCard>

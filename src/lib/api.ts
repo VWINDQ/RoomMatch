@@ -284,10 +284,6 @@ export const api = {
   async oauthProviders() { const result = await request<JsonObject>('/auth/oauth/providers'); return { google: result.google === true }; },
   async completeOAuth(flow: string) { return parseAuthSession(await request<unknown>(`/auth/oauth/session?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: '{}' })); },
   async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
-  async acknowledgeProfileReminder() {
-    const result = object(await request<unknown>('/profile/reminder/acknowledge', { method: 'POST' }));
-    if (result.acknowledged !== true) throw new Error('บันทึกการรับทราบไม่สำเร็จ กรุณาลองอีกครั้ง');
-  },
   roomsPage: (params: URLSearchParams) => requestRoomPage('/rooms', params),
   favoritesPage: (params: URLSearchParams) => requestRoomPage('/favorites', params),
   myRoomsPage: (params: URLSearchParams) => requestRoomPage('/my/rooms', params),

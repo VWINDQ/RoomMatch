@@ -68,10 +68,10 @@ function ProtectedRoutes() {
   return user ? <Outlet key={user.userId}/> : <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }}/>;
 }
 
-function GuestOnly({ children }: { children: ReactNode }) {
+function GuestOnly({ children, redirectTo }: { children: ReactNode; redirectTo?: string }) {
   const { user, authLoading } = useApp();
   const location = useLocation();
-  const destination = (location.state as { from?: string } | null)?.from || '/rooms';
+  const destination = redirectTo || (location.state as { from?: string } | null)?.from || '/rooms';
   if (authLoading) return <SessionSkeleton/>;
   return user ? <Navigate to={destination} replace/> : children;
 }
@@ -81,7 +81,7 @@ function RoutedApp() {
   return <><ScrollToTop/><Routes>
     <Route path="/auth/google/complete" element={<OAuthCallbackPage/>}/>
     <Route path="/login" element={<GuestOnly><LoginPage/></GuestOnly>}/>
-    <Route path="/register" element={<GuestOnly><RegisterPage/></GuestOnly>}/>
+    <Route path="/register" element={<GuestOnly redirectTo="/profile"><RegisterPage/></GuestOnly>}/>
     <Route element={<ProtectedRoutes/>}><Route element={<AppShell/>}>
       <Route path="/favorites" element={<DeferredPage variant="rooms"><FavoritesPage/></DeferredPage>}/>
       <Route path="/rooms" element={<RoomsPage/>}/><Route path="/rooms/:id" element={<DeferredPage variant="room-detail"><RoomDetailPage/></DeferredPage>}/>
