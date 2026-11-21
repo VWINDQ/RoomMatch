@@ -34,6 +34,7 @@ const { api, ApiError, InvalidAuthResponseError, SessionChangedError, subscribeU
 const { default: App } = await import('../src/App.tsx');
 
 const user = { userId: '1', firstName: 'Auth', lastName: 'Test', email: 'auth@example.test' };
+const oauthFlow = 'a'.repeat(43);
 const credentials = { email: user.email, password: 'test-password' };
 const sessionMessage = 'การเข้าสู่ระบบสิ้นสุด กรุณาเข้าสู่ระบบอีกครั้ง';
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -54,6 +55,7 @@ function LocationProbe() { location = useLocation(); return null; }
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   state = null;
   location = null;
   respond = async path => {
@@ -81,14 +83,15 @@ async function mountProvider(token = 'old-token') {
     createElement(AppProvider, null, createElement(StateProbe)))));
 }
 
-function changeTokenInAnotherTab(token, { clear = false } = {}) {
+function changeTabSession(token, { clear = false } = {}) {
+  // sessionStorage is shared with same-origin frames, never with another tab.
   const oldValue = tokenStorage.get();
-  if (clear) localStorage.clear();
-  else if (token === null) localStorage.removeItem('roommatch:token');
-  else localStorage.setItem('roommatch:token', token);
+  if (clear) sessionStorage.clear();
+  else if (token === null) sessionStorage.removeItem('roommatch:token');
+  else sessionStorage.setItem('roommatch:token', token);
   window.dispatchEvent(new window.StorageEvent('storage', {
     key: clear ? null : 'roommatch:token', oldValue, newValue: token,
-    storageArea: localStorage,
+    storageArea: sessionStorage,
   }));
 }
 
@@ -209,7 +212,7 @@ for (const [kind, status, headline, advice] of [
   });
 }
 
-test('another tab switching accounts hides the previous user until the new token is verified', async () => {
+test('a same-tab frame switching accounts hides the previous user until the new token is verified', async () => {
   await mountProvider();
   await act(async () => state.notify('Old account notification'));
   const pending = deferred();
@@ -220,13 +223,13 @@ test('another tab switching accounts hides the previous user until the new token
   };
   const setItem = mock.method(window.Storage.prototype, 'setItem');
   const removeItem = mock.method(window.Storage.prototype, 'removeItem');
-  await act(async () => changeTokenInAnotherTab('other-tab-token'));
+  await act(async () => changeTabSession('other-tab-token'));
   assert.equal(state.user, null);
   assert.equal(state.authLoading, true);
   assert.equal(state.authError, '');
   assert.equal(state.toast, '');
   assert.equal(authorization, 'Bearer other-tab-token');
-  assert.equal(setItem.mock.callCount(), 1, 'only the simulated other tab writes storage');
+  assert.equal(setItem.mock.callCount(), 1, 'only the simulated same-tab frame writes storage');
   assert.equal(removeItem.mock.callCount(), 0);
   const nextUser = { ...user, userId: '2', email: 'other@example.test' };
   await act(async () => pending.resolve(json({ user: nextUser })));
@@ -236,14 +239,14 @@ test('another tab switching accounts hides the previous user until the new token
 });
 
 for (const clear of [false, true]) {
-  test(`another tab ${clear ? 'clearing storage' : 'logging out'} clears the local session`, async () => {
+  test(`a same-tab frame ${clear ? 'clearing storage' : 'logging out'} clears the local session`, async () => {
     await mountProvider();
     respond = async () => json({ error: 'Unavailable' }, 503);
     await act(async () => state.retryAuth());
     assert.ok(state.authError);
     await act(async () => state.notify('Old notification'));
     const removeItem = mock.method(window.Storage.prototype, 'removeItem');
-    await act(async () => changeTokenInAnotherTab(null, { clear }));
+    await act(async () => changeTabSession(null, { clear }));
     assert.equal(state.user, null);
     assert.equal(state.authLoading, false);
     assert.equal(state.authError, '');
@@ -506,9 +509,9 @@ test('expiration redirects to login, wrong password shows an error, and login re
   assert.ok(document.querySelector('.profile-summary'));
 });
 
-test('a signed-out tab verifies an account signed in elsewhere', async () => {
+test('a signed-out tab verifies a session set by a same-tab frame', async () => {
   await mountProvider(null);
-  await act(async () => changeTokenInAnotherTab('external-token'));
+  await act(async () => changeTabSession('external-token'));
   assert.equal(state.user.userId, user.userId);
   assert.equal(state.authLoading, false);
   assert.equal(tokenStorage.get(), 'external-token');
@@ -521,7 +524,7 @@ for (const failure of [401, 503, 'network']) {
       if (failure === 'network') throw new TypeError('Network unavailable');
       return json({ error: 'Verification failed' }, failure);
     };
-    await act(async () => changeTokenInAnotherTab('external-token'));
+    await act(async () => changeTabSession('external-token'));
     assert.equal(state.user, null);
     assert.equal(state.authLoading, false);
     if (failure === 401) {
@@ -544,15 +547,50 @@ test('unrelated storage events are ignored and the storage listener is removed o
   let calls = 0;
   respond = async () => { calls++; return json({ user }); };
   await act(async () => {
-    window.dispatchEvent(new window.StorageEvent('storage', { key: 'theme', newValue: 'dark', storageArea: localStorage }));
-    window.dispatchEvent(new window.StorageEvent('storage', { key: 'roommatch:token', newValue: 'different', storageArea: window.sessionStorage }));
+    window.dispatchEvent(new window.StorageEvent('storage', { key: 'theme', newValue: 'dark', storageArea: sessionStorage }));
+    window.dispatchEvent(new window.StorageEvent('storage', { key: 'roommatch:token', newValue: 'different', storageArea: window.localStorage }));
   });
   assert.equal(calls, 0);
   assert.equal(state.user.userId, user.userId);
   await act(async () => root.unmount());
-  changeTokenInAnotherTab('after-unmount');
+  changeTabSession('after-unmount');
   assert.equal(calls, 0);
   root = createRoot(document.getElementById('root'));
+});
+
+test('a legacy shared token never signs in a new tab', async () => {
+  localStorage.setItem('roommatch:token', 'legacy-account');
+  await mountProvider(null);
+  assert.equal(tokenStorage.get(), null);
+  assert.equal(state.user, null);
+  assert.equal(state.authLoading, false);
+});
+
+test('shared storage changes cannot replace this tab or invalidate its pending response', async () => {
+  await mountProvider();
+  const pending = deferred();
+  respond = (_path, options) => {
+    assert.equal(options.headers.get('Authorization'), 'Bearer old-token');
+    return pending.promise;
+  };
+  const profile = api.profile();
+  await act(async () => {
+    for (const value of ['other-account', null]) {
+      if (value) localStorage.setItem('roommatch:token', value);
+      else localStorage.removeItem('roommatch:token');
+      window.dispatchEvent(new window.StorageEvent('storage', {
+        key: 'roommatch:token', newValue: value, storageArea: localStorage,
+      }));
+    }
+    window.dispatchEvent(new window.StorageEvent('storage', { key: null, storageArea: localStorage }));
+    pending.resolve(json({ user, lifestyle: null, preference: null }));
+    assert.equal((await profile).user.userId, user.userId);
+  });
+  assert.equal(tokenStorage.get(), 'old-token');
+  assert.equal(state.user.userId, user.userId);
+  await act(async () => state.logout());
+  assert.equal(sessionStorage.getItem('roommatch:token'), null);
+  assert.equal(localStorage.getItem('roommatch:token'), null);
 });
 
 for (const outcome of ['success', 'unauthorized', 'network']) {
@@ -562,7 +600,7 @@ for (const outcome of ['success', 'unauthorized', 'network']) {
     const nextUser = { ...user, userId: '2' };
     respond = path => path === '/api/auth/me' ? Promise.resolve(json({ user: nextUser })) : pending.promise;
     const ignored = assert.rejects(api.profile(), SessionChangedError);
-    await act(async () => changeTokenInAnotherTab('external-token'));
+    await act(async () => changeTabSession('external-token'));
     await act(async () => {
       if (outcome === 'network') pending.reject(new TypeError('Old network failure'));
       else pending.resolve(outcome === 'success' ? json({ user }) : rejected());
@@ -583,7 +621,7 @@ test('a response still reading its body is discarded after an external logout', 
   const ignored = assert.rejects(api.profile(), SessionChangedError);
   await act(async () => {});
   assert.equal(reading, true);
-  await act(async () => changeTokenInAnotherTab(null));
+  await act(async () => changeTabSession(null));
   await act(async () => { body.resolve({ user }); await ignored; });
   assert.equal(state.user, null);
 });
@@ -594,8 +632,8 @@ test('external logout and login with an identical token invalidate earlier reque
   respond = path => path === '/api/auth/me' ? Promise.resolve(json({ user })) : pending.promise;
   const ignored = assert.rejects(api.profile(), SessionChangedError);
   await act(async () => {
-    changeTokenInAnotherTab(null);
-    changeTokenInAnotherTab('old-token');
+    changeTabSession(null);
+    changeTabSession('old-token');
   });
   await act(async () => { pending.resolve(rejected()); await ignored; });
   assert.equal(tokenStorage.get(), 'old-token');
@@ -612,9 +650,9 @@ test('queued storage events verify the latest stored token instead of replaying 
     return json({ user: nextUser });
   };
   await act(async () => {
-    localStorage.setItem('roommatch:token', 'latest-token');
+    sessionStorage.setItem('roommatch:token', 'latest-token');
     window.dispatchEvent(new window.StorageEvent('storage', {
-      key: 'roommatch:token', oldValue: 'old-token', newValue: null, storageArea: localStorage,
+      key: 'roommatch:token', oldValue: 'old-token', newValue: null, storageArea: sessionStorage,
     }));
   });
   assert.equal(authorization, 'Bearer latest-token');
@@ -628,8 +666,8 @@ test('a slower external account check cannot overwrite a later account switch', 
   const latestUser = { ...user, userId: '3' };
   respond = (_path, options) => options.headers.get('Authorization') === 'Bearer middle-token'
     ? pending.promise : Promise.resolve(json({ user: latestUser }));
-  await act(async () => changeTokenInAnotherTab('middle-token'));
-  await act(async () => changeTokenInAnotherTab('latest-token'));
+  await act(async () => changeTabSession('middle-token'));
+  await act(async () => changeTabSession('latest-token'));
   await act(async () => pending.resolve(rejected()));
   assert.equal(state.user.userId, latestUser.userId);
   assert.equal(tokenStorage.get(), 'latest-token');
@@ -646,14 +684,14 @@ test('an old screen cannot send a mutation using a changed token before the stor
     assert.equal(options.headers.get('Authorization'), 'Bearer external-token');
     return json({ user: nextUser });
   };
-  localStorage.setItem('roommatch:token', 'external-token');
+  sessionStorage.setItem('roommatch:token', 'external-token');
   await act(async () => { await assert.rejects(api.deleteRoom('1'), SessionChangedError); });
   assert.deepEqual(paths, ['/api/auth/me']);
   assert.equal(state.user.userId, nextUser.userId);
 });
 
 for (const method of ['login', 'register']) {
-  test(`a pending ${method} cannot overwrite a session adopted from another tab`, async () => {
+  test(`a pending ${method} cannot overwrite a session adopted from a same-tab frame`, async () => {
     await mountProvider(null);
     const pending = deferred();
     const nextUser = { ...user, userId: '2' };
@@ -663,7 +701,7 @@ for (const method of ['login', 'register']) {
       ignored = assert.rejects(method === 'login'
         ? state.login(credentials.email, credentials.password) : state.register(credentials), SessionChangedError);
     });
-    await act(async () => changeTokenInAnotherTab('external-token'));
+    await act(async () => changeTabSession('external-token'));
     await act(async () => { pending.resolve(json({ user, token: 'late-token' })); await ignored; });
     assert.equal(tokenStorage.get(), 'external-token');
     assert.equal(state.user.userId, nextUser.userId);
@@ -680,12 +718,12 @@ test('protected profile content is cleared during a switch and logout preserves 
   const nextUser = { ...user, userId: '2', firstName: 'Next' };
   respond = path => path === '/api/auth/me' ? pending.promise
     : Promise.resolve(json({ user: nextUser, lifestyle: null, preference: null }));
-  await act(async () => changeTokenInAnotherTab('external-token'));
+  await act(async () => changeTabSession('external-token'));
   assert.equal(document.querySelector('.profile-summary'), null);
   assert.ok(document.querySelector('.route-loading'));
   await act(async () => pending.resolve(json({ user: nextUser })));
   assert.match(document.querySelector('.profile-identity h2').textContent, /Next/);
-  await act(async () => changeTokenInAnotherTab(null));
+  await act(async () => changeTabSession(null));
   assert.equal(location.pathname, '/login');
   assert.equal(location.state.from, route);
   assert.equal(document.querySelector('.profile-summary'), null);
@@ -699,7 +737,7 @@ test('a cancelled login does not navigate or display an obsolete form error', as
   const pending = deferred();
   respond = () => pending.promise;
   await act(async () => document.querySelector('form').requestSubmit());
-  await act(async () => changeTokenInAnotherTab(null, { clear: true }));
+  await act(async () => changeTabSession(null, { clear: true }));
   await act(async () => pending.resolve(json({ user, token: 'late-token' })));
   assert.equal(location.pathname, '/login');
   assert.equal(tokenStorage.get(), null);
@@ -715,6 +753,11 @@ test(`an old listing action cannot show a notification in the next account (${ac
   respond = async path => path === '/api/auth/me' ? json({ user }) : json({ rooms: [room], total: 1, page: 1, pageSize: 10, totalPages: 1 });
   await act(async () => root.render(createElement(StrictMode, null,
     createElement(MemoryRouter, { initialEntries: ['/my-listings'] }, createElement(App)))));
+  // The list loads on a timer; wait for it before replacing the API response.
+  for (let attempt = 0; !document.querySelector('.status-toggle') && attempt < 50; attempt++) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  }
+  assert.ok(document.querySelector('.status-toggle'));
   respond = () => pending.promise;
   if (action === 'status') {
     await act(async () => document.querySelector('.status-toggle').click());
@@ -726,7 +769,7 @@ test(`an old listing action cannot show a notification in the next account (${ac
   }
   const nextUser = { ...user, userId: '2' };
   respond = async path => path === '/api/auth/me' ? json({ user: nextUser }) : json({ rooms: [], total: 0, page: 1, pageSize: 10, totalPages: 0 });
-  await act(async () => changeTokenInAnotherTab('external-token'));
+  await act(async () => changeTabSession('external-token'));
   await act(async () => pending.resolve(action === 'status' ? json({ room }) : new Response(null, { status: 204 })));
   assert.equal(Boolean(document.querySelector('.my-listing')), false);
   assert.equal(document.querySelector('[role="status"]')?.textContent ?? '', '');
@@ -751,12 +794,12 @@ test('external account changes keep the displayed user and real API identity in 
     respond = (path, options) => nativeFetch(`${baseUrl}${path}`, options);
     await mountProvider(accounts[0].token);
     await act(async () => {
-      changeTokenInAnotherTab(accounts[1].token);
+      changeTabSession(accounts[1].token);
       await state.retryAuth();
     });
     assert.equal(state.user.userId, String(accounts[1].user.userId));
     assert.equal(state.user.userId, (await api.me()).userId);
-    await act(async () => changeTokenInAnotherTab(null));
+    await act(async () => changeTabSession(null));
     assert.equal(state.user, null);
     await act(async () => { await assert.rejects(api.me(), error => error.status === 401); });
     assert.equal(state.user, null);
@@ -1125,10 +1168,10 @@ test('malformed account checks cannot authenticate on startup and can be retried
   assert.equal(state.authError, '');
 });
 
-test('invalid account data from another tab cannot replace the previous identity', async () => {
+test('invalid account data from a same-tab frame cannot replace the previous identity', async () => {
   await mountProvider();
   respond = async () => json({ user: { ...user, userId: '' } });
-  await act(async () => changeTokenInAnotherTab('external-token'));
+  await act(async () => changeTabSession('external-token'));
   assert.equal(state.user, null);
   assert.equal(state.authLoading, false);
   assert.equal(state.authError, invalidAuthMessage);
@@ -1195,7 +1238,7 @@ for (const priorSession of [null, 'old-token', 'expired-token']) {
     const defaultRespond = respond;
     respond = async (path, options) => {
       if (path === '/api/auth/me' && priorSession === 'expired-token') return rejected();
-      if (path === '/api/auth/oauth/session') {
+      if (path === `/api/auth/oauth/session?flow=${oauthFlow}`) {
         exchanges += 1;
         assert.equal(options.method, 'POST');
         assert.equal(options.headers.has('Authorization'), false);
@@ -1204,7 +1247,7 @@ for (const priorSession of [null, 'old-token', 'expired-token']) {
       return defaultRespond(path, options);
     };
     await act(async () => root.render(createElement(StrictMode, null,
-      createElement(MemoryRouter, { initialEntries: ['/auth/google/complete?returnTo=%2Fprofile%3Ftab%3Daccount%23details'] }, createElement(App), createElement(LocationProbe)))));
+      createElement(MemoryRouter, { initialEntries: [`/auth/google/complete?flow=${oauthFlow}&returnTo=%2Fprofile%3Ftab%3Daccount%23details`] }, createElement(App), createElement(LocationProbe)))));
     assert.equal(exchanges, 1);
     assert.equal(tokenStorage.get(), 'google-token');
     assert.equal(location.pathname + location.search + location.hash, '/profile?tab=account#details');
@@ -1215,7 +1258,7 @@ for (const priorSession of [null, 'old-token', 'expired-token']) {
 test('invalid OAuth session payload does not overwrite an existing session', async () => {
   await mountProvider();
   respond = async () => json({ token: 'invalid', user: {} });
-  await act(async () => { await assert.rejects(state.completeOAuth(), InvalidAuthResponseError); });
+  await act(async () => { await assert.rejects(state.completeOAuth(oauthFlow), InvalidAuthResponseError); });
   assert.equal(tokenStorage.get(), 'old-token');
   assert.equal(state.user.userId, user.userId);
 });
@@ -1223,22 +1266,22 @@ test('invalid OAuth session payload does not overwrite an existing session', asy
 test('failed OAuth ticket exchange retains an existing session and gives a route to retry', async () => {
   tokenStorage.set('old-token');
   const defaultRespond = respond;
-  respond = async (path, options) => path === '/api/auth/oauth/session' ? rejected() : defaultRespond(path, options);
+  respond = async (path, options) => path === `/api/auth/oauth/session?flow=${oauthFlow}` ? rejected() : defaultRespond(path, options);
   await act(async () => root.render(createElement(StrictMode, null,
-    createElement(MemoryRouter, { initialEntries: ['/auth/google/complete'] }, createElement(App), createElement(LocationProbe)))));
+    createElement(MemoryRouter, { initialEntries: [`/auth/google/complete?flow=${oauthFlow}`] }, createElement(App), createElement(LocationProbe)))));
   assert.equal(location.pathname, '/auth/google/complete');
   assert.equal(tokenStorage.get(), 'old-token');
   assert.match(document.querySelector('[role="alert"]').textContent, /กรุณาลองอีกครั้ง/);
   assert.equal(document.querySelector('a').getAttribute('href'), '/login');
 });
 
-test('a pending Google sign-in cannot replace an account selected in another tab', async () => {
+test('a pending Google sign-in cannot replace an account selected in the same tab', async () => {
   await mountProvider(null);
   const pending = deferred();
-  respond = async path => path === '/api/auth/oauth/session' ? pending.promise : json({ user: { ...user, userId: '2' } });
+  respond = async path => path === `/api/auth/oauth/session?flow=${oauthFlow}` ? pending.promise : json({ user: { ...user, userId: '2' } });
   let ignored;
-  await act(async () => { ignored = assert.rejects(state.completeOAuth(), SessionChangedError); });
-  await act(async () => changeTokenInAnotherTab('other-tab-token'));
+  await act(async () => { ignored = assert.rejects(state.completeOAuth(oauthFlow), SessionChangedError); });
+  await act(async () => changeTabSession('other-tab-token'));
   await act(async () => { pending.resolve(json({ user, token: 'google-token' })); await ignored; });
   assert.equal(tokenStorage.get(), 'other-tab-token');
   assert.equal(state.user.userId, '2');

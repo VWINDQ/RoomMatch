@@ -57,8 +57,8 @@ const initializedPages = new WeakSet();
 export async function signIn(page, environment, actor = 'owner') {
   const token = environment.tokens[actor] ?? null;
   const writeToken = token => {
-    if (token) localStorage.setItem('roommatch:token', token);
-    else localStorage.removeItem('roommatch:token');
+    if (token) sessionStorage.setItem('roommatch:token', token);
+    else sessionStorage.removeItem('roommatch:token');
   };
   if (initializedPages.has(page)) {
     // Switch the actual storage before the next navigation. Do not register several
@@ -67,8 +67,8 @@ export async function signIn(page, environment, actor = 'owner') {
   } else {
     await page.addInitScript(token => {
       if (sessionStorage.getItem('roommatch:e2e:initialized')) return;
-      if (token) localStorage.setItem('roommatch:token', token);
-      else localStorage.removeItem('roommatch:token');
+      if (token) sessionStorage.setItem('roommatch:token', token);
+      else sessionStorage.removeItem('roommatch:token');
       sessionStorage.setItem('roommatch:e2e:initialized', 'true');
     }, token);
     initializedPages.add(page);

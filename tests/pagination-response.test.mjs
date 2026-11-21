@@ -14,9 +14,9 @@ test('pagination produces no DOM for zero/one page or missing/invalid metadata',
 });
 
 test('paginated adapters reject legacy, inconsistent, oversized and wrong-page-size responses',async t=>{
-  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
-  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:()=>null}});
-  t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;});
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'sessionStorage');
+  Object.defineProperty(globalThis,'sessionStorage',{configurable:true,value:{getItem:()=>null}});
+  t.after(()=>{if(descriptor)Object.defineProperty(globalThis,'sessionStorage',descriptor);else delete globalThis.sessionStorage;});
   let payload, requestedPath;
   t.mock.method(globalThis,'fetch',async path=>{requestedPath=path;return new Response(JSON.stringify(payload),{status:200,headers:{'Content-Type':'application/json'}});});
   for(const [load,size] of [[api.favoritesPage,12],[api.myRoomsPage,10],[api.roomsPage,12]]) {

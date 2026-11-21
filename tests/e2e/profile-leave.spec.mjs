@@ -181,16 +181,16 @@ test('profile logout waits for a decision and saves while the session is still v
   const logout = logoutButton(page);
   await logout.click();
   await expect(warning(page)).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('roommatch:token'))).toBe(environment.tokens.owner);
+  expect(await page.evaluate(() => sessionStorage.getItem('roommatch:token'))).toBe(environment.tokens.owner);
   await warning(page).getByRole('button', { name: 'ปิด', exact: true }).click();
   await logoutButton(page).click();
   await warning(page).getByRole('button', { name: 'บันทึกและไปต่อ', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
-  expect(await page.evaluate(() => localStorage.getItem('roommatch:token'))).toBeNull();
+  expect(await page.evaluate(() => sessionStorage.getItem('roommatch:token'))).toBeNull();
   expect((await readProfile(page, environment)).user.bio).toBe('Saved before logout');
 });
 
-test('profile refresh uses the native warning while an external logout clears the dirty editor', async ({ page, context }) => {
+test('profile refresh warns while another tab logging out preserves the dirty editor', async ({ page, context, environment }) => {
   await biographyInput(page).fill('Protect this edit');
   const dismissed = new Promise(resolve => page.once('dialog', async dialog => {
     expect(dialog.type()).toBe('beforeunload');
@@ -201,9 +201,14 @@ test('profile refresh uses the native warning while an external logout clears th
   await dismissed;
   await expect(biographyInput(page)).toHaveValue('Protect this edit');
   const otherTab = await context.newPage();
+  await signIn(otherTab, environment, 'seeker');
   await otherTab.goto('/rooms', { waitUntil: 'domcontentloaded' });
-  await otherTab.evaluate(() => localStorage.removeItem('roommatch:token'));
-  await expect(page).toHaveURL(/\/login$/);
+  await otherTab.evaluate(() => sessionStorage.removeItem('roommatch:token'));
+  await otherTab.reload();
+  await expect(otherTab).toHaveURL(/\/login$/);
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(biographyInput(page)).toHaveValue('Protect this edit');
+  expect(await page.evaluate(() => sessionStorage.getItem('roommatch:token'))).toBe(environment.tokens.owner);
   await expect(warning(page)).toHaveCount(0);
   await otherTab.close();
 });

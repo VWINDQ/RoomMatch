@@ -358,8 +358,8 @@ for (const [path, endpoint, size, actor, selector] of [
       gate=new Promise(resolve=>{release=resolve;});
       waiting=new Promise(resolve=>{started=resolve;});
       await nextButton(page).click(); await waiting;
-      // Real storage event remounts protected pages for the other account.
-      await page.evaluate(token=>{localStorage.setItem('roommatch:token',token);window.dispatchEvent(new StorageEvent('storage',{key:'roommatch:token',storageArea:localStorage}));},environment.tokens.empty);
+      // Simulate a same-tab frame changing this tab's session during a pending response.
+      await page.evaluate(token=>{sessionStorage.setItem('roommatch:token',token);window.dispatchEvent(new StorageEvent('storage',{key:'roommatch:token',storageArea:sessionStorage}));},environment.tokens.empty);
       await expect(page.locator('.personal-list-toolbar > p')).toHaveCount(0);
       await expect(page.locator('.skeleton-region')).toHaveCount(0);
       await expect(page.locator(selector)).toHaveCount(0);
