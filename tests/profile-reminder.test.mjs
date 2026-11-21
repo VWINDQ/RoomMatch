@@ -6,6 +6,7 @@ import { act, createElement, StrictMode } from 'react';
 
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/', pretendToBeVisual: true });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage,
+  sessionStorage: dom.window.sessionStorage,
   HTMLElement: dom.window.HTMLElement, HTMLInputElement: dom.window.HTMLInputElement, HTMLSelectElement: dom.window.HTMLSelectElement,
   HTMLTextAreaElement: dom.window.HTMLTextAreaElement, FormData: dom.window.FormData,
   requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
@@ -23,6 +24,7 @@ const button = label => [...document.querySelectorAll('button')].find(element =>
 const dialog = () => document.querySelector('.profile-reminder');
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   account = { userId: '1', firstName: 'New', lastName: 'Student', email: 'reminder@example.test', phone: '0801234567', gender: '',
     dateOfBirth: '2000-01-01', university: '', profileImage: '', bio: '', instagram: '', lineId: '', profileReminderSeen: false };
   mock.method(api, 'me', async () => structuredClone(account));
