@@ -80,6 +80,33 @@ test('vacancy and joint-search filters count actual occupants, including residen
   assert.deepEqual((await api('/my/rooms?minSlots=2', 1)).body.rooms.map(r => r.roomId), [rental.roomId]);
 });
 
+test('total capacity filters exact room size independently of vacancies and combines with existing filters', async t => {
+  const { api, create, request, approve } = await fixture(t);
+  const browse = query => api(`/rooms?status=available&page=1&pageSize=12&${query}`, null);
+  const empty = await browse('capacity=2');
+  assert.equal(empty.status, 200); assert.equal(empty.body.total, 0); assert.deepEqual(empty.body.rooms, []);
+  const rental = await create({ price: 5000 });
+  const shared = await create({ ownerIsResident: true, price: 6000 });
+  const larger = await create({ capacity: 3, price: 7000 });
+  const single = await create({ capacity: 1, price: 4000 });
+  const full = await create({ ownerIsResident: true });
+  assert.equal((await approve(await request(full.roomId, 2))).status, 200);
+  const exact = await browse('capacity=2');
+  assert.equal(exact.body.total, 2);
+  assert.deepEqual(exact.body.rooms.map(room => room.roomId).sort((a,b) => a-b), [rental.roomId, shared.roomId]);
+  assert.deepEqual(exact.body.rooms.map(room => room.availableSlots).sort(), [1, 2]);
+  const combined = await browse('capacity=2&minPrice=4500&maxPrice=6500&minSlots=1&priceBasis=per_room&sort=price_desc&q=ห้องให้เช่าทดสอบ');
+  assert.deepEqual(combined.body.rooms.map(room => room.roomId), [shared.roomId, rental.roomId]);
+  assert.deepEqual((await browse('capacity=2&minSlots=2')).body.rooms.map(room => room.roomId), [rental.roomId]);
+  assert.deepEqual((await browse('capacity=1')).body.rooms.map(room => room.roomId), [single.roomId]);
+  assert.equal((await browse('capacity=100')).body.total, 0);
+  assert.equal((await browse('')).body.total, 4);
+  assert.ok((await browse('')).body.rooms.some(room => room.roomId === larger.roomId));
+  for (const capacity of ['0', '-1', '1.5', '101', 'abc', '2 OR 1=1']) {
+    assert.equal((await browse(new URLSearchParams({ capacity }).toString())).status, 400, capacity);
+  }
+});
+
 test('changing owner residence cannot overbook, preserves paused status and applies capacity changes atomically', async t => {
   const { api, create, request, approve } = await fixture(t);
   const room = await create({ capacity: 1 });

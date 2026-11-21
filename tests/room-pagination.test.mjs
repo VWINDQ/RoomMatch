@@ -28,7 +28,7 @@ test('RM-12 PostgreSQL pagination counts, filters, orders and clamps beyond 100 
     assert.deepEqual(actual, expected.map(room => room.room_id));
     assert.equal(new Set(actual).size, 125);
   }
-  const filtered = await get('page=2&pageSize=12&minPrice=1100&maxPrice=1300&minSlots=3&priceBasis=per_room&status=available&sort=price_asc');
+  const filtered = await get('page=2&pageSize=12&capacity=4&minPrice=1100&maxPrice=1300&minSlots=3&priceBasis=per_room&status=available&sort=price_asc');
   const expected = fixture.filter(room => room.price >= 1100 && room.price <= 1300 && room.price_basis === 'per_room').sort((a,b) => a.price-b.price || b.room_id-a.room_id);
   assert.equal(filtered.total, expected.length);
   assert.deepEqual(filtered.rooms.map(room => Number(room.roomId)), expected.slice(12,24).map(room => room.room_id));
@@ -42,6 +42,7 @@ test('RM-12 PostgreSQL pagination counts, filters, orders and clamps beyond 100 
   assert.equal((await get('pageSize=25')).page, 1);
   assert.equal((await get('pageSize=25')).rooms.length, 25);
   assert.equal((await get('page=1&minSlots=4')).total, 0);
+  assert.equal((await get('page=2&pageSize=12&capacity=3')).total, 0);
   assert.equal((await get('page=1&sort=toString')).status, 400);
   assert.equal((await get('limit=10&offset=100')).rooms.length, 10);
   assert.equal((await get('limit=1e2')).rooms.length, 100); // Preserve numeric forms accepted by the legacy API.

@@ -93,7 +93,7 @@ export type Match = {
   otherRole?: 'owner' | 'member';
 };
 
-export type RoomFilters = { minPrice: string; maxPrice: string; minSlots: string; priceBasis: string };
+export type RoomFilters = { minPrice: string; maxPrice: string; capacity: string; minSlots: string; priceBasis: string };
 
 export type FriendProfile = {
   userId: string; firstName: string; lastName: string; university: string;
