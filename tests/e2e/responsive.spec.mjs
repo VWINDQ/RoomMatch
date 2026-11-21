@@ -107,12 +107,18 @@ test('filter sheet scrolls, validates, applies and closes', async ({ page, envir
   await dialog.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('ราคาสูงสุด');
   await noOverflow(page);
+  await reachable(dialog.getByRole('spinbutton', { name: /^จำนวนผู้พักทั้งหมด/ }));
   await reachable(dialog.getByRole('spinbutton', { name: /^ที่ว่างสำหรับผู้พักใหม่อย่างน้อย/ }));
   await reachable(dialog.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }));
   await capture(page, testInfo, 'filter-sheet');
   await dialog.getByRole('button', { name: 'ล้างตัวกรอง', exact: true }).click();
+  await dialog.getByRole('spinbutton', { name: /^จำนวนผู้พักทั้งหมด/ }).fill('2');
   await dialog.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/capacity=2/);
+  await expect(page.getByText('พักได้ทั้งหมด 2 คน', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'ล้างทั้งหมด', exact: true }).click();
+  await expect(page).not.toHaveURL(/capacity=/);
   await page.getByRole('button', { name: /^ตัวกรอง/ }).click();
   await page.keyboard.press('Escape'); await expect(dialog).toHaveCount(0);
 });
