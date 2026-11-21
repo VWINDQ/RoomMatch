@@ -1,7 +1,7 @@
 ﻿import { Skeleton } from '../components/Skeleton';
 import { AtSign, HeartHandshake, LogOut, Mail, MessageCircle, Pencil, Phone, RefreshCw, UserRound } from 'lucide-react';
 import { useEffect, useRef, useState, type FocusEvent, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
 import { ProfilePhoto } from '../components/ProfilePhoto';
@@ -33,11 +33,18 @@ function profileFieldError(name: string, value: string) {
 }
 
 export function ProfilePage() {
+  const location = useLocation();
   const navigate = useNavigate(); const { refreshUser, notify, logout, registerLogoutGuard } = useApp(); const [profile, setProfile] = useState<ProfileBundle | null>(null); const [editing, setEditing] = useState(false); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(''); const [errors, setErrors] = useState<Record<string, string>>({}); const [reload, setReload] = useState(0);
   const [images, setImages] = useState<SelectedImage[]>([]);
   const [checkingImages, setCheckingImages] = useState(false);
   const [accountType, setAccountType] = useState('');
   const [clearedUniversity, setClearedUniversity] = useState(false);
+  useEffect(() => {
+    const state = location.state as { editProfile?: boolean } | null;
+    if (!state?.editProfile) return;
+    setEditing(true);
+    navigate(location.pathname + location.search + location.hash, { replace: true, state: { ...state, editProfile: undefined } });
+  }, [location, navigate]);
   const [focusErrors, setFocusErrors] = useState(true);
   const formRef = useRef<HTMLFormElement>(null);
   const submitLocked = useRef(false);
