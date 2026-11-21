@@ -332,7 +332,7 @@ async function queryUser(db, userId) {
   return await db.prepare('SELECT * FROM USER WHERE user_id = ?').get(userId);
 }
 
-async function authenticate(db, request, { optional = false, allowPending = false } = {}) {
+async function authenticate(db, request, { optional = false } = {}) {
   const token = bearerToken(request);
   if (!token) {
     if (optional) return null;
@@ -341,10 +341,6 @@ async function authenticate(db, request, { optional = false, allowPending = fals
   const userId = verifyToken(token);
   const user = await queryUser(db, userId);
   assert(user && user.is_active, 401, 'Authentication required');
-  if (user.profile_setup_pending && !allowPending) {
-    if (optional) return null;
-    throw new HttpError(403, 'กรุณากรอกโปรไฟล์ให้ครบก่อนใช้งาน');
-  }
   return user;
 }
 
@@ -541,7 +537,7 @@ function matchPath(pathname, pattern) {
 }
 
 export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY, uploadDirectory, oauth } = {}) {
-  const handleOAuth = createGoogleOAuthHandler(db, { ...oauth, sendJson, userDto, logger });
+  const handleOAuth = createGoogleOAuthHandler(db, { ...oauth, readJson, sendJson, userDto, logger });
   const imageStorage = createImageStorage({ directory: uploadDirectory, db });
   const imageUrl = (value, userId, field) => imageStorage.validateUrl(value, userId, url => webUrl(url, field, { required: true }));
   const handleRoomRequest = createRoomRequestHandler(db, {
@@ -576,7 +572,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (await handleOAuth(request, response, url)) return;
 
       if (request.method === 'POST' && pathname === '/api/uploads/images') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         const imageUrl = await imageStorage.upload(request, user.user_id);
         sendJson(response, 201, { imageUrl }, request);
         return;
@@ -644,13 +640,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'GET' && pathname === '/api/auth/me') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         sendJson(response, 200, { user: userDto(user, { privateFields: true }) }, request);
         return;
       }
 
       if (request.method === 'GET' && pathname === '/api/profile') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         const lifestyle = await db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id);
         const preference = await db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id);
         sendJson(response, 200, {
@@ -662,14 +658,14 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'POST' && pathname === '/api/profile/reminder/acknowledge') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         await db.prepare('UPDATE USER SET profile_reminder_seen_at = clock_timestamp() WHERE user_id = ? AND profile_reminder_seen_at IS NULL').run(user.user_id);
         sendJson(response, 200, { acknowledged: true }, request);
         return;
       }
 
       if (request.method === 'PATCH' && pathname === '/api/profile') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         const body = await readJson(request);
         const pending = user.profile_setup_pending;
         const changingAccount = pending || Object.hasOwn(body, 'accountType') || (user.account_type && Object.hasOwn(body, 'university'));

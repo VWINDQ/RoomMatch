@@ -9,6 +9,7 @@ type AppState = {
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   completeOAuth: (flow: string) => Promise<void>;
+  registerGoogle: (flow: string, names: { firstName: string; lastName: string }) => Promise<void>;
   consumeRegistrationReminder: () => boolean;
   logout: () => boolean; registerLogoutGuard: (guard: () => boolean) => () => void;
   refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string, tone?: ToastTone) => void;
@@ -131,6 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, authLoading, authError, toast, toastTone, notify, refreshUser, retryAuth, completeOAuth, consumeRegistrationReminder,
     login: (email, password) => signIn(() => api.login({ email, password })),
     register: payload => signIn(() => api.register(payload), true),
+    registerGoogle: (flow, names) => signIn(() => api.confirmGoogleRegistration(flow, names), true),
     logout, registerLogoutGuard,
   }), [authError, authLoading, completeOAuth, consumeRegistrationReminder, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, toastTone, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;

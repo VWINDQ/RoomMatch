@@ -11,6 +11,7 @@ import { GoogleSignIn } from '../components/GoogleSignIn';
 import { AccountProfileFields } from '../components/AccountProfileFields';
 import { readUniversity } from '../components/UniversityPicker';
 import { validateAccountProfile } from '../../shared/accountProfile.js';
+import { registrationNameError, registrationNameFields } from '../../shared/registrationNames.js';
 
 const oauthErrors: Record<string, string> = {
   cancelled: 'ยกเลิกการเข้าสู่ระบบด้วย Google แล้ว คุณสามารถลองใหม่ได้',
@@ -23,8 +24,7 @@ const oauthErrors: Record<string, string> = {
 };
 
 const registrationFields = {
-  firstName: { label: 'ชื่อ', max: 100, required: true },
-  lastName: { label: 'นามสกุล', max: 100, required: true },
+  ...registrationNameFields,
   phone: { label: 'เบอร์โทรศัพท์', max: 10, required: true },
   gender: { label: 'เพศ', max: 50, required: false },
   dateOfBirth: { label: 'วันเกิด', max: 10, required: true },
@@ -41,6 +41,7 @@ function isRegistrationField(name: string): name is RegistrationField {
 }
 
 function registrationFieldError(name: RegistrationField, raw: string) {
+  if (name === 'firstName' || name === 'lastName') return registrationNameError(name, raw);
   const value = raw.trim();
   const { label, max, required } = registrationFields[name];
   if (!value) return required ? `กรุณากรอก${label}` : '';

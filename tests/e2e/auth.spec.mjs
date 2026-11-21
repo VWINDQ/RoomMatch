@@ -96,7 +96,8 @@ test('registration validates touched fields and submission, then shows duplicate
   await field('email').fill(`registration-${randomBytes(6).toString('hex')}@example.test`);
   await expect(errors).toHaveCount(0);
   await submit.click();
-  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page).toHaveURL(/\/rooms$/);
+  await expect(page.getByRole('dialog', { name: 'เติมโปรไฟล์ให้เพื่อนรู้จักคุณ' })).toBeVisible();
   expect(requests).toBe(2);
 });
 
@@ -134,6 +135,82 @@ test('Google cancellation and disabled configuration keep password login usable'
   await noOverflow(page);
 });
 
+test('Google registration previews verified details and creates a session only after confirmation', async ({ page, context, environment }) => {
+  const configuration = { clientId: 'browser-test-client', clientSecret: 'browser-test-secret', origin: 'http://127.0.0.1' };
+  const app = await startRoomMatchServer({ db: environment.db, port: 0, oauth: { configuration }, logger: { error() {} } });
+  configuration.origin = `http://127.0.0.1:${app.server.address().port}`;
+  const subject = `browser-${randomBytes(6).toString('hex')}`;
+  const email = `${subject}@example.test`;
+  const account = () => environment.db.prepare('SELECT first_name, last_name FROM USER WHERE email=?').get(email);
+  const signup = page.getByRole('button', { name: 'สมัครสมาชิก', exact: true });
+  const reminder = page.getByRole('dialog', { name: 'เติมโปรไฟล์ให้เพื่อนรู้จักคุณ' });
+  async function registrationTicket({ expired = false } = {}) {
+    const flow = randomBytes(32).toString('base64url');
+    const ticket = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(Date.now() + (expired ? -60_000 : 600_000)).toISOString();
+    await environment.db.prepare('INSERT INTO oauth_ticket(ticket_hash,registration,expires_at) VALUES (?,?,?)')
+      .run(createHash('sha256').update(ticket).digest('hex'), JSON.stringify({ subject, email, firstName: 'Google', lastName: 'Student' }), expiresAt);
+    await context.addCookies([{ name: `roommatch_oauth_ticket_${flow}`, value: ticket, url: configuration.origin, httpOnly: true, sameSite: 'Strict' }]);
+    return `${configuration.origin}/auth/google/register?flow=${flow}`;
+  }
+  try {
+    await page.goto(`${configuration.origin}/auth/google/register`);
+    await expect(page.getByRole('alert')).toContainText('กรุณาเริ่มใหม่');
+    await expect(signup).toHaveCount(0);
+    await page.goto(await registrationTicket({ expired: true }));
+    await expect(page.getByRole('alert')).toContainText('กรุณาเริ่มใหม่');
+    await expect(signup).toHaveCount(0);
+    const cancelled = await registrationTicket();
+    await page.goto(cancelled);
+    await page.getByRole('button', { name: 'ยกเลิก', exact: true }).click();
+    await expect(page).toHaveURL(/\/login$/);
+    await page.goto(cancelled);
+    await expect(page.getByRole('alert')).toContainText('กรุณาเริ่มใหม่');
+    await expect(signup).toHaveCount(0);
+
+    await page.goto(await registrationTicket());
+    await expect(page.getByRole('heading', { name: 'สมัครสมาชิกด้วย Google' })).toBeVisible();
+    const emailInput = page.getByRole('textbox', { name: 'อีเมล' });
+    await expect(emailInput).toHaveValue(email);
+    await expect(emailInput).toHaveAttribute('readonly', '');
+    await expect(page.locator('input[type=password]')).toHaveCount(0);
+    const firstName = page.locator('input[name=firstName]');
+    const lastName = page.locator('input[name=lastName]');
+    await expect(firstName).toHaveValue('Google');
+    await expect(lastName).toHaveValue('Student');
+    expect(await account()).toBeFalsy();
+    expect(await page.evaluate(() => sessionStorage.getItem('roommatch:token'))).toBeNull();
+    await firstName.fill('   ');
+    await lastName.fill('');
+    await signup.click();
+    await expect(page.locator('.field-error')).toHaveCount(2);
+    expect(await account()).toBeFalsy();
+    await firstName.fill('Edited');
+    await lastName.fill('Confirmed');
+    await noOverflow(page);
+    let confirmations = 0;
+    page.on('request', request => { if (request.url().includes('/api/auth/oauth/registration/confirm?')) confirmations++; });
+    await page.locator('form').evaluate(form => { form.requestSubmit(); form.requestSubmit(); });
+    await expect(page).toHaveURL(/\/rooms$/);
+    await expect(reminder).toBeVisible();
+    expect(confirmations).toBe(1);
+    expect(await account()).toMatchObject({ first_name: 'Edited', last_name: 'Confirmed' });
+    expect(await page.evaluate(() => Boolean(sessionStorage.getItem('roommatch:token')))).toBe(true);
+    await reminder.getByRole('button', { name: 'ไปเติมโปรไฟล์', exact: true }).click();
+    await expect(page).toHaveURL(/\/profile$/);
+    await expect(page.locator('.profile-editor')).toBeVisible();
+    await expect(reminder).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/rooms$/);
+    await expect(reminder).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator('.app-shell')).toBeVisible();
+    await expect(reminder).toHaveCount(0);
+  } finally {
+    await new Promise(resolve => app.server.close(resolve));
+  }
+});
+
 test('browser exchanges an HttpOnly Google ticket once and establishes the normal app session', async ({ page, context, environment }) => {
   const configuration = { clientId: 'browser-test-client', clientSecret: 'browser-test-secret', origin: 'http://127.0.0.1' };
   const app = await startRoomMatchServer({ db: environment.db, port: 0, oauth: { configuration }, logger: { error() {} } });
@@ -165,13 +242,13 @@ test('browser exchanges an HttpOnly Google ticket once and establishes the norma
     await environment.db.prepare(`INSERT INTO oauth_ticket(ticket_hash,user_id,expires_at)
       VALUES (?,?,clock_timestamp()+interval '1 minute')`).run(createHash('sha256').update(setupTicket).digest('hex'), pending.user_id);
     await context.addCookies([{ name: `roommatch_oauth_ticket_${setupFlow}`, value: setupTicket, url: configuration.origin, httpOnly: true, sameSite: 'Strict' }]);
-    await page.goto(`${configuration.origin}/auth/google/complete?returnTo=%2Fprofile&flow=${setupFlow}`);
-    await expect(page).toHaveURL(/\/profile$/);
-    await page.goto(`${configuration.origin}/rooms`);
-    await expect(page).toHaveURL(/\/profile$/);
+    await page.goto(`${configuration.origin}/auth/google/complete?flow=${setupFlow}`);
+    await expect(page).toHaveURL(/\/rooms$/);
+    const reminder = page.getByRole('dialog', { name: 'เติมโปรไฟล์ให้เพื่อนรู้จักคุณ' });
+    await expect(reminder).toHaveCount(0);
+    await page.goto(`${configuration.origin}/profile`);
     const profile = page.locator('.profile-editor');
     await expect(page.locator('.profile-identity')).toContainText('onboarding@example.test');
-    const reminder = page.getByRole('dialog', { name: 'เติมโปรไฟล์ให้เพื่อนรู้จักคุณ' });
     await expect(reminder).toHaveCount(0);
     await profile.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง' }).click();
     const field = name => profile.locator(`[name="${name}"]`);

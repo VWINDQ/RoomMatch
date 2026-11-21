@@ -63,8 +63,16 @@ async function fixture(t, { seed = false, config = configuration } = {}) {
   const exchange = (cookie, origin = config?.origin, flow = /_ticket_([A-Za-z0-9_-]{43})=/.exec(cookie)?.[1] ?? '') => request(`/api/auth/oauth/session?flow=${encodeURIComponent(flow)}`, {
     method: 'POST', headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' }, body: '{}',
   });
-  return { db, request, start, callback, exchange, exchanges: () => exchanges };
+  const registration = (action, cookie, body = {}, flow = /_ticket_([A-Za-z0-9_-]{43})=/.exec(cookie)?.[1] ?? '') =>
+    request(`/api/auth/oauth/registration/${action}?flow=${encodeURIComponent(flow)}`, {
+      method: 'POST', headers: { Cookie: cookie, Origin: config.origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+  return { db, request, start, callback, exchange, registration, exchanges: () => exchanges };
 }
+
+const ticketHeader = response => response.headers.getSetCookie().find(value => /_ticket_[A-Za-z0-9_-]{43}=.+;/.test(value));
+const ticketCookie = response => ticketHeader(response).split(';')[0];
+const confirmedNames = { firstName: ' Confirmed ', lastName: ' Student ' };
 
 test('Google OAuth config is optional, complete and HTTPS-only outside local development', () => {
   assert.equal(readGoogleOAuthConfiguration({}), null);
@@ -98,37 +106,59 @@ test('disabled Google OAuth exposes no secrets and password sign-in still works'
   assert.equal((await f.db.prepare('SELECT password_hash FROM USER WHERE user_id=1').get()).password_hash, upgraded);
 });
 
-test('Google login verifies identity and exchanges a one-time HttpOnly ticket for the normal app session', async t => {
+test('Google verifies identity, requires confirmation to create an account, then exchanges returning login tickets', async t => {
   const f = await fixture(t);
   assert.deepEqual(await (await f.request('/api/auth/oauth/providers')).json(), { google: true });
   const attempt = await f.start('/rooms/5?tab=photos#image');
   const callback = await f.callback(attempt);
   assert.equal(callback.status, 303);
-  assert.equal(callback.headers.get('location'), `${configuration.origin}/auth/google/complete?returnTo=%2Fprofile&flow=${attempt.state}`);
+  assert.equal(callback.headers.get('location'), `${configuration.origin}/auth/google/register?flow=${attempt.state}`);
   assert.equal(callback.headers.get('cache-control'), 'no-store');
   assert.equal(callback.headers.get('referrer-policy'), 'no-referrer');
-  const ticket = callback.headers.getSetCookie().find(value => /_ticket_[A-Za-z0-9_-]{43}=.+;/.test(value));
-  assert.match(ticket, /HttpOnly; Path=\/; SameSite=Strict; Max-Age=60/);
-  const cookie = ticket.split(';')[0];
+  assert.match(ticketHeader(callback), /HttpOnly; Path=\/; SameSite=Strict; Max-Age=600/);
+  const cookie = ticketCookie(callback);
   const stored = await f.db.prepare('SELECT * FROM oauth_ticket').get();
   assert.equal(stored.ticket_hash, digest(cookie.split('=')[1]));
+  assert.equal(stored.user_id, null);
+  assert.equal((await f.db.prepare('SELECT count(*) AS count FROM USER').get()).count, 0);
+  assert.equal((await f.db.prepare('SELECT count(*) AS count FROM oauth_identity').get()).count, 0);
   assert.equal((await f.exchange(cookie, 'https://evil.test')).status, 403);
-  const session = await f.exchange(cookie);
-  assert.equal(session.status, 200);
+  assert.equal((await f.exchange(cookie)).status, 401);
+  assert.deepEqual(await (await f.registration('preview', cookie)).json(), { email: 'google@example.test', firstName: 'Google', lastName: 'Student' });
+  const invalid = await f.registration('confirm', cookie, { firstName: '   ', lastName: '' });
+  assert.equal(invalid.status, 400);
+  assert.deepEqual(Object.keys((await invalid.json()).fieldErrors), ['firstName', 'lastName']);
+  assert.equal((await f.db.prepare('SELECT count(*) AS count FROM USER').get()).count, 0);
+  const session = await f.registration('confirm', cookie, { ...confirmedNames, email: 'forged@example.test', subject: 'forged' });
+  assert.equal(session.status, 201);
   const body = await session.json();
   assert.equal(verifyToken(body.token), Number(body.user.userId));
   assert.equal(body.user.email, 'google@example.test');
-  assert.equal(body.user.profileSetupPending, true);
+  assert.equal(body.user.profileSetupPending, false);
+  assert.equal(body.user.firstName, 'Confirmed');
+  assert.equal(body.user.lastName, 'Student');
   assert.equal(body.user.password_hash, undefined);
-  assert.equal((await f.exchange(cookie)).status, 401);
+  assert.equal((await f.registration('confirm', cookie, confirmedNames)).status, 401);
   const account = await f.db.prepare('SELECT * FROM USER').get();
   assert.equal(account.password_hash, null);
+  assert.equal(account.first_name, 'Confirmed');
+  assert.equal(account.last_name, 'Student');
+  assert.equal((await f.db.prepare('SELECT subject FROM oauth_identity').get()).subject, 'google-subject-1');
   const passwordLogin = await f.request('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: account.email, password: 'anything' }) });
   assert.equal(passwordLogin.status, 401);
-  const repeat = await f.callback(await f.start('/rooms/5?tab=photos#image'), { claims: { email: 'changed@example.test' } });
-  assert.equal(new URL(repeat.headers.get('location')).searchParams.get('returnTo'), '/profile');
+  // Accounts created by the previous flow may still have unfinished setup.
+  await f.db.prepare('UPDATE USER SET profile_setup_pending=TRUE').run();
+  const repeat = await f.callback(await f.start(), { claims: { email: 'changed@example.test' } });
+  assert.equal(new URL(repeat.headers.get('location')).searchParams.get('returnTo'), '/rooms');
+  const loginCookie = ticketCookie(repeat);
+  assert.match(ticketHeader(repeat), /Max-Age=60/);
+  assert.equal((await f.registration('preview', loginCookie)).status, 401);
+  const returningSession = await f.exchange(loginCookie);
+  assert.equal(returningSession.status, 200);
+  assert.equal((await returningSession.json()).user.email, 'google@example.test');
+  assert.equal((await f.exchange(loginCookie)).status, 401);
   const headers = { Authorization: `Bearer ${body.token}`, 'Content-Type': 'application/json' };
-  assert.equal((await f.request('/api/friends', { headers })).status, 403);
+  assert.equal((await f.request('/api/friends', { headers })).status, 200);
   for (const dateOfBirth of ['', '2001-02-29', '2999-01-01']) {
     const invalid = await f.request('/api/profile', { method: 'PATCH', headers, body: JSON.stringify({ dateOfBirth, accountType: 'student', phone: '0812345678' }) });
     assert.equal(invalid.status, 400);
@@ -170,6 +200,26 @@ test('OAuth state requires its initiating browser, expires, and can only be cons
   assert.equal((await f.db.prepare('SELECT count(*) AS count FROM oauth_attempt').get()).count, 0);
 });
 
+test('Google signup requires its browser ticket, supports revocation and expiry, and consumes a successful confirmation once', async t => {
+  const f = await fixture(t);
+  const attempt = await f.start();
+  const cookie = ticketCookie(await f.callback(attempt, { claims: { given_name: null, family_name: null } }));
+  assert.deepEqual(await (await f.registration('preview', cookie)).json(), { email: 'google@example.test', firstName: '', lastName: '' });
+  assert.equal((await f.registration('confirm', '', confirmedNames, attempt.state)).status, 401);
+  assert.equal((await f.registration('cancel', cookie)).status, 200);
+  assert.equal((await f.registration('preview', cookie)).status, 401);
+  assert.equal((await f.registration('confirm', cookie, confirmedNames)).status, 401);
+  const expired = ticketCookie(await f.callback(await f.start()));
+  await f.db.prepare("UPDATE oauth_ticket SET expires_at=clock_timestamp()-interval '1 second'").run();
+  assert.equal((await f.registration('preview', expired)).status, 401);
+  assert.equal((await f.registration('confirm', expired, confirmedNames)).status, 401);
+  assert.equal((await f.db.prepare('SELECT count(*) AS count FROM USER').get()).count, 0);
+  const restarted = ticketCookie(await f.callback(await f.start()));
+  const results = await Promise.all([1, 2].map(() => f.registration('confirm', restarted, confirmedNames)));
+  assert.deepEqual(results.map(response => response.status).sort(), [201, 401]);
+  assert.equal((await f.db.prepare('SELECT count(*) AS count FROM USER').get()).count, 1);
+});
+
 test('forged, expired, wrong-issuer/audience/nonce and unverified Google identities cannot sign in', async t => {
   const f = await fixture(t);
   for (const options of [
@@ -191,23 +241,28 @@ test('Google cannot take over matching local email and inactive accounts cannot 
   const conflict = await f.callback(await f.start(), { claims: { email: local.email.toUpperCase() } });
   assert.match(conflict.headers.get('location'), /oauth_error=email_exists$/);
   assert.equal((await f.db.prepare('SELECT count(*) AS count FROM oauth_identity').get()).count, 0);
-  await f.callback(await f.start());
+  const signup = await f.callback(await f.start());
+  assert.equal((await f.registration('confirm', ticketCookie(signup), confirmedNames)).status, 201);
   await f.db.prepare("UPDATE USER SET is_active=0 WHERE email='google@example.test'").run();
   assert.match((await f.callback(await f.start())).headers.get('location'), /oauth_error=account_unavailable$/);
 });
 
-test('concurrent first logins create one identity; tickets expire and recheck active status', async t => {
+test('concurrent confirmations create one identity and expired login tickets cannot be exchanged', async t => {
   const f = await fixture(t);
   const attempts = await Promise.all([f.start(), f.start()]);
   const callbacks = await Promise.all(attempts.map(attempt => f.callback(attempt)));
-  for (const response of callbacks) assert.match(response.headers.get('location'), /\/auth\/google\/complete/);
+  for (const response of callbacks) assert.match(response.headers.get('location'), /\/auth\/google\/register/);
+  const cookies = callbacks.map(ticketCookie);
+  const results = await Promise.all(cookies.map(cookie => f.registration('confirm', cookie, confirmedNames)));
+  assert.deepEqual(results.map(response => response.status).sort(), [201, 409]);
   assert.equal((await f.db.prepare('SELECT count(*) AS count FROM USER').get()).count, 1);
   assert.equal((await f.db.prepare('SELECT count(*) AS count FROM oauth_identity').get()).count, 1);
-  const cookies = callbacks.map(response => response.headers.getSetCookie().find(value => /_ticket_[A-Za-z0-9_-]{43}=.+;/.test(value)).split(';')[0]);
-  await f.db.prepare("UPDATE oauth_ticket SET expires_at=clock_timestamp()-interval '1 second' WHERE ticket_hash=?").run(digest(cookies[0].split('=')[1]));
-  assert.equal((await f.exchange(cookies[0])).status, 401);
+  const loginCookies = [];
+  for (let index = 0; index < 2; index++) loginCookies.push(ticketCookie(await f.callback(await f.start())));
+  await f.db.prepare("UPDATE oauth_ticket SET expires_at=clock_timestamp()-interval '1 second' WHERE ticket_hash=?").run(digest(loginCookies[0].split('=')[1]));
+  assert.equal((await f.exchange(loginCookies[0])).status, 401);
   await f.db.prepare('UPDATE USER SET is_active=0').run();
-  assert.equal((await f.exchange(cookies[1])).status, 401);
+  assert.equal((await f.exchange(loginCookies[1])).status, 401);
 });
 
 test('two Google logins sharing a cookie jar exchange only their own tickets', async t => {
@@ -244,12 +299,12 @@ test('two Google logins sharing a cookie jar exchange only their own tickets', a
   assert.equal((await f.exchange(cookies(), configuration.origin, '')).status, 401);
   assert.equal((await f.exchange(cookies(), configuration.origin, 'x'.repeat(43))).status, 401);
   // Exchange in reverse order, as independently loading tabs may do.
-  const secondSession = await f.exchange(cookies(), configuration.origin, second.state);
-  assert.equal(secondSession.status, 200);
+  const secondSession = await f.registration('confirm', cookies(), confirmedNames, second.state);
+  assert.equal(secondSession.status, 201);
   assert.equal((await secondSession.json()).user.email, 'second-google@example.test');
   remember(secondSession);
-  const firstSession = await f.exchange(cookies(), configuration.origin, first.state);
-  assert.equal(firstSession.status, 200);
+  const firstSession = await f.registration('confirm', cookies(), confirmedNames, first.state);
+  assert.equal(firstSession.status, 201);
   assert.equal((await firstSession.json()).user.email, 'google@example.test');
   remember(firstSession);
   assert.equal(jar.size, 0);

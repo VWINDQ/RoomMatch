@@ -284,6 +284,17 @@ export const api = {
   async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
   async oauthProviders() { const result = await request<JsonObject>('/auth/oauth/providers'); return { google: result.google === true }; },
   async completeOAuth(flow: string) { return parseAuthSession(await request<unknown>(`/auth/oauth/session?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: '{}' })); },
+  async googleRegistrationPreview(flow: string) {
+    const result = object(await request<unknown>(`/auth/oauth/registration/preview?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: '{}' }));
+    if (typeof result.email !== 'string' || !result.email || typeof result.firstName !== 'string' || typeof result.lastName !== 'string') throw new InvalidAuthResponseError();
+    return { email: result.email, firstName: result.firstName, lastName: result.lastName };
+  },
+  async confirmGoogleRegistration(flow: string, names: { firstName: string; lastName: string }) {
+    return parseAuthSession(await request<unknown>(`/auth/oauth/registration/confirm?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: JSON.stringify(names) }));
+  },
+  async cancelGoogleRegistration(flow: string) {
+    await request(`/auth/oauth/registration/cancel?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: '{}' });
+  },
   async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
   roomsPage: (params: URLSearchParams) => requestRoomPage('/rooms', params),
   favoritesPage: (params: URLSearchParams) => requestRoomPage('/favorites', params),

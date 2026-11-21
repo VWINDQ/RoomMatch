@@ -13,15 +13,20 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document, l
   IS_REACT_ACT_ENVIRONMENT: true });
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 const { createRoot } = await import('react-dom/client');
-const { createMemoryRouter, RouterProvider, Outlet } = await import('react-router-dom');
+const { createMemoryRouter, RouterProvider, Outlet, useNavigate } = await import('react-router-dom');
 const { AppProvider, useApp } = await import('../src/AppContext.tsx');
 const { ProfilePage } = await import('../src/pages/ProfilePage.tsx');
+const { ProfileReminder } = await import('../src/components/ProfileReminder.tsx');
 const { api } = await import('../src/lib/api.ts');
 const account = { userId: '1', firstName: 'New', lastName: 'Student', email: 'reminder@example.test', phone: '0801234567', gender: '',
   dateOfBirth: '2000-01-01', university: '', profileImage: '', bio: '', instagram: '', lineId: '', profileReminderSeen: false };
 const credentials = { ...account, password: 'test-password', accountType: 'general' };
 let root, router, app;
 function Session() { app = useApp(); return createElement(Outlet); }
+function Rooms() {
+  const navigate = useNavigate();
+  return createElement(ProfileReminder, { onEdit: () => navigate('/profile', { state: { editProfile: true } }) });
+}
 const button = label => [...document.querySelectorAll('button')].find(element => element.textContent === label);
 const dialog = () => document.querySelector('.profile-reminder');
 beforeEach(() => {
@@ -38,16 +43,16 @@ after(() => dom.window.close());
 
 async function mount(path = '/rooms') {
   router = createMemoryRouter([{ element: createElement(AppProvider, null, createElement(Session)), children: [
-    { path: '/rooms', element: createElement('h1', null, 'Rooms') }, { path: '/profile', element: createElement(ProfilePage) },
+    { path: '/rooms', element: createElement(Rooms) }, { path: '/profile', element: createElement(ProfilePage) },
   ] }], { initialEntries: [path] });
   await act(async () => root.render(createElement(StrictMode, null, createElement(RouterProvider, { router }))));
 }
 
 async function register() {
-  await mount();
+  await mount('/profile');
   await act(async () => app.register(credentials));
   assert.equal(dialog(), null);
-  await act(async () => router.navigate('/profile'));
+  await act(async () => router.navigate('/rooms'));
   assert.ok(dialog());
   assert.equal(document.querySelectorAll('[role="dialog"]').length, 1);
   assert.equal(document.body.style.overflow, 'hidden');
@@ -58,9 +63,8 @@ test('refreshing while the reminder is open does not show it again', async () =>
   await act(async () => root.unmount());
   router.dispose();
   root = createRoot(document.getElementById('root'));
-  await mount('/profile');
+  await mount();
   assert.equal(dialog(), null);
-  assert.ok(button('แก้ไขโปรไฟล์'));
   assert.equal(document.body.style.overflow, '');
 });
 
@@ -83,7 +87,7 @@ for (const action of ['later', 'close button', 'Escape', 'backdrop']) {
     });
     assert.equal(dialog(), null);
     assert.equal(document.body.style.overflow, '');
-    await act(async () => router.navigate('/rooms'));
+    await act(async () => router.navigate('/profile'));
     await act(async () => router.navigate(-1));
     assert.equal(dialog(), null);
   });
@@ -95,15 +99,15 @@ test('a failed registration and an ordinary login cannot open the reminder', asy
   await act(async () => assert.rejects(() => app.register(credentials), /Email already registered/));
   assert.equal(app.consumeRegistrationReminder(), false);
   await act(async () => app.login(account.email, credentials.password));
-  await act(async () => router.navigate('/profile'));
+  await act(async () => router.navigate('/rooms'));
   assert.equal(dialog(), null);
 });
 
 test('a new login invalidates a registration reminder before the profile is opened', async () => {
-  await mount();
+  await mount('/profile');
   await act(async () => app.register(credentials));
   await act(async () => app.logout());
   await act(async () => app.login(account.email, credentials.password));
-  await act(async () => router.navigate('/profile'));
+  await act(async () => router.navigate('/rooms'));
   assert.equal(dialog(), null);
 });
