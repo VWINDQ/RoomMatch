@@ -38,7 +38,7 @@ async function fixture(t, filename = ':memory:') {
   return { db, api, invite, cancel, close };
 }
 
-const contactFields = ['email', 'phone', 'lineId', 'instagram', 'passwordHash', 'dateOfBirth'];
+const privateFields = ['email', 'phone', 'lineId', 'instagram', 'passwordHash', 'dateOfBirth', 'age'];
 const row = async (db, id) => await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id=?').get(id);
 
 test('sender withdraws pending invitation without sharing contacts or changing room and favorite data', async t => {
@@ -58,9 +58,9 @@ test('sender withdraws pending invitation without sharing contacts or changing r
     assert.equal(listed.length, 1);
     assert.equal(listed[0].status, 'cancelled');
     assert.equal(listed[0].direction, userId === 1 ? 'outgoing' : 'incoming');
-    for (const field of contactFields) assert.equal(field in listed[0].person, false);
+    for (const field of privateFields) assert.equal(field in listed[0].person, false);
   }
-  for (const field of contactFields) assert.equal(field in result.body.connection.person, false);
+  for (const field of privateFields) assert.equal(field in result.body.connection.person, false);
   assert.deepEqual((await api('/friends/connections', 3)).body.connections, []);
   assert.deepEqual(await snapshot(), before);
 });
@@ -128,7 +128,7 @@ test('a sender may withdraw while the recipient is inactive without revealing th
   const result = await cancel(invitation.connectionId);
   assert.equal(result.status, 200);
   assert.equal((await row(db, invitation.connectionId)).status, 'cancelled');
-  for (const field of contactFields) assert.equal(field in result.body.connection.person, false);
+  for (const field of privateFields) assert.equal(field in result.body.connection.person, false);
 });
 
 test('withdrawal and recipient decisions racing have one successful final outcome', async t => {

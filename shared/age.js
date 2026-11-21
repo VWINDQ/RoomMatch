@@ -1,4 +1,4 @@
-export function calculateAge(dateOfBirth: string, today = new Date()): number | null {
+export function calculateAge(dateOfBirth, today = new Date()) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) return null;
   const [year, month, day] = dateOfBirth.split('-').map(Number);
   const birthDate = new Date(0);

@@ -98,6 +98,7 @@ export type RoomFilters = { minPrice: string; maxPrice: string; capacity: string
 
 export type FriendProfile = {
   userId: string; firstName: string; lastName: string; university: string;
+  age: number | null;
   bio: string; profileImage: string; lifestyle: string;
   budgetMin: number | null; budgetMax: number | null;
   lineId?: string; instagram?: string; email?: string; phone?: string;

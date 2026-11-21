@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { calculateAge } from '../src/lib/age.ts';
+import { calculateAge } from '../shared/age.js';
 
 test('age changes on the birthday, including across the year boundary', () => {
   assert.equal(calculateAge('2002-12-07', new Date(2026, 11, 6)), 23);
@@ -18,7 +18,7 @@ test('leap-day birthdays reach the next full year on March 1 in non-leap years',
 
 test('missing, invalid, and future birth dates have no age; newborn age is zero', () => {
   const today = new Date(2026, 10, 12);
-  for (const value of ['', 'invalid', '2002-13-01', '2002-02-29', '2026-11-13']) {
+  for (const value of [null, '', 'invalid', '2002-13-01', '2002-02-29', '2026-11-13']) {
     assert.equal(calculateAge(value, today), null, value);
   }
   assert.equal(calculateAge('2026-11-12', today), 0);

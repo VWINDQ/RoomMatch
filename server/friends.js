@@ -1,3 +1,4 @@
+import { calculateAge } from '../shared/age.js';
 import { assert, HttpError } from './errors.js';
 
 async function writeConnection(db, operation) {
@@ -13,7 +14,7 @@ async function writeConnection(db, operation) {
   }
 }
 
-async function profile(db, row, includeContact = false) {
+async function profile(db, row, isAcceptedFriend = false) {
   const lifestyle = await db.prepare('SELECT lifestyle_name FROM LIFESTYLE WHERE user_id = ?').get(row.user_id);
   const preference = await db.prepare('SELECT budget_min, budget_max FROM PREFERENCE WHERE user_id = ?').get(row.user_id);
   const result = {
@@ -22,8 +23,8 @@ async function profile(db, row, includeContact = false) {
     lifestyle: lifestyle?.lifestyle_name ?? null,
     budgetMin: preference?.budget_min ?? null, budgetMax: preference?.budget_max ?? null,
   };
-  // Contact information is shared only after the recipient explicitly accepts.
-  if (includeContact) Object.assign(result, {
+  if (isAcceptedFriend) Object.assign(result, {
+    age: calculateAge(row.date_of_birth),
     lineId: row.line_id, instagram: row.instagram, email: row.email, phone: row.phone,
   });
   return result;
