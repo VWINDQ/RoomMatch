@@ -5,6 +5,7 @@ import App from './App';
 import './styles.css';
 import './ux.css';
 import './micro-interactions.css';
+import './components/Dropdown.css';
 
 // Keep the existing descendant routes; a data router supports navigation blockers.
 const router = createBrowserRouter([{ path: '*', element: <App/> }]);

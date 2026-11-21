@@ -12,6 +12,8 @@ export function useDialogFocus(open: boolean, onClose: () => void) {
     const controls = () => Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]') || []).filter(el => el.getClientRects().length > 0);
     controls()[0]?.focus();
     const handleKey = (event: KeyboardEvent) => {
+      // A customizable native picker must consume Escape before its containing dialog.
+      if (event.key === 'Escape' && window.CSS?.supports('appearance', 'base-select') && dialogRef.current?.querySelector('select:open')) return;
       if (event.key === 'Escape') { event.preventDefault(); closeRef.current(); }
       if (event.key !== 'Tab') return;
       const items = controls(), first = items[0], last = items[items.length - 1];
