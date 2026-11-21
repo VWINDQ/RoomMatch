@@ -141,7 +141,7 @@ test('Google registration previews verified details and creates a session only a
   configuration.origin = `http://127.0.0.1:${app.server.address().port}`;
   const subject = `browser-${randomBytes(6).toString('hex')}`;
   const email = `${subject}@example.test`;
-  const account = () => environment.db.prepare('SELECT first_name, last_name FROM USER WHERE email=?').get(email);
+  const account = () => environment.db.prepare('SELECT first_name, last_name, phone, gender, date_of_birth, account_type, university, password_hash FROM USER WHERE email=?').get(email);
   const signup = page.getByRole('button', { name: 'สมัครสมาชิก', exact: true });
   const reminder = page.getByRole('dialog', { name: 'เติมโปรไฟล์ให้เพื่อนรู้จักคุณ' });
   async function registrationTicket({ expired = false } = {}) {
@@ -154,6 +154,10 @@ test('Google registration previews verified details and creates a session only a
     return `${configuration.origin}/auth/google/register?flow=${flow}`;
   }
   try {
+    const formFields = () => page.locator('.register-form [name]').evaluateAll(fields =>
+      fields.map(field => ({ name: field.name, required: field.required })).filter(field => field.name !== 'password'));
+    await page.goto(`${configuration.origin}/register`);
+    const emailSignupFields = await formFields();
     await page.goto(`${configuration.origin}/auth/google/register`);
     await expect(page.getByRole('alert')).toContainText('กรุณาเริ่มใหม่');
     await expect(signup).toHaveCount(0);
@@ -174,6 +178,10 @@ test('Google registration previews verified details and creates a session only a
     await expect(emailInput).toHaveValue(email);
     await expect(emailInput).toHaveAttribute('readonly', '');
     await expect(page.locator('input[type=password]')).toHaveCount(0);
+    await expect(page.locator('input[name=password], input[name=confirmPassword]')).toHaveCount(0);
+    expect(await formFields()).toEqual(emailSignupFields);
+    await expect(page.locator('select[name=gender]')).toHaveValue('');
+    await expect(page.locator('select[name=accountType]')).toHaveValue('');
     const firstName = page.locator('input[name=firstName]');
     const lastName = page.locator('input[name=lastName]');
     await expect(firstName).toHaveValue('Google');
@@ -183,10 +191,30 @@ test('Google registration previews verified details and creates a session only a
     await firstName.fill('   ');
     await lastName.fill('');
     await signup.click();
-    await expect(page.locator('.field-error')).toHaveCount(2);
+    await expect(page.locator('.field-error')).toHaveText([
+      'กรุณากรอกชื่อ', 'กรุณากรอกนามสกุล', 'กรุณากรอกเบอร์โทรศัพท์', 'กรุณากรอกวันเกิด', 'กรุณาเลือกสถานะผู้ใช้',
+    ]);
     expect(await account()).toBeFalsy();
     await firstName.fill('Edited');
     await lastName.fill('Confirmed');
+    const phone = page.locator('input[name=phone]');
+    const birthday = page.locator('input[name=dateOfBirth]');
+    await phone.fill('081');
+    await birthday.fill('29/02/2001');
+    await page.locator('select[name=gender]').selectOption('female');
+    await page.locator('select[name=accountType]').selectOption('student');
+    const university = page.getByRole('combobox', { name: /มหาวิทยาลัย/ });
+    await expect(university).toHaveAttribute('aria-required', 'true');
+    await signup.click();
+    await expect(page.locator('.field-error')).toHaveText([
+      'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก', 'กรุณากรอกวันเกิดที่มีอยู่จริง', 'กรุณาเลือกหรือกรอกชื่อมหาวิทยาลัย',
+    ]);
+    expect(await account()).toBeFalsy();
+    await phone.fill('0812345678');
+    await birthday.fill('29/02/2000');
+    await university.fill('Browser University');
+    await page.getByRole('option', { name: 'ไม่พบมหาวิทยาลัยของฉัน', exact: true }).click();
+    await page.locator('input[name=university]').fill('Browser University');
     await noOverflow(page);
     let confirmations = 0;
     page.on('request', request => { if (request.url().includes('/api/auth/oauth/registration/confirm?')) confirmations++; });
@@ -194,11 +222,19 @@ test('Google registration previews verified details and creates a session only a
     await expect(page).toHaveURL(/\/rooms$/);
     await expect(reminder).toBeVisible();
     expect(confirmations).toBe(1);
-    expect(await account()).toMatchObject({ first_name: 'Edited', last_name: 'Confirmed' });
+    expect(await account()).toMatchObject({
+      first_name: 'Edited', last_name: 'Confirmed', phone: '0812345678', gender: 'female', date_of_birth: '2000-02-29',
+      account_type: 'student', university: 'Browser University', password_hash: null,
+    });
     expect(await page.evaluate(() => Boolean(sessionStorage.getItem('roommatch:token')))).toBe(true);
     await reminder.getByRole('button', { name: 'ไปเติมโปรไฟล์', exact: true }).click();
     await expect(page).toHaveURL(/\/profile$/);
     await expect(page.locator('.profile-editor')).toBeVisible();
+    await expect(page.locator('.profile-identity')).toContainText('Browser University');
+    await expect(page.locator('select[name=accountType]')).toHaveValue('student');
+    await expect(page.locator('select[name=gender]')).toHaveValue('female');
+    await expect(page.locator('input[name=phone]')).toHaveValue('0812345678');
+    await expect(page.locator('input[name=dateOfBirth]')).toHaveValue('29/02/2000');
     await expect(reminder).toHaveCount(0);
     await page.goBack();
     await expect(page).toHaveURL(/\/rooms$/);

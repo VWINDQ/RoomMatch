@@ -14,6 +14,7 @@ import { roomPagination, selectRoomPage } from './roomPagination.js';
 import { createImageStorage } from './uploads.js';
 import { validateListing, isWebUrl } from '../shared/listingValidation.js';
 import { validateAccountProfile } from '../shared/accountProfile.js';
+import { registrationNameError } from '../shared/registrationNames.js';
 
 function assertListing(body, options) {
   const fieldErrors = validateListing(body, options);
@@ -156,6 +157,33 @@ function accountDetails(body, requireBirthDate) {
   if (Object.keys(fieldErrors).length) throw new HttpError(400, 'Invalid account profile fields', fieldErrors);
   const university = body.accountType === 'student' ? body.university.trim() : null;
   return { accountType: body.accountType, university, dateOfBirth };
+}
+
+function registrationProfile(body) {
+  const fieldErrors = {};
+  for (const field of ['firstName', 'lastName']) {
+    const message = registrationNameError(field, body[field]);
+    if (message) fieldErrors[field] = message;
+  }
+  let phone, profile, gender;
+  try { phone = phoneNumber(body.phone); }
+  catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    fieldErrors.phone = error.fieldErrors?.phone || (typeof body.phone !== 'string' || !body.phone.trim()
+      ? 'กรุณากรอกเบอร์โทรศัพท์' : 'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก');
+  }
+  try { profile = accountDetails(body, true); }
+  catch (error) {
+    if (!(error instanceof HttpError) || !error.fieldErrors) throw error;
+    Object.assign(fieldErrors, error.fieldErrors);
+  }
+  try { gender = text(body.gender, 'gender', { max: 50 }); }
+  catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    fieldErrors.gender = 'กรุณาระบุเพศให้ถูกต้อง (ไม่เกิน 50 ตัวอักษร)';
+  }
+  if (Object.keys(fieldErrors).length) throw new HttpError(400, 'Invalid registration profile fields', fieldErrors);
+  return { ...profile, firstName: body.firstName.trim(), lastName: body.lastName.trim(), phone, gender };
 }
 
 function splitStoredDescription(stored = '') {
@@ -537,7 +565,7 @@ function matchPath(pathname, pattern) {
 }
 
 export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY, uploadDirectory, oauth } = {}) {
-  const handleOAuth = createGoogleOAuthHandler(db, { ...oauth, readJson, sendJson, userDto, logger });
+  const handleOAuth = createGoogleOAuthHandler(db, { ...oauth, readJson, registrationProfile, sendJson, userDto, logger });
   const imageStorage = createImageStorage({ directory: uploadDirectory, db });
   const imageUrl = (value, userId, field) => imageStorage.validateUrl(value, userId, url => webUrl(url, field, { required: true }));
   const handleRoomRequest = createRoomRequestHandler(db, {
@@ -580,14 +608,11 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
 
       if (request.method === 'POST' && pathname === '/api/auth/register') {
         const body = await readJson(request);
-        const firstName = text(body.firstName, 'firstName', { required: true, max: 100 });
-        const lastName = text(body.lastName, 'lastName', { required: true, max: 100 });
-        const phone = phoneNumber(body.phone);
+        const { firstName, lastName, phone, gender, accountType, university, dateOfBirth } = registrationProfile(body);
         const email = text(body.email, 'email', { required: true, max: 320 }).toLowerCase();
         assert(EMAIL_PATTERN.test(email), 400, 'email must be valid');
         const password = text(body.password, 'password', { required: true, max: 256 });
         assert(password.length >= 8, 400, 'password must be at least 8 characters');
-        const { accountType, university, dateOfBirth } = accountDetails(body, true);
         const duplicateEmail = () => new HttpError(409, 'Email is already registered', { email: 'อีเมลนี้มีบัญชีแล้ว กรุณาเข้าสู่ระบบหรือใช้อีเมลอื่น' });
         if (await db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email)) throw duplicateEmail();
 
@@ -603,7 +628,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
             firstName,
             lastName,
             phone,
-            text(body.gender, 'gender', { max: 50 }),
+            gender,
             dateOfBirth,
             passwordHash,
             university,

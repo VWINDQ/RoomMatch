@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FocusEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { Button, Input } from '../components/UI';
 import { api, ApiError } from '../lib/api';
-import { registrationNameError, registrationNameFields } from '../../shared/registrationNames.js';
+import { RegistrationProfileFields } from '../components/RegistrationProfileFields';
+import { useFormFeedback } from '../components/FormFeedback';
+import { readRegistrationProfile, registrationFieldFeedback, validateRegistration } from '../lib/registration';
 
 const expiredMessage = 'การสมัครด้วย Google หมดอายุหรือไม่ตรงกับเบราว์เซอร์นี้ กรุณาเริ่มใหม่';
-const nameFields = ['firstName', 'lastName'] as const;
 
 export function GoogleRegistrationPage() {
   const [params] = useSearchParams();
@@ -31,6 +32,10 @@ function RegistrationForm({ flow }: { flow: string }) {
   const [error, setError] = useState('');
   const [terminalError, setTerminalError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [accountType, setAccountType] = useState('');
+  const [focusErrors, setFocusErrors] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  useFormFeedback(fieldErrors, formRef, focusErrors);
   const locked = useRef(false);
 
   useEffect(() => {
@@ -49,24 +54,39 @@ function RegistrationForm({ flow }: { flow: string }) {
     return () => { active = false; };
   }, [flow]);
 
+  function validateField(event: FocusEvent<HTMLFormElement> | FormEvent<HTMLFormElement>, onlyInvalid = false) {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement) || field.name === 'email') return;
+    const feedback = registrationFieldFeedback(field, event.currentTarget, accountType, fieldErrors, onlyInvalid);
+    if (!feedback) return;
+    const { name, message } = feedback;
+    setFocusErrors(false);
+    setFieldErrors(current => {
+      const next = { ...current };
+      if (message) next[name] = message;
+      else delete next[name];
+      return next;
+    });
+  }
+
+  function clearUniversityError() {
+    setFocusErrors(false);
+    setFieldErrors(({ university: _university, ...remaining }) => remaining);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (locked.current) return;
-    const form = event.currentTarget;
-    const values = new FormData(form);
-    const names = { firstName: String(values.get('firstName') ?? '').trim(), lastName: String(values.get('lastName') ?? '').trim() };
-    const errors = Object.fromEntries(nameFields.map(field => [field, registrationNameError(field, names[field])]).filter(([, message]) => message));
+    const values = new FormData(event.currentTarget);
+    const errors = validateRegistration(values, true);
     setFieldErrors(errors);
     setError('');
-    const firstInvalid = nameFields.find(field => errors[field]);
-    if (firstInvalid) {
-      (form.elements.namedItem(firstInvalid) as HTMLInputElement).focus();
-      return;
-    }
+    setFocusErrors(true);
+    if (Object.keys(errors).length) return;
     locked.current = true;
     setBusy(true);
     try {
-      await registerGoogle(flow, names);
+      await registerGoogle(flow, readRegistrationProfile(values));
       notify('สร้างบัญชีเรียบร้อยแล้ว');
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) setTerminalError(expiredMessage);
@@ -98,13 +118,16 @@ function RegistrationForm({ flow }: { flow: string }) {
 
   if (terminalError) return <RegistrationError message={terminalError}/>;
   if (!preview) return <p role="status">กำลังโหลดข้อมูลจาก Google…</p>;
-  return <form className="register-form" onSubmit={submit} noValidate>
-    <Input label="อีเมล" value={preview.email} type="email" readOnly/>
-    {nameFields.map(field => <Input key={field} label={`${registrationNameFields[field].label} *`} name={field}
-      defaultValue={preview[field]} maxLength={registrationNameFields[field].max} required disabled={busy}
-      error={fieldErrors[field]} onChange={event => {
-        if (fieldErrors[field]) setFieldErrors({ ...fieldErrors, [field]: registrationNameError(field, event.target.value) });
-      }}/>)}
+  return <form ref={formRef} className="register-form" onSubmit={submit} noValidate
+    onBlur={validateField} onChange={event => validateField(event, true)}>
+    <fieldset className="contents" disabled={busy}>
+      <RegistrationProfileFields firstName={preview.firstName} lastName={preview.lastName} accountType={accountType}
+        fieldErrors={fieldErrors} onUniversitySelect={clearUniversityError} onAccountTypeChange={value => {
+          setAccountType(value);
+          clearUniversityError();
+        }}/>
+      <Input label="อีเมล *" name="email" value={preview.email} type="email" readOnly required/>
+    </fieldset>
     {error && <p className="form-alert" role="alert">{error}</p>}
     <Button className="w-full" type="submit" disabled={busy}>สมัครสมาชิก</Button>
     <Button className="w-full" type="button" variant="quiet" disabled={busy} onClick={cancel}>ยกเลิก</Button>

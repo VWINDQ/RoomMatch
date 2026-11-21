@@ -5,13 +5,9 @@ import { useApp } from '../AppContext';
 import { Button, Input } from '../components/UI';
 import { useFormFeedback } from '../components/FormFeedback';
 import { ApiError, SessionChangedError } from '../lib/api';
-import { BirthDateInput } from '../components/BirthDateInput';
-import { parseBirthDate } from '../lib/birthDate';
+import { RegistrationProfileFields } from '../components/RegistrationProfileFields';
+import { isRegistrationField, readRegistrationProfile, registrationFieldFeedback, validateRegistration } from '../lib/registration';
 import { GoogleSignIn } from '../components/GoogleSignIn';
-import { AccountProfileFields } from '../components/AccountProfileFields';
-import { readUniversity } from '../components/UniversityPicker';
-import { validateAccountProfile } from '../../shared/accountProfile.js';
-import { registrationNameError, registrationNameFields } from '../../shared/registrationNames.js';
 
 const oauthErrors: Record<string, string> = {
   cancelled: 'ยกเลิกการเข้าสู่ระบบด้วย Google แล้ว คุณสามารถลองใหม่ได้',
@@ -22,39 +18,6 @@ const oauthErrors: Record<string, string> = {
   unavailable: 'ยังไม่ได้เปิดใช้งานการเข้าสู่ระบบด้วย Google',
   failed: 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
 };
-
-const registrationFields = {
-  ...registrationNameFields,
-  phone: { label: 'เบอร์โทรศัพท์', max: 10, required: true },
-  gender: { label: 'เพศ', max: 50, required: false },
-  dateOfBirth: { label: 'วันเกิด', max: 10, required: true },
-  accountType: { label: 'สถานะผู้ใช้', max: 50, required: true },
-  university: { label: 'มหาวิทยาลัย', max: 255, required: false },
-  email: { label: 'อีเมล', max: 320, required: true },
-  password: { label: 'รหัสผ่าน', max: 256, required: true },
-};
-
-type RegistrationField = keyof typeof registrationFields;
-
-function isRegistrationField(name: string): name is RegistrationField {
-  return Object.hasOwn(registrationFields, name);
-}
-
-function registrationFieldError(name: RegistrationField, raw: string) {
-  if (name === 'firstName' || name === 'lastName') return registrationNameError(name, raw);
-  const value = raw.trim();
-  const { label, max, required } = registrationFields[name];
-  if (!value) return required ? `กรุณากรอก${label}` : '';
-  if (name === 'phone' && !/^\d{10}$/.test(value)) return 'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก';
-  if (name === 'dateOfBirth') {
-    try { parseBirthDate(value); }
-    catch (error) { return error instanceof Error ? error.message : 'กรุณากรอกวันเกิดให้ถูกต้อง'; }
-  }
-  if (value.length > max) return `${label}ต้องไม่เกิน ${max} ตัวอักษร`;
-  if (name === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'กรุณากรอกอีเมลให้ถูกต้อง เช่น name@example.com';
-  if (name === 'password' && value.length < 8) return 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร';
-  return '';
-}
 
 function loginFieldError(name: 'email' | 'password', raw: string) {
   const value = raw.trim();
@@ -140,15 +103,9 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
       });
       return;
     }
-    if (field.name === 'universityQuery' && (onlyInvalid || field.form?.elements.namedItem('university'))) return;
-    const name = field.name === 'universityQuery' ? 'university' : field.name;
-    if (!isRegistrationField(name)) return;
-    if (onlyInvalid && !fieldErrors[name]) return;
-    const message = name === 'accountType' || name === 'university'
-      ? validateAccountProfile(name === 'accountType' ? field.value : accountType, readUniversity(new FormData(event.currentTarget)))[name] || ''
-      : registrationFieldError(name, field.value);
-    // Keep a server-side error (such as a taken email) until the value changes.
-    if (!onlyInvalid && !message) return;
+    const feedback = registrationFieldFeedback(field, event.currentTarget, accountType, fieldErrors, onlyInvalid);
+    if (!feedback) return;
+    const { name, message } = feedback;
     setFocusErrors(false);
     setFieldErrors(current => {
       if (message) return current[name] === message ? current : { ...current, [name]: message };
@@ -176,13 +133,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
       if (Object.keys(errors).length) return;
     }
     if (mode === 'register') {
-      const errors: Record<string, string> = {};
-      for (const name of Object.keys(registrationFields).filter(isRegistrationField)) {
-        if (name === 'accountType' || name === 'university') continue;
-        const message = registrationFieldError(name, String(data.get(name) ?? ''));
-        if (message) errors[name] = message;
-      }
-      Object.assign(errors, validateAccountProfile(data.get('accountType'), readUniversity(data)));
+      const errors = validateRegistration(data);
       setFieldErrors(errors);
       setFocusErrors(true);
       if (Object.keys(errors).length) return;
@@ -197,17 +148,7 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
       if (mode === 'login') {
         await login(email, password);
       } else {
-        await register({
-          firstName: String(data.get('firstName') ?? '').trim(),
-          lastName: String(data.get('lastName') ?? '').trim(),
-          email,
-          password,
-          phone: String(data.get('phone') ?? '').trim(),
-          gender: String(data.get('gender') ?? ''),
-          dateOfBirth: parseBirthDate(String(data.get('dateOfBirth') ?? '')),
-          accountType: String(data.get('accountType') ?? ''),
-          university: readUniversity(data),
-        });
+        await register({ ...readRegistrationProfile(data), email, password });
       }
 
       notify(
@@ -283,66 +224,14 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
             noValidate
             onBlur={validateField}
             onChange={event => validateField(event, true)}>
-            {mode === 'register' && (
-              <>
-                <div className="two-fields">
-                  <Input
-                    label="ชื่อ *"
-                    name="firstName"
-                    autoComplete="given-name"
-                    error={fieldErrors.firstName}
-                    required
-                  />
-                  <Input
-                    label="นามสกุล *"
-                    name="lastName"
-                    autoComplete="family-name"
-                    error={fieldErrors.lastName}
-                    required
-                  />
-                </div>
-
-                <Input
-                  label="เบอร์โทรศัพท์ *"
-                  name="phone"
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={10}
-                  onInput={event => {
-                    event.currentTarget.value = event.currentTarget.value
-                      .replace(/\D/g, '')
-                      .slice(0, 10);
-                  }}
-                  autoComplete="tel"
-                  error={fieldErrors.phone}
-                  required
-                />
-
-                <div className="two-fields">
-                  <label className="field">
-                    <span className="field-label">เพศ</span>
-                    <select name="gender" defaultValue="" aria-invalid={fieldErrors.gender ? true : undefined} aria-describedby={fieldErrors.gender ? 'registration-gender-error' : undefined}>
-                      <option value="">ไม่ระบุ</option>
-                      <option value="male">ชาย</option>
-                      <option value="female">หญิง</option>
-                      <option value="other">อื่น ๆ</option>
-                    </select>
-                    {fieldErrors.gender && <span id="registration-gender-error" className="field-error">{fieldErrors.gender}</span>}
-                  </label>
-
-                  <BirthDateInput required error={fieldErrors.dateOfBirth} />
-                </div>
-
-                <AccountProfileFields required accountType={accountType} errors={fieldErrors} onUniversitySelect={() => {
-                  setFocusErrors(false);
-                  setFieldErrors(({ university: _university, ...remaining }) => remaining);
-                }} onAccountTypeChange={value => {
-                  setAccountType(value);
-                  setFocusErrors(false);
-                  setFieldErrors(({ university: _university, ...remaining }) => remaining);
-                }}/>
-              </>
-            )}
+            {mode === 'register' && <RegistrationProfileFields accountType={accountType} fieldErrors={fieldErrors} onUniversitySelect={() => {
+              setFocusErrors(false);
+              setFieldErrors(({ university: _university, ...remaining }) => remaining);
+            }} onAccountTypeChange={value => {
+              setAccountType(value);
+              setFocusErrors(false);
+              setFieldErrors(({ university: _university, ...remaining }) => remaining);
+            }}/>}
 
             <Input
               label={mode === 'register' ? 'อีเมล *' : 'อีเมล'}

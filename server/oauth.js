@@ -2,7 +2,6 @@ import { createHash, randomBytes } from 'node:crypto';
 import * as oidc from 'openid-client';
 import { createToken } from './auth.js';
 import { assert, HttpError } from './errors.js';
-import { registrationNameError } from '../shared/registrationNames.js';
 
 const CALLBACK_PATH = '/api/auth/oauth/google/callback';
 const opaqueToken = () => randomBytes(32).toString('base64url');
@@ -35,7 +34,7 @@ function readCookie(request, name) {
   return matches.length === 1 ? matches[0].slice(name.length + 1) : null;
 }
 
-export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthConfiguration(), fetch: providerFetch, readJson, sendJson, userDto, logger = console }) {
+export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthConfiguration(), fetch: providerFetch, readJson, registrationProfile, sendJson, userDto, logger = console }) {
   let client;
   if (configuration) {
     client = new oidc.Configuration({
@@ -82,12 +81,7 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
   }
 
   async function registerGoogle(hash, body) {
-    const fieldErrors = {};
-    for (const field of ['firstName', 'lastName']) {
-      const message = registrationNameError(field, body[field]);
-      if (message) fieldErrors[field] = message;
-    }
-    if (Object.keys(fieldErrors).length) throw new HttpError(400, 'Invalid registration names', fieldErrors);
+    const { firstName, lastName, phone, gender, dateOfBirth, accountType, university } = registrationProfile(body);
     try {
       return await db.transaction(async () => {
         const ticket = await db.prepare(`DELETE FROM oauth_ticket WHERE ticket_hash = ? AND registration IS NOT NULL
@@ -97,8 +91,8 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
         // Different tickets for the same identity must not create two accounts.
         await db.prepare('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))').get(`google:${subject}`);
         assert(!(await findGoogleUser(subject)) && !(await emailTaken(email)), 409, 'Google account or email already registered');
-        const user = await db.prepare(`INSERT INTO USER(first_name, last_name, email, password_hash)
-          VALUES (?, ?, ?, NULL) RETURNING *`).get(body.firstName.trim(), body.lastName.trim(), email);
+        const user = await db.prepare(`INSERT INTO USER(first_name, last_name, phone, gender, date_of_birth, account_type, university, email, password_hash)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL) RETURNING *`).get(firstName, lastName, phone, gender, dateOfBirth, accountType, university, email);
         await db.prepare("INSERT INTO oauth_identity(provider, subject, user_id) VALUES ('google', ?, ?)").run(subject, user.user_id);
         return user;
       });

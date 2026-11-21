@@ -52,8 +52,10 @@ No live Google login can be verified until a real client and redirect URI exist.
 ## Account behavior
 
 - A new Google identity opens a signup form with the verified email displayed as
-  read-only and any given/family names supplied by Google. Both names must be
-  confirmed. Confirmation creates the RoomMatch account and Google identity in
+  read-only and any given/family names supplied by Google. The remaining fields
+  follow email signup: name, phone, birth date, and account type are required,
+  gender is optional, and university is required for students. Confirmation
+  creates the RoomMatch account and Google identity in
   one transaction and starts an application session without a local password.
 - Successful email and Google signups open `/rooms` and show the existing profile
   reminder once. Continuing from the reminder opens the profile editor.
@@ -87,7 +89,7 @@ The SPA exchanges a returning user's ticket once via a same-origin JSON POST to
 `/api/auth/oauth/session?flow=...`, then establishes the session in that tab.
 For a new user the callback redirects to `/auth/google/register?flow=...` with a
 ten-minute registration ticket. The preview returns the server-verified email
-and suggested names. The confirmation accepts the edited names and uses the
+and suggested names. The confirmation accepts the validated profile fields and uses the
 email and subject from the ticket. Cancelling revokes the ticket. Previewing,
 cancelling, or leaving the form does not create a RoomMatch account.
 Ticket values are stored only as SHA-256 hashes. HTTPS cookies use `Secure` and

@@ -1,5 +1,6 @@
 import type { FriendConnection, FriendProfile, JoinRequest, Lifestyle, Match, Preference, ProfileBundle, Room, RoomMember, User } from '../types';
 import { friendlyApiError } from './apiErrors';
+import type { RegistrationProfile } from './registration';
 
 export type RoomPage = { rooms: Room[]; total: number; page: number; pageSize: number; totalPages: number };
 export class InvalidRoomPageResponseError extends Error {
@@ -289,8 +290,8 @@ export const api = {
     if (typeof result.email !== 'string' || !result.email || typeof result.firstName !== 'string' || typeof result.lastName !== 'string') throw new InvalidAuthResponseError();
     return { email: result.email, firstName: result.firstName, lastName: result.lastName };
   },
-  async confirmGoogleRegistration(flow: string, names: { firstName: string; lastName: string }) {
-    return parseAuthSession(await request<unknown>(`/auth/oauth/registration/confirm?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: JSON.stringify(names) }));
+  async confirmGoogleRegistration(flow: string, profile: RegistrationProfile) {
+    return parseAuthSession(await request<unknown>(`/auth/oauth/registration/confirm?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: JSON.stringify(profile) }));
   },
   async cancelGoogleRegistration(flow: string) {
     await request(`/auth/oauth/registration/cancel?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: '{}' });
