@@ -215,10 +215,11 @@ function AuthShell({ mode }: { mode: 'login' | 'register' }) {
           : 'สร้างบัญชีเรียบร้อยแล้ว',
       );
 
-      const destination =
-        (location.state as { from?: string } | null)?.from || '/rooms';
-
-      navigate(destination, { replace: true });
+      if (mode === 'login') {
+        const destination =
+          (location.state as { from?: string } | null)?.from || '/rooms';
+        navigate(destination, { replace: true });
+      }
     } catch (caught) {
       if (caught instanceof SessionChangedError) return;
       if (mode === 'login') {

@@ -1131,7 +1131,7 @@ for (const method of ['login', 'register']) {
     respond = async path => path === `/api/auth/${method}`
       ? json({ user, token: 'valid-token' }, method === 'register' ? 201 : 200) : json({ rooms: [] });
     await act(async () => document.querySelector('form').requestSubmit());
-    assert.equal(location.pathname, '/rooms');
+    assert.equal(location.pathname, method === 'register' ? '/profile' : '/rooms');
     assert.equal(tokenStorage.get(), 'valid-token');
     assert.ok(document.querySelector('.app-shell'));
   });

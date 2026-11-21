@@ -11,7 +11,6 @@
 .profile-reminder-list strong { display: block; color: var(--primary); font-size: .9rem; }
 .profile-reminder-list li div > span { display: block; margin-top: 3px; font-size: .8rem; }
 .profile-reminder .profile-reminder-note { font-size: .76rem; }
-.profile-reminder .form-alert { margin-top: 16px; }
 .profile-reminder > footer { border-top: 1px solid var(--border-soft); }
 @media (max-width: 480px) {
   .profile-reminder > header, .profile-reminder .modal-body { padding: 18px; }

@@ -15,110 +15,95 @@ dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 const { createRoot } = await import('react-dom/client');
 const { createMemoryRouter, RouterProvider, Outlet } = await import('react-router-dom');
 const { AppProvider, useApp } = await import('../src/AppContext.tsx');
-const { ProfileReminder } = await import('../src/components/ProfileReminder.tsx');
 const { ProfilePage } = await import('../src/pages/ProfilePage.tsx');
-const { api, tokenStorage } = await import('../src/lib/api.ts');
-let root, router, account, app, acknowledgement;
-function Session() { app = useApp(); return createElement(ProfileReminder, { key: app.user?.userId }); }
+const { api } = await import('../src/lib/api.ts');
+const account = { userId: '1', firstName: 'New', lastName: 'Student', email: 'reminder@example.test', phone: '0801234567', gender: '',
+  dateOfBirth: '2000-01-01', university: '', profileImage: '', bio: '', instagram: '', lineId: '', profileReminderSeen: false };
+const credentials = { ...account, password: 'test-password', accountType: 'general' };
+let root, router, app;
+function Session() { app = useApp(); return createElement(Outlet); }
 const button = label => [...document.querySelectorAll('button')].find(element => element.textContent === label);
 const dialog = () => document.querySelector('.profile-reminder');
 beforeEach(() => {
-  localStorage.clear();
   sessionStorage.clear();
-  account = { userId: '1', firstName: 'New', lastName: 'Student', email: 'reminder@example.test', phone: '0801234567', gender: '',
-    dateOfBirth: '2000-01-01', university: '', profileImage: '', bio: '', instagram: '', lineId: '', profileReminderSeen: false };
+  const session = async () => ({ token: 'session-1', user: structuredClone(account) });
   mock.method(api, 'me', async () => structuredClone(account));
-  mock.method(api, 'login', async () => ({ token: `session-${account.userId}`, user: structuredClone(account) }));
+  mock.method(api, 'login', session);
+  mock.method(api, 'register', session);
   mock.method(api, 'profile', async () => ({ user: structuredClone(account), lifestyle: null, preference: null }));
-  acknowledgement = mock.method(api, 'acknowledgeProfileReminder', async () => { account.profileReminderSeen = true; });
   root = createRoot(document.getElementById('root'));
 });
 afterEach(async () => { await act(async () => root.unmount()); router?.dispose(); mock.restoreAll(); });
 after(() => dom.window.close());
+
 async function mount(path = '/rooms') {
-  tokenStorage.set(`session-${account.userId}`);
-  router = createMemoryRouter([{ element: createElement(AppProvider, null, createElement(Session), createElement(Outlet)), children: [
+  router = createMemoryRouter([{ element: createElement(AppProvider, null, createElement(Session)), children: [
     { path: '/rooms', element: createElement('h1', null, 'Rooms') }, { path: '/profile', element: createElement(ProfilePage) },
   ] }], { initialEntries: [path] });
   await act(async () => root.render(createElement(StrictMode, null, createElement(RouterProvider, { router }))));
 }
-async function remount(path = '/rooms') {
-  await act(async () => root.unmount()); router.dispose();
-  root = createRoot(document.getElementById('root')); await mount(path);
+
+async function register() {
+  await mount();
+  await act(async () => app.register(credentials));
+  assert.equal(dialog(), null);
+  await act(async () => router.navigate('/profile'));
+  assert.ok(dialog());
+  assert.equal(document.querySelectorAll('[role="dialog"]').length, 1);
+  assert.equal(document.body.style.overflow, 'hidden');
 }
 
-test('first authenticated visit shows one reminder; later acknowledgement survives logout and a fresh client session', async () => {
-  await mount();
-  assert.ok(dialog()); assert.equal(acknowledgement.mock.callCount(), 0);
-  assert.equal(document.body.style.overflow, 'hidden');
-  assert.equal(document.querySelectorAll('[role="dialog"]').length, 1);
-  assert.match(dialog().textContent, /ไลฟ์สไตล์.*LINE ID หรือ Instagram/);
-  await act(async () => button('ไว้ทีหลัง').click());
-  assert.equal(dialog(), null); assert.equal(app.user.profileReminderSeen, true);
-  assert.equal(document.body.style.overflow, '');
-  await act(async () => app.logout());
-  await act(async () => app.login(account.email, 'test-password'));
+test('refreshing while the reminder is open does not show it again', async () => {
+  await register();
+  await act(async () => root.unmount());
+  router.dispose();
+  root = createRoot(document.getElementById('root'));
+  await mount('/profile');
   assert.equal(dialog(), null);
-  await remount(); assert.equal(dialog(), null);
-  assert.equal(acknowledgement.mock.callCount(), 1);
+  assert.ok(button('แก้ไขโปรไฟล์'));
+  assert.equal(document.body.style.overflow, '');
 });
 
-test('primary action opens the actual profile editor and consumes its navigation intent', async () => {
-  await mount();
+test('primary action opens the existing profile editor', async () => {
+  await register();
   await act(async () => button('ไปเติมโปรไฟล์').click());
-  assert.equal(dialog(), null); assert.equal(router.state.location.pathname, '/profile');
+  assert.equal(dialog(), null);
   assert.ok(document.querySelector('[name="lifestyleName"]'));
   assert.ok(document.querySelector('[name="lineId"]'));
   assert.ok(button('บันทึกการเปลี่ยนแปลง'));
-  assert.equal(router.state.location.state?.editProfile, undefined);
-  await remount('/profile');
-  assert.equal(dialog(), null); assert.ok(button('แก้ไขโปรไฟล์'));
 });
 
-for (const action of ['close button', 'Escape', 'backdrop']) {
-  test(`${action} acknowledges the reminder once and restores access to the page`, async () => {
-    await mount();
+for (const action of ['later', 'close button', 'Escape', 'backdrop']) {
+  test(`${action} closes the reminder without reopening it on a return visit`, async () => {
+    await register();
     await act(async () => {
-      if (action === 'Escape') document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      if (action === 'later') button('ไว้ทีหลัง').click();
+      else if (action === 'Escape') document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       else document.querySelector(action === 'backdrop' ? '.modal-scrim' : '.profile-reminder [aria-label="ปิด"]').click();
     });
-    assert.equal(dialog(), null); assert.equal(acknowledgement.mock.callCount(), 1);
-    await remount(); assert.equal(dialog(), null);
+    assert.equal(dialog(), null);
+    assert.equal(document.body.style.overflow, '');
+    await act(async () => router.navigate('/rooms'));
+    await act(async () => router.navigate(-1));
+    assert.equal(dialog(), null);
   });
 }
 
-test('a failed acknowledgement keeps the reminder available for retry and prevents duplicate pending requests', async () => {
-  let reject;
-  acknowledgement.mock.mockImplementationOnce(() => new Promise((resolve, onReject) => { reject = onReject; }));
+test('a failed registration and an ordinary login cannot open the reminder', async () => {
   await mount();
-  await act(async () => { button('ไปเติมโปรไฟล์').click(); button('ไว้ทีหลัง').click(); document.querySelector('.modal-scrim').click(); });
-  assert.equal(acknowledgement.mock.callCount(), 1);
-  assert.equal(button('ไว้ทีหลัง').disabled, true);
-  await act(async () => reject(new Error('Database unavailable')));
-  assert.ok(dialog()); assert.match(document.querySelector('[role="alert"]').textContent, /ลองกดอีกครั้ง/);
-  assert.equal(app.user.profileReminderSeen, false); assert.equal(router.state.location.pathname, '/rooms');
-  await act(async () => button('ไว้ทีหลัง').click());
-  assert.equal(dialog(), null); assert.equal(acknowledgement.mock.callCount(), 2);
+  api.register.mock.mockImplementationOnce(async () => { throw new Error('Email already registered'); });
+  await act(async () => assert.rejects(() => app.register(credentials), /Email already registered/));
+  assert.equal(app.consumeRegistrationReminder(), false);
+  await act(async () => app.login(account.email, credentials.password));
+  await act(async () => router.navigate('/profile'));
+  assert.equal(dialog(), null);
 });
 
-test('mandatory Google setup takes priority and an older API without the new flag remains usable', async () => {
-  account.profileSetupPending = true;
-  await mount(); assert.equal(dialog(), null);
-  await act(async () => app.refreshUser({ ...account, profileSetupPending: false }));
-  assert.ok(dialog());
-  delete account.profileReminderSeen; delete account.profileSetupPending;
-  await remount(); assert.equal(dialog(), null);
-});
-
-test('an acknowledgement completing after an account switch cannot dismiss the new account reminder', async () => {
-  let finish;
-  acknowledgement.mock.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+test('a new login invalidates a registration reminder before the profile is opened', async () => {
   await mount();
-  await act(async () => button('ไว้ทีหลัง').click());
+  await act(async () => app.register(credentials));
   await act(async () => app.logout());
-  account = { ...account, userId: '2', email: 'other@example.test', profileReminderSeen: false };
-  await act(async () => app.login(account.email, 'test-password'));
-  await act(async () => finish());
-  assert.ok(dialog()); assert.equal(app.user.userId, '2'); assert.equal(app.user.profileReminderSeen, false);
-  assert.equal(document.querySelector('[role="alert"]'), null);
+  await act(async () => app.login(account.email, credentials.password));
+  await act(async () => router.navigate('/profile'));
+  assert.equal(dialog(), null);
 });

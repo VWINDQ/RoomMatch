@@ -9,7 +9,7 @@ type AppState = {
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   completeOAuth: (flow: string) => Promise<void>;
-  acknowledgeProfileReminder: () => Promise<void>;
+  consumeRegistrationReminder: () => boolean;
   logout: () => boolean; registerLogoutGuard: (guard: () => boolean) => () => void;
   refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string, tone?: ToastTone) => void;
 };
@@ -24,6 +24,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toastTone, setToastTone] = useState<ToastTone>('success');
   // A newer auth operation takes precedence over any pending account check.
   const authVersion = useRef(0);
+  const registrationReminderVersion = useRef<number | null>(null);
   // Login and registration share a sequence independent of account refreshes.
   const signInVersion = useRef(0);
   const logoutGuard = useRef<(() => boolean) | null>(null);
@@ -88,24 +89,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setAuthLoading(false);
   }, []);
 
-  const signIn = useCallback(async (request: () => Promise<{ token: string; user: User }>) => {
+  const signIn = useCallback(async (request: () => Promise<{ token: string; user: User }>, registered = false) => {
     const version = ++signInVersion.current;
     try {
       const result = await request();
       if (version !== signInVersion.current) throw new SessionChangedError();
       acceptSession(result);
+      if (registered) registrationReminderVersion.current = authVersion.current;
     } catch (caught) {
       if (version !== signInVersion.current) throw new SessionChangedError();
       throw caught;
     }
   }, [acceptSession]);
   const completeOAuth = useCallback((flow: string) => signIn(() => api.completeOAuth(flow)), [signIn]);
-  const acknowledgeProfileReminder = useCallback(async () => {
-    const token = tokenStorage.get();
-    const version = authVersion.current;
-    await api.acknowledgeProfileReminder();
-    if (!token || token !== tokenStorage.get() || version !== authVersion.current) throw new SessionChangedError();
-    setUser(current => current ? { ...current, profileReminderSeen: true } : current);
+  const consumeRegistrationReminder = useCallback(() => {
+    if (registrationReminderVersion.current !== authVersion.current) return false;
+    registrationReminderVersion.current = null;
+    return true;
   }, []);
 
   useEffect(() => {
@@ -128,11 +128,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 2600); return () => window.clearTimeout(timer); }, [toast]);
 
   const value = useMemo<AppState>(() => ({
-    user, authLoading, authError, toast, toastTone, notify, refreshUser, retryAuth, completeOAuth, acknowledgeProfileReminder,
+    user, authLoading, authError, toast, toastTone, notify, refreshUser, retryAuth, completeOAuth, consumeRegistrationReminder,
     login: (email, password) => signIn(() => api.login({ email, password })),
-    register: payload => signIn(() => api.register(payload)),
+    register: payload => signIn(() => api.register(payload), true),
     logout, registerLogoutGuard,
-  }), [authError, authLoading, completeOAuth, acknowledgeProfileReminder, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, toastTone, user]);
+  }), [authError, authLoading, completeOAuth, consumeRegistrationReminder, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, toastTone, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

@@ -96,7 +96,7 @@ test('registration validates touched fields and submission, then shows duplicate
   await field('email').fill(`registration-${randomBytes(6).toString('hex')}@example.test`);
   await expect(errors).toHaveCount(0);
   await submit.click();
-  await expect(page).toHaveURL(/\/rooms$/);
+  await expect(page).toHaveURL(/\/profile$/);
   expect(requests).toBe(2);
 });
 
@@ -194,8 +194,6 @@ test('browser exchanges an HttpOnly Google ticket once and establishes the norma
     await profile.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง' }).click();
     await expect(profile).toHaveCount(0);
     await expect(page.locator('.profile-identity')).toContainText('Other University');
-    await expect(reminder).toBeVisible();
-    await reminder.getByRole('button', { name: 'ไว้ทีหลัง', exact: true }).click();
     await expect(reminder).toHaveCount(0);
     await page.getByRole('button', { name: 'แก้ไขโปรไฟล์' }).click();
     const universityPicker = profile.getByRole('combobox', { name: 'มหาวิทยาลัย', exact: true });
