@@ -9,6 +9,7 @@ type AppState = {
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   completeOAuth: () => Promise<void>;
+  acknowledgeProfileReminder: () => Promise<void>;
   logout: () => boolean; registerLogoutGuard: (guard: () => boolean) => () => void;
   refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string, tone?: ToastTone) => void;
 };
@@ -99,6 +100,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [acceptSession]);
   const completeOAuth = useCallback(() => signIn(() => api.completeOAuth()), [signIn]);
+  const acknowledgeProfileReminder = useCallback(async () => {
+    const token = tokenStorage.get();
+    const version = authVersion.current;
+    await api.acknowledgeProfileReminder();
+    if (!token || token !== tokenStorage.get() || version !== authVersion.current) throw new SessionChangedError();
+    setUser(current => current ? { ...current, profileReminderSeen: true } : current);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = tokenStorage.subscribe(() => {
@@ -120,11 +128,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(''), 2600); return () => window.clearTimeout(timer); }, [toast]);
 
   const value = useMemo<AppState>(() => ({
-    user, authLoading, authError, toast, toastTone, notify, refreshUser, retryAuth, completeOAuth,
+    user, authLoading, authError, toast, toastTone, notify, refreshUser, retryAuth, completeOAuth, acknowledgeProfileReminder,
     login: (email, password) => signIn(() => api.login({ email, password })),
     register: payload => signIn(() => api.register(payload)),
     logout, registerLogoutGuard,
-  }), [authError, authLoading, completeOAuth, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, toastTone, user]);
+  }), [authError, authLoading, completeOAuth, acknowledgeProfileReminder, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, toastTone, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 
