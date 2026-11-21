@@ -397,6 +397,8 @@ function roomListFilters(searchParams) {
   if (minPrice !== null) { conditions.push('r.price >= ?'); parameters.push(minPrice); }
   if (maxPrice !== null) { conditions.push('r.price <= ?'); parameters.push(maxPrice); }
   assert(minPrice === null || maxPrice === null || minPrice <= maxPrice, 400, 'minPrice cannot exceed maxPrice');
+  const capacity = integer(searchParams.get('capacity'), 'capacity', { min: 1, max: 100 });
+  if (capacity !== null) { conditions.push('r.capacity = ?'); parameters.push(capacity); }
   const minSlots = integer(searchParams.get('minSlots'), 'minSlots', { min: 1, max: 100 });
   if (minSlots !== null) {
     conditions.push("r.capacity - CASE WHEN r.owner_is_resident THEN 1 ELSE 0 END - (SELECT COUNT(*) FROM ROOM_MEMBER slots WHERE slots.room_id = r.room_id AND slots.status = 'approved') >= ?");
