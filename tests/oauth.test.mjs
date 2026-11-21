@@ -232,7 +232,7 @@ test('OAuth migration preserves existing users and hashes and applies exactly on
     await runMigrations(db);
     await runMigrations(db);
     assert.deepEqual(await db.prepare('SELECT * FROM USER ORDER BY user_id').all(),
-      originalUsers.map(user => ({ ...user, account_type: null, profile_setup_pending: false })));
+      originalUsers.map(user => ({ ...user, account_type: null, profile_setup_pending: false, profile_reminder_seen_at: null })));
     assert.equal((await db.prepare("SELECT count(*) AS count FROM _roommatch_migrations WHERE filename='002_google_oauth.sql'").get()).count, 1);
     const user = await db.prepare("INSERT INTO USER(first_name,last_name,email,password_hash) VALUES('Google','User','migration@example.test',NULL) RETURNING user_id").get();
     await db.prepare("INSERT INTO oauth_identity(provider,subject,user_id) VALUES('google','migration-subject',?)").run(user.user_id);
