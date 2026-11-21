@@ -186,10 +186,10 @@ export function ProfilePage() {
     </fieldset></form>}
     <footer className="profile-sign-out"><Button variant="danger" disabled={saving} onClick={() => { if (logout()) navigate('/login'); }}><LogOut size={18} aria-hidden="true"/>ออกจากระบบ</Button></footer>
     {leaving && <Modal className="form-leave-modal" title="ยังไม่ได้บันทึกการแก้ไขโปรไฟล์" onClose={cancelLeave} actions={<>
-      <Button type="button" variant="danger" disabled={saving || checkingImages} onClick={() => {
+      <Button type="button" variant="secondary" className="profile-discard-button" disabled={saving || checkingImages} onClick={() => {
         discardEdits(); finishLeave();
       }}>ยกเลิกการแก้ไข</Button>
-      <Button type="button" variant="success" disabled={checkingImages} loading={saving} onClick={() => {
+      <Button type="button" disabled={checkingImages} loading={saving} onClick={() => {
         if (submitLocked.current || checkingImages) return;
         saveBeforeLeave.current = true;
         formRef.current?.requestSubmit();

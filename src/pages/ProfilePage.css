@@ -1,4 +1,5 @@
 .profile-sign-out { display: none; }
+.profile-discard-button.button-secondary { background: #fff; }
 
 /* Match the breakpoint where Layout hides the sidebar and its sign-out action. */
 @media (max-width: 1023px) {
