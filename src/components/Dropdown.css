@@ -1,0 +1,125 @@
+/* Keep native form values, labels and keyboard behavior while sharing one clay finish. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 46px;
+  padding: 10px 40px 10px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 17px;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231d3154' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center;
+  color: var(--primary);
+  font-size: .875rem;
+  line-height: 1.5;
+  box-shadow: 3px 4px 9px rgba(57,49,42,.07), inset 0 1px 0 white;
+  cursor: pointer;
+}
+
+.list-toolbar select:not([multiple]):not([size]) {
+  width: 152px;
+  padding-block: 9px;
+  font-size: .8rem;
+}
+
+select:not([multiple]):not([size]):hover:not(:disabled) { border-color: #a8b8cc; }
+select:not([multiple]):not([size]):focus-visible {
+  border-color: #91a7c4;
+  outline: 3px solid rgba(29,49,84,.24);
+  outline-offset: 3px;
+}
+select:not([multiple]):not([size])[aria-invalid="true"] { border-color: var(--danger); }
+select:not([multiple]):not([size]):disabled { opacity: .55; cursor: not-allowed; }
+
+/* Unsupported browsers retain their accessible OS picker and the styled trigger above. */
+@supports (appearance: base-select) {
+  select:not([multiple]):not([size]),
+  select:not([multiple]):not([size])::picker(select) { appearance: base-select; }
+
+  select:not([multiple]):not([size]) { background-image: none; padding-right: 15px; gap: 12px; }
+  select:not([multiple]):not([size]):open {
+    border-color: #91a7c4;
+    background-color: var(--surface-cool);
+    box-shadow: inset 2px 3px 6px rgba(29,49,84,.08), inset -2px -2px 4px white;
+  }
+  select:not([multiple]):not([size])::picker-icon {
+    content: '';
+    width: 8px;
+    height: 8px;
+    margin: 0 3px 4px auto;
+    border-right: 2px solid var(--primary);
+    border-bottom: 2px solid var(--primary);
+    transform: rotate(45deg);
+    transition: transform 140ms ease;
+  }
+  select:not([multiple]):not([size]):open::picker-icon { transform: translateY(4px) rotate(225deg); }
+  select:not([multiple]):not([size])::picker(select) {
+    margin-block: 6px;
+    padding: 6px;
+    min-inline-size: anchor-size(self-inline);
+    max-inline-size: calc(100vw - 24px);
+    max-block-size: min(320px, 50dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border-soft);
+    border-radius: 20px;
+    background: var(--surface);
+    color: var(--primary);
+    font-family: 'Fredoka', 'Prompt', sans-serif;
+    font-size: .875rem;
+    line-height: 1.5;
+    box-shadow: 0 10px 24px rgba(29,49,84,.14), inset 0 1px 0 white;
+  }
+  select:not([multiple]):not([size]) option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 13px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+  }
+  select:not([multiple]):not([size]) option:checked {
+    background: var(--pastel-blue);
+    color: var(--primary);
+    font-weight: 600;
+    box-shadow: inset 1px 2px 4px rgba(29,49,84,.06), inset 0 -1px 0 rgba(255,255,255,.65);
+  }
+  select:not([multiple]):not([size]) option:is(:hover, :focus-visible) {
+    background: var(--surface-cool);
+    outline: 2px solid #91a7c4;
+    outline-offset: -2px;
+  }
+  select:not([multiple]):not([size]) option::checkmark { order: 1; margin-left: auto; color: var(--primary); }
+  select:not([multiple]):not([size]) option:disabled { opacity: .5; cursor: not-allowed; }
+}
+
+select:not([multiple]):not([size])[aria-invalid="true"]:is(:open, :focus-visible) {
+  border-color: var(--danger);
+  outline-color: var(--danger);
+}
+
+/* The searchable university list uses the same surface without changing its search behavior. */
+.university-options {
+  padding: 6px;
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 10px 24px rgba(29,49,84,.14), inset 0 1px 0 white;
+}
+.university-options > [role="option"] { border-radius: 13px; color: var(--primary); }
+.university-options > [aria-selected="true"] { background: var(--pastel-blue); font-weight: 600; }
+.university-options > :is([role="option"]:hover, [data-active="true"]) {
+  background: var(--surface-cool);
+  outline: 2px solid #91a7c4;
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  select:not([multiple]):not([size])::picker-icon { transition: none; }
+}
+
+@media (forced-colors: active) {
+  select:not([multiple]):not([size]) { appearance: auto; background-image: none; }
+  select:not([multiple]):not([size])::picker(select) { appearance: auto; }
+}
