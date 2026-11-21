@@ -107,7 +107,8 @@ node --env-file=.env --test tests/postgresql.test.mjs
 ## Storage and transaction contract
 
 - New migrations belong in `database/postgresql/migrations/` with unique numeric
-  prefixes. Applied files are checksum-verified; add another migration instead
+  prefixes. Checksum verification accepts LF and CRLF line endings for applied files.
+  Add another migration instead
   of editing an applied one. `database/migrations/` and `database/seed.sql` remain
   unchanged as legacy SQLite history/import fixtures.
 - `_roommatch_migrations` tracks PostgreSQL files, checksums and application times.
