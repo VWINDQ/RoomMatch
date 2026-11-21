@@ -126,13 +126,18 @@ export async function runMigrations(db, directory = resolve(projectRoot, 'databa
     )`);
     for (const filename of readdirSync(directory).filter((name) => /^\d.*\.sql$/.test(name)).sort()) {
       const sql = readFileSync(resolve(directory, filename), 'utf8');
-      const checksum = createHash('sha256').update(sql).digest('hex');
+      const normalizedSql = sql.replaceAll('\r\n', '\n');
+      const checksum = createHash('sha256').update(normalizedSql).digest('hex');
       const applied = await db.prepare('SELECT checksum FROM _roommatch_migrations WHERE filename = ?').get(filename);
       if (applied) {
-        if (applied.checksum !== checksum) throw new Error(`Applied migration changed: ${filename}`);
+        if (applied.checksum !== checksum) {
+          // Older checkouts recorded the checksum with Windows line endings.
+          const windowsChecksum = createHash('sha256').update(normalizedSql.replaceAll('\n', '\r\n')).digest('hex');
+          if (applied.checksum !== windowsChecksum) throw new Error(`Applied migration changed: ${filename}`);
+        }
         continue;
       }
-      await db.exec(sql);
+      await db.exec(normalizedSql);
       await db.prepare('INSERT INTO _roommatch_migrations(filename, checksum) VALUES (?, ?)').run(filename, checksum);
     }
   });
