@@ -106,6 +106,11 @@ test('filter sheet scrolls, validates, applies and closes', async ({ page, envir
   await dialog.getByLabel('ราคาสูงสุด', { exact: true }).fill('100');
   await dialog.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('ราคาสูงสุด');
+  const priceBasis = dialog.getByRole('combobox', { name: /^หน่วยราคาที่ต้องการเทียบ/ });
+  await priceBasis.click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await expect(priceBasis).toBeFocused();
   await noOverflow(page);
   await reachable(dialog.getByRole('spinbutton', { name: /^จำนวนผู้พักทั้งหมด/ }));
   await reachable(dialog.getByRole('spinbutton', { name: /^ที่ว่างสำหรับผู้พักใหม่อย่างน้อย/ }));
