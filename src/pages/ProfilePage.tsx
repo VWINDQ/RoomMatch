@@ -10,7 +10,7 @@ import { Button, EmptyState, Input, Modal, Textarea } from '../components/UI';
 import { api, ApiError, SessionChangedError } from '../lib/api';
 import { FormFeedback, useFormFeedback } from '../components/FormFeedback';
 import { ImagePicker, savedImages, uploadSelectedImages, type SelectedImage } from '../components/ImagePicker';
-import { calculateAge } from '../lib/age';
+import { calculateAge } from '../../shared/age.js';
 import type { ProfileBundle } from '../types';
 import { BirthDateInput } from '../components/BirthDateInput';
 import { formatBirthDate, parseBirthDate } from '../lib/birthDate';

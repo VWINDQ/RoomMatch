@@ -195,12 +195,16 @@ test('connection IDs must be positive safe integers', async () => {
   }
 });
 
-test('acceptance reveals contacts only to both participants and never changes room data', async () => {
+test('acceptance reveals age and contacts only to both participants and never changes room data', async () => {
+  await db.exec("UPDATE USER SET date_of_birth = '1996-01-01' WHERE user_id = 1");
+  await db.exec("UPDATE USER SET date_of_birth = '2002-01-01' WHERE user_id = 2");
+  const year = new Date().getFullYear();
   const before = await originalTables();
   const invitation = await invite();
   const result = await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'accepted' });
   assert.equal(result.status, 200);
   assert.equal(result.body.connection.person.userId, 1);
+  assert.equal(result.body.connection.person.age, year - 1996);
   assert.match(result.body.connection.respondedAt, /^\d{4}-\d{2}-\d{2}T.*Z$/);
   for (const userId of [1, 2]) {
     const connection = (await api('/friends/connections', userId)).body.connections[0];
@@ -208,7 +212,8 @@ test('acceptance reveals contacts only to both participants and never changes ro
     assert.equal(connection.status, 'accepted');
     assert.equal(connection.person.email, `friend-${otherId}@example.test`);
     assert.equal(connection.person.lineId, `line-${otherId}`);
-    assert.deepEqual(Object.keys(connection.person).sort(), [...profileKeys, ...contactFields].sort());
+    assert.equal(connection.person.age, year - (otherId === 1 ? 1996 : 2002));
+    assert.deepEqual(Object.keys(connection.person).sort(), [...profileKeys, ...contactFields, 'age'].sort());
   }
   assert.deepEqual((await api('/friends/connections?userId=1', 3)).body.connections, []);
   const outsiderProfiles = (await api('/friends', 3)).body.people;
