@@ -376,6 +376,7 @@ Production defaults to no seed. Use a fresh production database without demo
 accounts. Existing SQLite files are retained and can be imported explicitly;
 see [PostgreSQL setup and migration](database/POSTGRESQL.md).
 `npm test` uses `TEST_DATABASE_URL`, a separate database ending in `_test`.
+API routing tests create their own temporary HTML fixture and do not require an existing `dist/` build. Run `npm run build` separately to validate the actual frontend bundle.
 
 `npm run dev` and `npm run dev:api` now watch imported API source files and restart
 the API when they change, alongside Vite's frontend updates. Restart an already
