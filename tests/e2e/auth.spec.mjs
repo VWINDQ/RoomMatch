@@ -169,6 +169,8 @@ test('browser exchanges an HttpOnly Google ticket once and establishes the norma
     await expect(page).toHaveURL(/\/profile$/);
     const profile = page.locator('.profile-editor');
     await expect(page.locator('.profile-identity')).toContainText('onboarding@example.test');
+    const reminder = page.getByRole('dialog', { name: 'เติมโปรไฟล์ให้เพื่อนรู้จักคุณ' });
+    await expect(reminder).toHaveCount(0);
     await profile.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง' }).click();
     const field = name => profile.locator(`[name="${name}"]`);
     await expect(field('phone')).toBeFocused();
@@ -190,6 +192,9 @@ test('browser exchanges an HttpOnly Google ticket once and establishes the norma
     await profile.getByRole('button', { name: 'บันทึกการเปลี่ยนแปลง' }).click();
     await expect(profile).toHaveCount(0);
     await expect(page.locator('.profile-identity')).toContainText('Other University');
+    await expect(reminder).toBeVisible();
+    await reminder.getByRole('button', { name: 'ไว้ทีหลัง', exact: true }).click();
+    await expect(reminder).toHaveCount(0);
     await page.getByRole('button', { name: 'แก้ไขโปรไฟล์' }).click();
     const universityPicker = profile.getByRole('combobox', { name: 'มหาวิทยาลัย', exact: true });
     await expect(universityPicker).toHaveValue('Other University');
