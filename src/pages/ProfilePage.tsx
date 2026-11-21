@@ -184,12 +184,12 @@ export function ProfilePage() {
         markSaved(); discardEdits();
       }}>ยกเลิก</Button>}<Button disabled={checkingImages} loading={saving} onMouseDown={event => { if (event.button === 0) event.preventDefault(); }}>{saving ? (images.some(image => image.file) ? 'กำลังอัปโหลดรูป…' : 'กำลังบันทึก…') : 'บันทึกการเปลี่ยนแปลง'}</Button></div></footer>
     </fieldset></form>}
-    <footer className="profile-sign-out"><Button variant="quiet" disabled={saving} onClick={() => { if (logout()) navigate('/login'); }}><LogOut size={18} aria-hidden="true"/>ออกจากระบบ</Button></footer>
+    <footer className="profile-sign-out"><Button variant="danger" disabled={saving} onClick={() => { if (logout()) navigate('/login'); }}><LogOut size={18} aria-hidden="true"/>ออกจากระบบ</Button></footer>
     {leaving && <Modal className="form-leave-modal" title="ยังไม่ได้บันทึกการแก้ไขโปรไฟล์" onClose={cancelLeave} actions={<>
-      <Button type="button" variant="secondary" disabled={saving || checkingImages} onClick={() => {
+      <Button type="button" variant="danger" disabled={saving || checkingImages} onClick={() => {
         discardEdits(); finishLeave();
       }}>ยกเลิกการแก้ไข</Button>
-      <Button type="button" disabled={checkingImages} loading={saving} onClick={() => {
+      <Button type="button" variant="success" disabled={checkingImages} loading={saving} onClick={() => {
         if (submitLocked.current || checkingImages) return;
         saveBeforeLeave.current = true;
         formRef.current?.requestSubmit();

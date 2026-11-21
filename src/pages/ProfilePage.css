@@ -13,11 +13,9 @@
   .profile-sign-out .button {
     width: min(100%, 320px);
     min-height: 48px;
-    border: 1px solid var(--border-soft);
-    background: var(--surface);
   }
 
   .profile-sign-out .button:hover:not(:disabled) {
-    background: var(--primary-soft);
+    box-shadow: var(--shadow-clay-sm);
   }
 }

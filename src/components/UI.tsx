@@ -3,7 +3,7 @@ import { useEffect, useId, useRef } from 'react';
 import { LoaderCircle, X } from 'lucide-react';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
+  variant?: 'primary' | 'secondary' | 'quiet' | 'danger' | 'success';
   loading?: boolean;
 };
 
