@@ -23,7 +23,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 let root;
-beforeEach(() => { localStorage.clear(); root = createRoot(document.getElementById('root')); });
+beforeEach(() => { localStorage.clear(); sessionStorage.clear(); root = createRoot(document.getElementById('root')); });
 afterEach(async () => { await act(async () => root.unmount()); mock.restoreAll(); });
 after(() => dom.window.close());
 const mount = (Page) => act(async () => root.render(createElement(MemoryRouter, null, createElement(AppProvider, null, createElement(Page)))));

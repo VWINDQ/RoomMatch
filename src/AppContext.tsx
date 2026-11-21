@@ -8,7 +8,7 @@ type AppState = {
   user: User | null; authLoading: boolean; authError: string; toast: string; toastTone: ToastTone;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
-  completeOAuth: () => Promise<void>;
+  completeOAuth: (flow: string) => Promise<void>;
   logout: () => boolean; registerLogoutGuard: (guard: () => boolean) => () => void;
   refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string, tone?: ToastTone) => void;
 };
@@ -98,7 +98,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       throw caught;
     }
   }, [acceptSession]);
-  const completeOAuth = useCallback(() => signIn(() => api.completeOAuth()), [signIn]);
+  const completeOAuth = useCallback((flow: string) => signIn(() => api.completeOAuth(flow)), [signIn]);
 
   useEffect(() => {
     const unsubscribe = tokenStorage.subscribe(() => {
@@ -107,7 +107,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setAuthError('');
       setToast('');
-      // Storage already changed in the other tab; do not write it back from here.
+      // This tab's storage already changed; do not write it back from here.
       if (tokenStorage.get()) void retryAuth();
       else setAuthLoading(false);
     });

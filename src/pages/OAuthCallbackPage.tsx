@@ -16,9 +16,12 @@ export function OAuthCallbackPage() {
     queueMicrotask(async () => {
       if (!active) return;
       try {
-        await completeOAuth();
+        const params = new URLSearchParams(search);
+        const flow = params.get('flow');
+        if (!flow || !/^[A-Za-z0-9_-]{43}$/.test(flow) || params.getAll('flow').length !== 1) throw new Error('Invalid OAuth flow');
+        await completeOAuth(flow);
         if (!active) return;
-        const target = new URLSearchParams(search).get('returnTo') || '/rooms';
+        const target = params.get('returnTo') || '/rooms';
         const safeTarget = /^\/(rooms|favorites|my-listings|requests|matches|profile|friends)([/?#]|$)/.test(target)
           && !/[\\\u0000-\u0020]/.test(target) ? target : '/rooms';
         notify('เข้าสู่ระบบด้วย Google แล้ว');

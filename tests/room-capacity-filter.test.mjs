@@ -6,7 +6,7 @@ import { act, createElement } from 'react';
 
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 Object.assign(globalThis, {
-  window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage,
+  window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, sessionStorage: dom.window.sessionStorage,
   HTMLElement: dom.window.HTMLElement, HTMLInputElement: dom.window.HTMLInputElement,
   requestAnimationFrame: callback => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout,
   IS_REACT_ACT_ENVIRONMENT: true,
@@ -18,7 +18,7 @@ const { RoomsPage } = await import('../src/pages/RoomsPage.tsx');
 const { api } = await import('../src/lib/api.ts');
 let root, router, requests;
 beforeEach(() => {
-  localStorage.clear();
+  localStorage.clear(); sessionStorage.clear();
   requests = [];
   mock.method(api, 'roomsPage', async params => {
     requests.push(new URLSearchParams(params));

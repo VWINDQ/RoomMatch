@@ -140,14 +140,15 @@ test('browser exchanges an HttpOnly Google ticket once and establishes the norma
   try {
     configuration.origin = `http://127.0.0.1:${app.server.address().port}`;
     const ticket = randomBytes(32).toString('base64url');
+    const flow = randomBytes(32).toString('base64url');
     await environment.db.prepare(`INSERT INTO oauth_ticket(ticket_hash,user_id,expires_at)
       VALUES (?,1,clock_timestamp()+interval '1 minute')`).run(createHash('sha256').update(ticket).digest('hex'));
-    await context.addCookies([{ name: 'roommatch_oauth_ticket', value: ticket, url: configuration.origin, httpOnly: true, sameSite: 'Strict' }]);
-    await page.goto(`${configuration.origin}/auth/google/complete?returnTo=%2Frooms`);
+    await context.addCookies([{ name: `roommatch_oauth_ticket_${flow}`, value: ticket, url: configuration.origin, httpOnly: true, sameSite: 'Strict' }]);
+    await page.goto(`${configuration.origin}/auth/google/complete?returnTo=%2Frooms&flow=${flow}`);
     await expect(page).toHaveURL(`${configuration.origin}/rooms`);
     await expect(page.locator('.app-shell')).toBeVisible();
-    expect(await page.evaluate(() => Boolean(localStorage.getItem('roommatch:token')))).toBe(true);
-    expect((await context.cookies()).some(cookie => cookie.name === 'roommatch_oauth_ticket')).toBe(false);
+    expect(await page.evaluate(() => Boolean(sessionStorage.getItem('roommatch:token')))).toBe(true);
+    expect((await context.cookies()).some(cookie => cookie.name === `roommatch_oauth_ticket_${flow}`)).toBe(false);
     expect((await environment.db.prepare('SELECT count(*) AS count FROM oauth_ticket WHERE ticket_hash=?').get(createHash('sha256').update(ticket).digest('hex'))).count).toBe(0);
     await page.reload();
     await expect(page.locator('.app-shell')).toBeVisible();
@@ -160,10 +161,11 @@ test('browser exchanges an HttpOnly Google ticket once and establishes the norma
     const pending = await environment.db.prepare(`INSERT INTO USER(first_name,last_name,email,profile_setup_pending)
       VALUES ('New','Google','onboarding@example.test',TRUE) RETURNING user_id`).get();
     const setupTicket = randomBytes(32).toString('base64url');
+    const setupFlow = randomBytes(32).toString('base64url');
     await environment.db.prepare(`INSERT INTO oauth_ticket(ticket_hash,user_id,expires_at)
       VALUES (?,?,clock_timestamp()+interval '1 minute')`).run(createHash('sha256').update(setupTicket).digest('hex'), pending.user_id);
-    await context.addCookies([{ name: 'roommatch_oauth_ticket', value: setupTicket, url: configuration.origin, httpOnly: true, sameSite: 'Strict' }]);
-    await page.goto(`${configuration.origin}/auth/google/complete?returnTo=%2Fprofile`);
+    await context.addCookies([{ name: `roommatch_oauth_ticket_${setupFlow}`, value: setupTicket, url: configuration.origin, httpOnly: true, sameSite: 'Strict' }]);
+    await page.goto(`${configuration.origin}/auth/google/complete?returnTo=%2Fprofile&flow=${setupFlow}`);
     await expect(page).toHaveURL(/\/profile$/);
     await page.goto(`${configuration.origin}/rooms`);
     await expect(page).toHaveURL(/\/profile$/);

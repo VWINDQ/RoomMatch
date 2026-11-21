@@ -74,9 +74,14 @@ atomically consumed, including cancelled attempts. Concurrent first logins are
 serialized per provider subject and protected by unique database constraints.
 
 The callback never places a RoomMatch bearer token or Google tokens in a URL.
-It sets a random, HttpOnly, SameSite=Strict ticket cookie valid for one minute
-and redirects to `/auth/google/complete`. The SPA exchanges that ticket once via
-a same-origin JSON POST, then uses the existing validated session mechanism.
+Each attempt has separately named state and ticket cookies, suffixed with the
+random OAuth state. Concurrent Google logins in the same browser profile cannot
+overwrite or clear each other's cookies. The callback sets a random, HttpOnly,
+SameSite=Strict ticket cookie valid for one minute and redirects to
+`/auth/google/complete?returnTo=...&flow=...`. The non-secret `flow` identifier
+selects that attempt's cookie; it cannot authenticate without the HttpOnly ticket.
+The SPA exchanges it once via a same-origin JSON POST to
+`/api/auth/oauth/session?flow=...`, then establishes the session in that tab.
 Ticket values are stored only as SHA-256 hashes. HTTPS cookies use `Secure` and
 the `__Host-` prefix. Callback redirects disable caching and referrer forwarding.
 Google access/refresh tokens are not persisted. Expired attempts/tickets are
@@ -86,8 +91,19 @@ when traffic stops. Proxy access logs should omit callback query strings.
 The three additive tables are `oauth_identity`, `oauth_attempt`, `oauth_ticket`.
 The migration makes the existing password column nullable without rewriting any
 passwords or user rows. OAuth data is separate from the legacy SQLite import.
-Application bearer tokens still live in localStorage with the existing seven-day
-lifetime; this feature does not change logout/revocation behavior.
+Application bearer tokens live in per-tab `sessionStorage`, with the existing
+seven-day server-side lifetime. Reloading preserves the tab's account. Login,
+logout and session expiration do not change another tab's account or unsaved
+forms. A fresh tab starts signed out. Duplicated tabs or windows with an opener
+may initially receive a copy of the source tab's storage; subsequent changes
+remain independent, so the copied tab can log out and choose another account.
+Closing a tab normally clears its storage; browser session restoration may
+restore it. Logout still does not revoke a copied bearer token on the server.
+
+On upgrade, the client removes the legacy shared `localStorage` token without
+importing it. Refresh all old tabs and sign in again. Deploy the API and frontend
+together: Google ticket exchange now requires `flow`; an OAuth flow started
+before deployment may need to be restarted. No database migration is required.
 
 Endpoints:
 
@@ -96,7 +112,7 @@ Endpoints:
 | GET | `/api/auth/oauth/providers` | Google enabled status, no client secret |
 | GET | `/api/auth/oauth/google` | Begin sign-in; optional local `returnTo` |
 | GET | `/api/auth/oauth/google/callback` | Validate and consume provider response |
-| POST | `/api/auth/oauth/session` | Same-origin, one-time ticket exchange |
+| POST | `/api/auth/oauth/session?flow=...` | Same-origin, one-time exchange of the selected attempt's ticket |
 
 ## Verification
 

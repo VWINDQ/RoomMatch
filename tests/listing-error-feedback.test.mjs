@@ -8,11 +8,11 @@ import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
 
 test('listing errors render once at the image, field or above the save buttons', async t => {
-  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
-  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => null } });
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: { getItem: () => null } });
   t.after(() => {
-    if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage);
-    else delete globalThis.localStorage;
+    if (previousStorage) Object.defineProperty(globalThis, 'sessionStorage', previousStorage);
+    else delete globalThis.sessionStorage;
     delete globalThis.__listingFeedbackTestErrors;
   });
   const vite = await createServer({
