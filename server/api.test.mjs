@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { startRoomMatchServer } from './app.js';
 import { openDatabase } from '../tests/support/postgres.mjs';
 
 const database = await openDatabase({ filename: ':memory:' });
+const staticDirectory = await mkdtemp(join(tmpdir(), 'roommatch-api-static-'));
+const fixtureHtml = '<!doctype html><title>RoomMatch API routing fixture</title><main id="root"></main>';
+await writeFile(join(staticDirectory, 'index.html'), fixtureHtml);
 let application;
 let baseUrl;
 
@@ -14,6 +20,7 @@ before(async () => {
     host: '127.0.0.1',
     port: 0,
     logger: { error: () => {} },
+    staticDirectory,
   });
   const address = application.server.address();
   baseUrl = `http://127.0.0.1:${address.port}`;
@@ -22,6 +29,7 @@ before(async () => {
 after(async () => {
   await new Promise((resolve) => application.server.close(resolve));
   await database.close();
+  await rm(staticDirectory, { recursive: true, force: true });
 });
 
 async function api(path, options = {}) {
@@ -190,10 +198,17 @@ test('room writes enforce ownership and title convention', async () => {
   assert.equal((await database.prepare('SELECT COUNT(*) AS count FROM ROOM_IMAGE WHERE room_id = ?').get(created.body.room.roomId)).count, 0);
 });
 
-test('serves the built single-page app without masking unknown API routes', async () => {
+test('serves SPA routes without a prior build and without masking unknown API routes or missing assets', async () => {
   const pageResponse = await fetch(`${baseUrl}/rooms/1`);
   assert.equal(pageResponse.status, 200);
   assert.match(pageResponse.headers.get('content-type'), /^text\/html/);
+  assert.equal(await pageResponse.text(), fixtureHtml);
+  assert.equal(pageResponse.headers.get('cache-control'), 'no-cache');
+
+  const headResponse = await fetch(`${baseUrl}/profile`, { method: 'HEAD' });
+  assert.equal(headResponse.status, 200);
+  assert.equal(await headResponse.text(), '');
+  assert.equal((await fetch(`${baseUrl}/assets/missing.js`)).status, 404);
 
   const missingApi = await api('/api/not-a-route');
   assert.equal(missingApi.response.status, 404);

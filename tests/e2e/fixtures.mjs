@@ -34,6 +34,8 @@ export const test = base.extend({
       await db.prepare("INSERT INTO FRIEND_CONNECTION(sender_id,recipient_id,status,responded_at) VALUES(1,2,'accepted',CURRENT_TIMESTAMP),(3,1,'pending',NULL),(1,5,'pending',NULL) ON CONFLICT DO NOTHING").run();
       const empty = await db.prepare('INSERT INTO USER(first_name,last_name,email,password_hash) VALUES(?,?,?,?) RETURNING user_id')
         .run('บัญชีว่าง', 'ทดสอบ', 'empty@responsive.test', randomBytes(32).toString('hex'));
+      // General page scenarios use returning users; first-login coverage explicitly resets its own account.
+      await db.exec('UPDATE USER SET profile_reminder_seen_at=CURRENT_TIMESTAMP');
       app = await startRoomMatchServer({ db, host: '127.0.0.1', port: 0, uploadDirectory, logger: { error() {} } });
       const friend = await db.prepare('SELECT first_name,last_name FROM USER WHERE user_id=4').get();
       // Server receives this explicit db; no path can open the development database.

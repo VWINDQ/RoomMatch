@@ -87,6 +87,7 @@ export function normalizeUser(value: unknown): User {
     userId: text(source, 'userId', 'user_id', 'id'), firstName: text(source, 'firstName', 'first_name'), lastName: text(source, 'lastName', 'last_name'),
     phone: text(source, 'phone'), gender: text(source, 'gender'), dateOfBirth: text(source, 'dateOfBirth', 'date_of_birth'), university: text(source, 'university'),
     accountType: text(source, 'accountType'), profileSetupPending: source.profileSetupPending === true,
+    profileReminderSeen: typeof source.profileReminderSeen === 'boolean' ? source.profileReminderSeen : undefined,
     profileImage: text(source, 'profileImage', 'profile_image'), bio: text(source, 'bio'), email: text(source, 'email'), instagram: text(source, 'instagram'),
     lineId: text(source, 'lineId', 'line_id'), isActive: Boolean(pick(source, 'isActive', 'is_active') ?? true),
   };
@@ -283,6 +284,10 @@ export const api = {
   async oauthProviders() { const result = await request<JsonObject>('/auth/oauth/providers'); return { google: result.google === true }; },
   async completeOAuth(flow: string) { return parseAuthSession(await request<unknown>(`/auth/oauth/session?flow=${encodeURIComponent(flow)}`, { method: 'POST', body: '{}' })); },
   async me() { const result = await request<unknown>('/auth/me'); return parseAuthenticatedUser(object(result).user); },
+  async acknowledgeProfileReminder() {
+    const result = object(await request<unknown>('/profile/reminder/acknowledge', { method: 'POST' }));
+    if (result.acknowledged !== true) throw new Error('บันทึกการรับทราบไม่สำเร็จ กรุณาลองอีกครั้ง');
+  },
   roomsPage: (params: URLSearchParams) => requestRoomPage('/rooms', params),
   favoritesPage: (params: URLSearchParams) => requestRoomPage('/favorites', params),
   myRoomsPage: (params: URLSearchParams) => requestRoomPage('/my/rooms', params),

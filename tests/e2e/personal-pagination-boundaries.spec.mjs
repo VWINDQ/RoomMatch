@@ -10,7 +10,7 @@ const personalCases = [
 
 async function prepare(page, environment, testInfo, count) {
   const hash = await hashPassword(randomBytes(24).toString('hex'));
-  const owner = await environment.db.prepare('INSERT INTO USER(first_name,last_name,email,password_hash) VALUES(?,?,?,?) RETURNING user_id')
+  const owner = await environment.db.prepare('INSERT INTO USER(first_name,last_name,email,password_hash,profile_reminder_seen_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP) RETURNING user_id')
     .run('Boundary', 'Fixture', `boundary-${randomBytes(8).toString('hex')}@example.test`, hash);
   testInfo.boundaryOwnerId = owner.insertId;
   const rooms = await seedPersonalPagination(environment.db, count, { ownerId: owner.insertId, favoriteUserId: owner.insertId });

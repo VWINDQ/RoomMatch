@@ -1,0 +1,21 @@
+.modal-card.profile-reminder { width: min(100%, 490px); }
+.profile-reminder > header { align-items: flex-start; gap: 12px; }
+.profile-reminder > header h2 { color: var(--primary); line-height: 1.6; }
+.profile-reminder > header .icon-button { flex-shrink: 0; }
+.profile-reminder .modal-body { line-height: 1.75; }
+.profile-reminder-list { display: grid; gap: 20px; margin: 22px 0; padding: 0; list-style: none; }
+.profile-reminder-list li { display: flex; align-items: flex-start; gap: 13px; }
+.profile-reminder-icon { width: 42px; height: 42px; flex-shrink: 0; display: grid; place-items: center; border-radius: 15px; color: var(--primary); box-shadow: inset 0 1px 0 white, 2px 3px 6px rgba(29,49,84,.06); }
+.profile-reminder-icon.lifestyle { background: var(--pastel-yellow); }
+.profile-reminder-icon.contact { background: var(--pastel-mint); }
+.profile-reminder-list strong { display: block; color: var(--primary); font-size: .9rem; }
+.profile-reminder-list li div > span { display: block; margin-top: 3px; font-size: .8rem; }
+.profile-reminder .profile-reminder-note { font-size: .76rem; }
+.profile-reminder .form-alert { margin-top: 16px; }
+.profile-reminder > footer { border-top: 1px solid var(--border-soft); }
+@media (max-width: 480px) {
+  .profile-reminder > header, .profile-reminder .modal-body { padding: 18px; }
+  .profile-reminder > header h2 { font-size: 1rem; }
+  .profile-reminder > footer { padding: 14px 18px 18px; flex-direction: column-reverse; align-items: stretch; }
+  .profile-reminder > footer .button { width: 100%; min-height: 46px; }
+}
