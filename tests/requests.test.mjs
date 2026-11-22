@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { calculateAge } from '../shared/age.js';
 import { afterEach, beforeEach, test } from 'node:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -110,9 +111,10 @@ test('requester profiles expose current public fields without contacts or room m
   assert.equal(result.status, 200);
   assert.deepEqual(result.body, { profile: {
     userId: 2, firstName: 'Student 2', lastName: 'Request test', profileImage: null,
+    age: calculateAge('2003-04-12'), gender: 'female',
     university: 'KMUTT', bio: 'ชอบอ่านหนังสือ', lifestyle: 'ตื่นเช้า ไม่สูบบุหรี่', budgetMin: 0, budgetMax: 5000,
   } });
-  for (const field of ['email', 'phone', 'lineId', 'instagram', 'passwordHash', 'password_hash', 'dateOfBirth', 'gender', 'owner_id', 'is_active']) {
+  for (const field of ['email', 'phone', 'lineId', 'instagram', 'passwordHash', 'password_hash', 'dateOfBirth', 'date_of_birth', 'preferredGender', 'owner_id', 'is_active']) {
     assert.equal(field in result.body.profile, false, field);
   }
   await db.prepare('UPDATE USER SET bio = ? WHERE user_id = 2').run('ข้อมูลใหม่หลังส่งคำขอ');
@@ -125,7 +127,7 @@ test('requester profiles support unfilled public fields and decided request hist
   const path = `/requests/${request.requestId}/profile`;
   const initial = await api(path, 1);
   assert.equal(initial.status, 200);
-  for (const field of ['university', 'bio', 'profileImage', 'lifestyle', 'budgetMin', 'budgetMax']) assert.equal(initial.body.profile[field], null, field);
+  for (const field of ['age', 'gender', 'university', 'bio', 'profileImage', 'lifestyle', 'budgetMin', 'budgetMax']) assert.equal(initial.body.profile[field], null, field);
   assert.equal((await api(`/requests/${request.requestId}`, 1, 'PATCH', { status: 'rejected' })).status, 200);
   assert.deepEqual(await api(path, 1), initial);
   const approved = await sendRequest(await createRoom());
