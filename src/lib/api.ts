@@ -252,10 +252,12 @@ export const tokenStorage = {
 
 function normalizeFriend(value: unknown): FriendProfile {
   const source = object(value);
-  const budget = (key: string) => source[key] == null ? null : Number(source[key]);
+  const amount = (key: string) => source[key] == null ? null : Number(source[key]);
   return { userId: text(source, 'userId'), firstName: text(source, 'firstName'), lastName: text(source, 'lastName'),
     university: text(source, 'university'), bio: text(source, 'bio'), profileImage: text(source, 'profileImage'),
-    lifestyle: text(source, 'lifestyle'), budgetMin: budget('budgetMin'), budgetMax: budget('budgetMax'),
+    lifestyle: text(source, 'lifestyle'), budgetMin: amount('budgetMin'), budgetMax: amount('budgetMax'),
+    gender: text(source, 'gender'), preferredGender: text(source, 'preferredGender'),
+    preferredAgeMin: amount('preferredAgeMin'), preferredAgeMax: amount('preferredAgeMax'),
     age: typeof source.age === 'number' ? source.age : null,
     lineId: text(source, 'lineId'), instagram: text(source, 'instagram'), email: text(source, 'email'), phone: text(source, 'phone') };
 }

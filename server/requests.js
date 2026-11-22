@@ -1,4 +1,5 @@
 import { assert } from './errors.js';
+import { calculateAge } from '../shared/age.js';
 
 const REQUEST_DECISIONS = new Set(['approved', 'rejected']);
 
@@ -75,6 +76,7 @@ export function createRoomRequestHandler(db, {
       const row = await db.prepare(`
         SELECT room.owner_id, requester.user_id, requester.first_name, requester.last_name,
           requester.profile_image, requester.university, requester.bio, requester.is_active,
+          requester.date_of_birth, requester.gender,
           lifestyle.lifestyle_name, preference.budget_min, preference.budget_max
         FROM ROOM_REQUEST rr
         JOIN ROOM room ON room.room_id = rr.room_id
@@ -90,6 +92,7 @@ export function createRoomRequestHandler(db, {
       sendJson(response, 200, { profile: {
         userId: row.user_id, firstName: row.first_name, lastName: row.last_name,
         profileImage: row.profile_image, university: row.university, bio: row.bio,
+        age: calculateAge(row.date_of_birth), gender: row.gender,
         lifestyle: row.lifestyle_name ?? null,
         budgetMin: row.budget_min ?? null, budgetMax: row.budget_max ?? null,
       } }, request);

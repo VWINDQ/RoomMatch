@@ -79,6 +79,19 @@ test('register, authenticate, and update one-to-one profile data', async () => {
   assert.equal(profile.response.status, 200);
   assert.equal(profile.body.lifestyle.lifestyleName, 'ตื่นเช้า • ไม่สูบบุหรี่');
   assert.equal(profile.body.preference.budgetMax, 7000);
+  await database.prepare("UPDATE PREFERENCE SET preferred_gender = 'non_binary' WHERE user_id = ?").run(profile.body.user.userId);
+  const saveGender = (path, method, preference) => api(path, {
+    method, headers, body: JSON.stringify(method === 'PATCH' ? { bio: 'Preference regression', preference } : preference),
+  });
+  assert.equal((await saveGender('/api/profile', 'PATCH', { preferredGender: 'non_binary' })).body.preference.preferredGender, 'non_binary');
+  assert.equal((await saveGender('/api/profile', 'PATCH', { budgetMax: 7000 })).body.preference.preferredGender, 'non_binary');
+  assert.equal((await saveGender('/api/profile', 'PATCH', { preferredGender: 'other' })).response.status, 400);
+  for (const preferredGender of ['male', 'female', 'any']) {
+    const result = await saveGender('/api/preference', 'PUT', { preferredGender, budgetMax: 7000 });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.body.preference.preferredGender, preferredGender);
+  }
+  assert.equal((await saveGender('/api/preference', 'PUT', { preferredGender: 'non_binary' })).response.status, 400);
 
   const invalidBirthDate = await api('/api/profile', {
     method: 'PATCH',

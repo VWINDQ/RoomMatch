@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import type { FriendProfile, JoinRequest } from '../types';
 import { ProfilePhoto } from './ProfilePhoto';
+import { ProfileDemographics } from './ProfileDemographics';
 import { Button, Modal } from './UI';
 import './RequesterProfileModal.css';
 
@@ -48,7 +49,7 @@ export function RequesterProfileModal({ request, onClose, onDecide }: { request:
     {loading ? <Skeleton variant="requester-profile"/>
       : error || !profile ? <div className="requester-profile-error"><p role="alert">{error || 'ไม่พบโปรไฟล์ผู้ขอเข้าพัก'}</p><Button variant="secondary" onClick={() => setReload(value => value + 1)}><RefreshCw size={17}/>ลองอีกครั้ง</Button></div>
         : <div className="requester-profile">
-          <header><div className="requester-profile-avatar"><ProfilePhoto src={profile.profileImage} fallback={profile.firstName.charAt(0) || 'R'}/></div><div><h3>{profile.firstName} {profile.lastName}</h3><p>{profile.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p></div></header>
+          <header><div className="requester-profile-avatar"><ProfilePhoto src={profile.profileImage} fallback={profile.firstName.charAt(0) || 'R'}/></div><div><h3>{profile.firstName} {profile.lastName}</h3><ProfileDemographics age={profile.age} gender={profile.gender}/><p>{profile.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p></div></header>
           <p className="requester-profile-room">ขอเข้าพักที่ {request.room?.title || 'ห้องของคุณ'}</p>
           <section><h3>เกี่ยวกับฉัน</h3><p>{profile.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</p></section>
           <section><h3>ไลฟ์สไตล์</h3><p>{profile.lifestyle || 'ยังไม่ได้ระบุไลฟ์สไตล์'}</p></section>
