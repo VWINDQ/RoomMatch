@@ -14,7 +14,7 @@ export function GoogleRegistrationPage() {
   const flow = params.get('flow') || '';
   const validFlow = /^[A-Za-z0-9_-]{43}$/.test(flow) && params.getAll('flow').length === 1;
   return <main className="auth-form-wrap"><div className="auth-form-card">
-    <header><h1>สมัครสมาชิกด้วย Google</h1></header>
+    <header className="text-center"><h1>สมัครสมาชิกด้วย Google</h1></header>
     {validFlow ? <RegistrationForm key={flow} flow={flow}/> : <RegistrationError message={expiredMessage}/>}
   </div></main>;
 }
