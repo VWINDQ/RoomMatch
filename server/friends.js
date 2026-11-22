@@ -20,6 +20,7 @@ async function profile(db, row, isAcceptedFriend = false) {
   const result = {
     userId: row.user_id, firstName: row.first_name, lastName: row.last_name,
     university: row.university, bio: row.bio, profileImage: row.profile_image,
+    instagram: row.instagram,
     age: calculateAge(row.date_of_birth),
     gender: row.gender,
     preferredGender: preference?.preferred_gender ?? null,
@@ -28,7 +29,7 @@ async function profile(db, row, isAcceptedFriend = false) {
     budgetMin: preference?.budget_min ?? null, budgetMax: preference?.budget_max ?? null,
   };
   if (isAcceptedFriend) Object.assign(result, {
-    lineId: row.line_id, instagram: row.instagram, email: row.email, phone: row.phone,
+    lineId: row.line_id, email: row.email, phone: row.phone,
   });
   return result;
 }
