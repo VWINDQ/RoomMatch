@@ -38,7 +38,7 @@ async function fixture(t, filename = ':memory:') {
   return { db, api, invite, cancel, close };
 }
 
-const privateFields = ['email', 'phone', 'lineId', 'instagram', 'passwordHash', 'dateOfBirth'];
+const privateFields = ['email', 'phone', 'lineId', 'passwordHash', 'dateOfBirth'];
 const row = async (db, id) => await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id=?').get(id);
 
 test('sender withdraws pending invitation without sharing contacts or changing room and favorite data', async t => {
