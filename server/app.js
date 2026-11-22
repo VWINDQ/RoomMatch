@@ -312,6 +312,7 @@ function roomDto(row, images = [], options = {}) {
     ...(options.requestStatus !== undefined ? { requestStatus: options.requestStatus } : {}),
     ...(options.pendingRequestId !== undefined ? { pendingRequestId: options.pendingRequestId } : {}),
     ...(options.members ? { members: options.members } : {}),
+    ...(options.ownerResidentProfile ? { ownerResidentProfile: options.ownerResidentProfile } : {}),
   };
 }
 
@@ -850,11 +851,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           isFavorite = Boolean(await db.prepare('SELECT 1 FROM ROOM_FAVORITE WHERE user_id = ? AND room_id = ?').get(currentUser.user_id, roomId));
         }
         const isMember = Boolean(currentUser && await db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, currentUser.user_id));
-        const members = await canViewRoomMembers(db, room, currentUser?.user_id)
-          ? (await listRoomMembers(db, roomId, userDto)).filter(member => member.status !== 'owner')
+        const residents = await canViewRoomMembers(db, room, currentUser?.user_id)
+          ? await listRoomMembers(db, roomId, userDto, { includeProfiles: true })
           : [];
+        const members = residents.filter(member => member.status !== 'owner');
+        const ownerResidentProfile = residents.find(member => member.status === 'owner')?.profile;
         sendJson(response, 200, {
-          room: roomDto(room, await imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, pendingRequestId, members, isMember, isFavorite }),
+          room: roomDto(room, await imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, pendingRequestId, members, ownerResidentProfile, isMember, isFavorite }),
         }, request);
         return;
       }

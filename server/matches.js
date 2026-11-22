@@ -1,4 +1,5 @@
 import { assert } from './errors.js';
+import { calculateAge } from '../shared/age.js';
 
 export async function canViewRoomMembers(db, room, userId) {
   if (!userId) return false;
@@ -7,8 +8,9 @@ export async function canViewRoomMembers(db, room, userId) {
     WHERE room_id = ? AND user_id = ? AND status = 'approved'`).get(room.room_id, userId));
 }
 
-export async function listRoomMembers(db, roomId, userDto) {
+export async function listRoomMembers(db, roomId, userDto, { includeProfiles = false } = {}) {
   const rows = await db.prepare(`
+    WITH residents AS (
     SELECT u.user_id, u.first_name, u.last_name, u.profile_image,
       'owner' AS membership_status, 0 AS role_order,
       room.created_at AS joined_at
@@ -19,12 +21,29 @@ export async function listRoomMembers(db, roomId, userDto) {
       rm.joined_at AS joined_at
     FROM ROOM_MEMBER rm JOIN USER u ON u.user_id = rm.user_id
     WHERE rm.room_id = ? AND rm.status = 'approved'
-    ORDER BY role_order, joined_at, user_id
+    )
+    SELECT residents.*${includeProfiles ? `,
+      person.date_of_birth, person.gender, person.university, person.bio, lifestyle.lifestyle_name,
+      preference.preferred_gender, preference.preferred_age_min, preference.preferred_age_max,
+      preference.budget_min, preference.budget_max` : ''}
+    FROM residents
+    ${includeProfiles ? `
+      JOIN USER person ON person.user_id = residents.user_id
+      LEFT JOIN LIFESTYLE lifestyle ON lifestyle.user_id = residents.user_id
+      LEFT JOIN PREFERENCE preference ON preference.user_id = residents.user_id` : ''}
+    ORDER BY residents.role_order, residents.joined_at, residents.user_id
   `).all(roomId, roomId);
   return rows.map(row => ({
     ...userDto(row),
     status: row.membership_status,
     joinedAt: row.joined_at,
+    ...(includeProfiles ? { profile: {
+      ...userDto(row),
+      age: calculateAge(row.date_of_birth), gender: row.gender, university: row.university, bio: row.bio,
+      lifestyle: row.lifestyle_name,
+      preferredGender: row.preferred_gender, preferredAgeMin: row.preferred_age_min, preferredAgeMax: row.preferred_age_max,
+      budgetMin: row.budget_min, budgetMax: row.budget_max,
+    } } : {}),
   }));
 }
 

@@ -41,6 +41,7 @@ export type Room = {
   owner?: User;
   images: RoomImage[];
   members?: RoomMember[];
+  ownerResidentProfile?: RoommateProfile;
   memberCount: number;
   availableSlots: number;
   isOwner?: boolean;
@@ -56,6 +57,7 @@ export type RoomMember = {
   status: string;
   joinedAt: string;
   user?: User;
+  profile?: RoommateProfile;
 };
 
 export type JoinRequest = {
@@ -96,7 +98,7 @@ export type Match = {
 
 export type RoomFilters = { minPrice: string; maxPrice: string; capacity: string; minSlots: string; priceBasis: string };
 
-export type FriendProfile = {
+export type RoommateProfile = {
   userId: string; firstName: string; lastName: string; university: string;
   age: number | null;
   gender: string;
@@ -104,6 +106,8 @@ export type FriendProfile = {
   preferredAgeMin: number | null; preferredAgeMax: number | null;
   bio: string; profileImage: string; lifestyle: string;
   budgetMin: number | null; budgetMax: number | null;
+};
+export type FriendProfile = RoommateProfile & {
   lineId?: string; instagram?: string; email?: string; phone?: string;
 };
 export type FriendConnection = {

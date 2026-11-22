@@ -1,0 +1,8 @@
+.roommate-profile-modal {
+  max-height: calc(100dvh - 40px);
+  display: flex;
+  flex-direction: column;
+}
+.roommate-profile-modal > header,
+.roommate-profile-modal > footer { flex-shrink: 0; }
+.roommate-profile-modal > .modal-body { min-height: 0; overflow-y: auto; }

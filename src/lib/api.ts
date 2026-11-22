@@ -1,4 +1,4 @@
-import type { FriendConnection, FriendProfile, JoinRequest, Lifestyle, Match, Preference, ProfileBundle, Room, RoomMember, User } from '../types';
+import type { FriendConnection, FriendProfile, JoinRequest, Lifestyle, Match, Preference, ProfileBundle, Room, RoomMember, RoommateProfile, User } from '../types';
 import { friendlyApiError } from './apiErrors';
 import type { RegistrationProfile } from './registration';
 
@@ -144,6 +144,7 @@ function normalizeRoom(value: unknown): Room {
     priceBasis: (pick(source, 'priceBasis', 'price_basis') ?? null) as Room['priceBasis'], locality: text(source, 'locality'), costNotes: text(source, 'costNotes', 'cost_notes'), isMember: Boolean(source.isMember),
     status: (text(source, 'status') || 'available') as Room['status'], createdAt: text(source, 'createdAt', 'created_at'), owner: source.owner ? normalizeUser(source.owner) : undefined,
     images, members: Array.isArray(rawMembers) ? rawMembers.map(normalizeMember) : undefined, memberCount: numeric(source, 'memberCount', 'member_count'),
+    ownerResidentProfile: source.ownerResidentProfile ? normalizeRoommateProfile(source.ownerResidentProfile) : undefined,
     ownerIsResident: Boolean(pick(source, 'ownerIsResident', 'owner_is_resident') ?? true),
     occupantCount: pick(source, 'occupantCount', 'occupant_count') == null ? numeric(source, 'memberCount', 'member_count') + Number(pick(source, 'ownerIsResident', 'owner_is_resident') ?? true) : numeric(source, 'occupantCount', 'occupant_count'),
     availableSlots: numeric(source, 'availableSlots', 'available_slots'), isOwner: Boolean(source.isOwner ?? source.is_owner), isFavorite: Boolean(source.isFavorite ?? source.is_favorite),
@@ -154,7 +155,8 @@ function normalizeRoom(value: unknown): Room {
 
 function normalizeMember(value: unknown): RoomMember {
   const source = object(value);
-  return { userId: text(source, 'userId', 'user_id'), roomId: text(source, 'roomId', 'room_id'), status: text(source, 'status'), joinedAt: text(source, 'joinedAt', 'joined_at'), user: source.user ? normalizeUser(source.user) : normalizeUser(source) };
+  return { userId: text(source, 'userId', 'user_id'), roomId: text(source, 'roomId', 'room_id'), status: text(source, 'status'), joinedAt: text(source, 'joinedAt', 'joined_at'), user: source.user ? normalizeUser(source.user) : normalizeUser(source),
+    profile: source.profile ? normalizeRoommateProfile(source.profile) : undefined };
 }
 
 function normalizeRequest(value: unknown): JoinRequest {
@@ -250,7 +252,7 @@ export const tokenStorage = {
   },
 };
 
-function normalizeFriend(value: unknown): FriendProfile {
+function normalizeRoommateProfile(value: unknown): RoommateProfile {
   const source = object(value);
   const amount = (key: string) => source[key] == null ? null : Number(source[key]);
   return { userId: text(source, 'userId'), firstName: text(source, 'firstName'), lastName: text(source, 'lastName'),
@@ -258,7 +260,11 @@ function normalizeFriend(value: unknown): FriendProfile {
     lifestyle: text(source, 'lifestyle'), budgetMin: amount('budgetMin'), budgetMax: amount('budgetMax'),
     gender: text(source, 'gender'), preferredGender: text(source, 'preferredGender'),
     preferredAgeMin: amount('preferredAgeMin'), preferredAgeMax: amount('preferredAgeMax'),
-    age: typeof source.age === 'number' ? source.age : null,
+    age: typeof source.age === 'number' ? source.age : null };
+}
+function normalizeFriend(value: unknown): FriendProfile {
+  const source = object(value);
+  return { ...normalizeRoommateProfile(source),
     lineId: text(source, 'lineId'), instagram: text(source, 'instagram'), email: text(source, 'email'), phone: text(source, 'phone') };
 }
 function normalizeConnection(value: unknown): FriendConnection {
