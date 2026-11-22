@@ -1,4 +1,5 @@
 import { test, expect, signIn, noOverflow } from './fixtures.mjs';
+import { createToken } from '../../server/auth.js';
 
 test('friend cards and profiles show age without overflow and keep it after sending an invitation', async ({ page, environment }) => {
   const longName = 'ทดสอบชื่อยาวสำหรับจอมือถือ'.repeat(3);
@@ -69,4 +70,24 @@ test('friend cards and profiles show age without overflow and keep it after send
   await expectModalDetails('นอนไบนารี', '20–25 ปี');
   await dialog.getByRole('button', { name: 'ปิด', exact: true }).click();
   await checkAge(card, summary, longName);
+
+  const { connection_id: connectionId } = await environment.db.prepare(
+    'SELECT connection_id FROM FRIEND_CONNECTION WHERE sender_id = 1 AND recipient_id = ?',
+  ).get(long.user_id);
+  const response = await page.request.patch(`/api/friends/connections/${connectionId}`, {
+    headers: { Authorization: `Bearer ${createToken(long.user_id)}` },
+    data: { status: 'accepted' },
+  });
+  expect(response.ok()).toBe(true);
+  await page.reload();
+  await page.getByRole('button', { name: /^เพื่อนของฉัน/ }).click();
+  await expect(page).toHaveURL(/view=friends/);
+  await expect(card.getByRole('link', { name: 'ค้นหาห้องด้วยกัน' })).toBeVisible();
+  await checkAge(card, summary, longName);
+  await expect(card.getByText(preferenceHeading, { exact: true }).locator('xpath=following-sibling::dd')).toHaveText('นอนไบนารี');
+  await noOverflow(page);
+  await card.getByRole('button', { name: 'ดูโปรไฟล์' }).click();
+  await checkAge(dialog, summary, longName);
+  await expectModalDetails('นอนไบนารี', '20–25 ปี');
+  await noOverflow(page);
 });
