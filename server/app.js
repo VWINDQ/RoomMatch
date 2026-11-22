@@ -233,15 +233,24 @@ function parsePreference(body) {
   const budgetMax = money(body.budgetMax, 'budgetMax');
   assert(preferredAgeMin === null || preferredAgeMax === null || preferredAgeMin <= preferredAgeMax, 400, 'preferredAgeMin cannot exceed preferredAgeMax');
   assert(budgetMin === null || budgetMax === null || budgetMin <= budgetMax, 400, 'budgetMin cannot exceed budgetMax');
-  return [preferredGender, preferredAgeMin, preferredAgeMax, budgetMin, budgetMax];
+  return [Object.hasOwn(body, 'preferredGender') ? preferredGender : undefined, preferredAgeMin, preferredAgeMax, budgetMin, budgetMax];
 }
 
 async function savePreference(db, userId, values) {
+  // Both write paths lock the account before checking a retained preference.
+  await db.prepare('SELECT user_id FROM USER WHERE user_id = ? FOR UPDATE').get(userId);
+  const existing = await db.prepare('SELECT preferred_gender FROM PREFERENCE WHERE user_id = ?').get(userId);
+  const [submittedGender, ...ranges] = values;
+  const previousGender = existing?.preferred_gender ?? null;
+  const preferredGender = submittedGender === undefined ? previousGender : submittedGender;
+  if (preferredGender !== previousGender && !['any', 'male', 'female'].includes(preferredGender)) {
+    throw new HttpError(400, 'Invalid preferred gender', { preferredGender: 'กรุณาเลือก ไม่จำกัด ชาย หรือหญิง' });
+  }
   await db.prepare(`INSERT INTO PREFERENCE (user_id, preferred_gender, preferred_age_min, preferred_age_max, budget_min, budget_max)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET preferred_gender = excluded.preferred_gender,
       preferred_age_min = excluded.preferred_age_min, preferred_age_max = excluded.preferred_age_max,
-      budget_min = excluded.budget_min, budget_max = excluded.budget_max`).run(userId, ...values);
+      budget_min = excluded.budget_min, budget_max = excluded.budget_max`).run(userId, preferredGender, ...ranges);
 }
 
 function lifestyleDto(row) {
@@ -771,7 +780,8 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (request.method === 'PUT' && pathname === '/api/preference') {
         const user = await authenticate(db, request);
         const body = await readJson(request);
-        await savePreference(db, user.user_id, parsePreference(body));
+        const preference = parsePreference(body);
+        await db.transaction(() => savePreference(db, user.user_id, preference));
         sendJson(response, 200, { preference: preferenceDto(await db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id)) }, request);
         return;
       }
