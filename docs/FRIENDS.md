@@ -15,16 +15,17 @@
 โดย API รับ recipientId เป็น number; adapter แปลง string ID ของ frontend ให้แล้ว
 ชื่อ route ของ UI คือ `/friends` ไม่ใช่ `/matches`
 
-| สถานะ | ผู้ทำรายการต่อได้ | การเปิดเผยอายุและช่องทางติดต่อ |
+| สถานะ | ผู้ทำรายการต่อได้ | การเปิดเผยช่องทางติดต่อ |
 | --- | --- | --- |
 | `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | เก็บเป็นส่วนตัว |
-| `accepted` | ค้นหาห้องด้วยกัน; ยังไม่มี unfriend | ทั้งสองฝ่ายเห็นอายุเต็มปี รวมถึง LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้ |
+| `accepted` | ค้นหาห้องด้วยกัน; ยังไม่มี unfriend | ทั้งสองฝ่ายเห็น LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้ |
 | `declined` | ดูประวัติ ไม่ส่งซ้ำ/เปลี่ยนผล | เก็บเป็นส่วนตัว |
 | `cancelled` | ผู้ส่งถอนซ้ำแบบ idempotent ได้ แต่ไม่ส่งคำชวนใหม่ | เก็บเป็นส่วนตัว |
 
-เมื่อตอบรับแล้ว การ์ดและโปรไฟล์เพื่อนจะแสดงอายุเต็มปีจาก `connection.person.age` โดยเก็บวันเกิดเป็นส่วนตัว
-หากเพื่อนยังไม่ได้กรอกวันเกิด ค่าอายุจะเป็น `null` และแสดง “ยังไม่ระบุอายุ”
-คนนอกไม่เห็น connection ของคู่อื่น แม้แนบ userId ใน query และโปรไฟล์สาธารณะไม่มีอายุหรือช่องทางติดต่อ
+การ์ดและหน้าต่างโปรไฟล์แสดงอายุเต็มปีและเพศของเจ้าของโปรไฟล์ทั้งก่อนและหลังส่งคำชวน โดยเก็บวันเกิดเป็นส่วนตัว
+ช่องเพศและช่วงอายุที่สะดวกแชร์ห้องอ่านจากความต้องการของเจ้าของโปรไฟล์ ค่าที่ยังไม่ได้ตั้งจะแสดง “ยังไม่ระบุ”
+หากไม่มีวันเกิดหรือคำนวณไม่ได้ ค่าอายุจะเป็น `null` และแสดง “ยังไม่ระบุอายุ”
+คนนอกไม่เห็น connection ของคู่อื่นแม้แนบ userId ใน query ช่องทางติดต่อเปิดเผยกับเพื่อนที่ตอบรับแล้วเท่านั้น
 เมื่อคู่ inactive API จะไม่คืนคู่นั้นใน connections; หลังโหลดใหม่ UI ต้องไม่ใช้ contact ที่ cache ไว้
 ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ, unfriend, ส่งซ้ำหลัง declined/cancelled
 หรือการสมัครห้องแบบกลุ่ม (อย่าใช้ POST สวนทางแทนการตอบรับ ต้อง PATCH โดยผู้รับ)
@@ -50,7 +51,8 @@ curl -sS -X POST "$RM_API/friends/connections" \
     "createdAt": "2026-11-15T10:00:00.000Z", "respondedAt": null,
     "person": {
       "userId": 2, "firstName": "บี", "lastName": "ทดสอบ", "university": null,
-      "bio": null, "profileImage": null, "lifestyle": null, "budgetMin": null, "budgetMax": null
+      "bio": null, "profileImage": null, "lifestyle": null, "budgetMin": null, "budgetMax": null,
+      "age": null, "gender": null, "preferredGender": null, "preferredAgeMin": null, "preferredAgeMax": null
     }
   }
 }
@@ -113,7 +115,7 @@ allowed; acceptance is not exclusive.
   cancelled invitation returns the same result/time. An accepted or declined
   invitation returns `409`; withdrawal never ends an accepted friendship.
 
-Discovery exposes name, university, bio, profile image, lifestyle, and stated budget.
+Discovery exposes name, age in completed years, gender, university, bio, profile image, lifestyle, and stated roommate preferences (gender, age range, and budget).
 It does not expose exact birth dates, passwords, email, phone, LINE, or Instagram.
 Contact fields become available to the two participants only after acceptance.
 There is no fabricated compatibility score or automatic acceptance.

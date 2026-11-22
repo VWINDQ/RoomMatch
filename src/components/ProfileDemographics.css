@@ -1,0 +1,14 @@
+.profile-demographics.profile-demographics {
+  width: fit-content;
+  max-width: 100%;
+  margin: 5px 0 0;
+  padding: 2px 8px;
+  border-radius: 9px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: .75rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

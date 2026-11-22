@@ -16,15 +16,18 @@ async function writeConnection(db, operation) {
 
 async function profile(db, row, isAcceptedFriend = false) {
   const lifestyle = await db.prepare('SELECT lifestyle_name FROM LIFESTYLE WHERE user_id = ?').get(row.user_id);
-  const preference = await db.prepare('SELECT budget_min, budget_max FROM PREFERENCE WHERE user_id = ?').get(row.user_id);
+  const preference = await db.prepare('SELECT budget_min, budget_max, preferred_gender, preferred_age_min, preferred_age_max FROM PREFERENCE WHERE user_id = ?').get(row.user_id);
   const result = {
     userId: row.user_id, firstName: row.first_name, lastName: row.last_name,
     university: row.university, bio: row.bio, profileImage: row.profile_image,
+    age: calculateAge(row.date_of_birth),
+    gender: row.gender,
+    preferredGender: preference?.preferred_gender ?? null,
+    preferredAgeMin: preference?.preferred_age_min ?? null, preferredAgeMax: preference?.preferred_age_max ?? null,
     lifestyle: lifestyle?.lifestyle_name ?? null,
     budgetMin: preference?.budget_min ?? null, budgetMax: preference?.budget_max ?? null,
   };
   if (isAcceptedFriend) Object.assign(result, {
-    age: calculateAge(row.date_of_birth),
     lineId: row.line_id, instagram: row.instagram, email: row.email, phone: row.phone,
   });
   return result;

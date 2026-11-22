@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
+import { ProfileDemographics } from '../components/ProfileDemographics';
+import { ageRange, roommateGenderLabel } from '../lib/profileLabels';
 import { ContactActions } from '../components/ContactActions';
 import { Button, EmptyState, Modal } from '../components/UI';
 import { api, ApiError } from '../lib/api';
@@ -41,18 +43,14 @@ function budgetLabel(person: FriendProfile) {
   return `฿${person.budgetMin.toLocaleString('th-TH')}–${person.budgetMax.toLocaleString('th-TH')} / เดือน`;
 }
 
-function FriendAge({ age }: { age: FriendProfile['age'] }) {
-  return <p>{age == null ? 'ยังไม่ระบุอายุ' : `อายุ ${age} ปี`}</p>;
-}
-
 function PersonCard({ person, badge, actions, onView, accepted = false }: {
   person: FriendProfile; badge?: ReactNode; actions: ReactNode; onView: () => void; accepted?: boolean;
 }) {
   return <article className="friend-card">
-    <header><FriendAvatar person={person}/><div><h2>{person.firstName} {person.lastName}</h2><p>{person.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p>{accepted && <FriendAge age={person.age}/>}</div></header>
+    <header><FriendAvatar person={person}/><div><h2>{person.firstName} {person.lastName}</h2><ProfileDemographics age={person.age} gender={person.gender}/><p>{person.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p></div></header>
     {badge && <div className="friend-status">{badge}</div>}
     <p className="friend-bio">{person.bio || 'ยังไม่ได้เขียนแนะนำตัว ลองทำความรู้จักกันก่อนตัดสินใจแชร์ห้อง'}</p>
-    <dl className="friend-facts"><div><dt>ไลฟ์สไตล์</dt><dd>{person.lifestyle || 'ยังไม่ได้ระบุ'}</dd></div><div><dt>งบค่าห้องที่ตั้งไว้</dt><dd>{budgetLabel(person)}</dd></div></dl>
+    <dl className="friend-facts"><div><dt>ไลฟ์สไตล์</dt><dd>{person.lifestyle || 'ยังไม่ได้ระบุ'}</dd></div><div><dt>เพศที่สะดวกแชร์ห้อง</dt><dd>{roommateGenderLabel(person.preferredGender)}</dd></div><div><dt>งบค่าห้องที่ตั้งไว้</dt><dd>{budgetLabel(person)}</dd></div></dl>
     {accepted && <ContactActions {...person}/>}
     <button className="friend-profile-link" onClick={onView}>ดูโปรไฟล์</button>
     <footer>{actions}</footer>
@@ -187,7 +185,7 @@ export function FriendsPage() {
   const accepted = connections.filter(item => item.status === 'accepted');
   const sentPending = outgoing.filter(item => matchesSearch(item.person, query));
   const invitationGroups = {
-    incoming: { label: 'รอฉันตอบ', title: 'คำชวนที่รอคุณตอบ', description: 'เมื่อตอบรับ ทั้งสองฝ่ายจะเห็นอายุและช่องทางติดต่อ (LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้)', items: incoming, empty: 'ไม่มีคำชวนรอคุณตอบ', emptyText: 'เมื่อมีคนชวนคุณหาห้องด้วยกัน คำชวนจะแสดงที่นี่' },
+    incoming: { label: 'รอฉันตอบ', title: 'คำชวนที่รอคุณตอบ', description: 'เมื่อตอบรับ ทั้งสองฝ่ายจะเห็นช่องทางติดต่อ (LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้)', items: incoming, empty: 'ไม่มีคำชวนรอคุณตอบ', emptyText: 'เมื่อมีคนชวนคุณหาห้องด้วยกัน คำชวนจะแสดงที่นี่' },
     outgoing: { label: 'รอเพื่อนตอบ', title: 'คำชวนที่คุณส่ง', description: 'รออีกฝ่ายตอบรับก่อนแชร์ช่องทางติดต่อและเริ่มหาห้องด้วยกัน', items: outgoing, empty: 'ยังไม่มีคำชวนรอเพื่อนตอบ', emptyText: 'เริ่มจากโปรไฟล์ที่สนใจ แล้วชวนเพื่อนหาห้องด้วยกัน' },
     history: { label: 'ประวัติ', title: 'ประวัติคำชวน', description: 'คำชวนที่ตอบรับ ปฏิเสธ หรือถอนแล้ว เพื่อนที่ตอบรับกันยังอยู่ในแท็บเพื่อนของฉัน', items: history, empty: 'ยังไม่มีประวัติคำชวน', emptyText: 'เมื่อมีการตอบรับ ปฏิเสธ หรือถอนคำชวน จะแสดงในประวัติ' },
   };
@@ -233,8 +231,10 @@ export function FriendsPage() {
           : selectedConnection.status === 'pending' && selectedConnection.direction === 'incoming' ? <><Button variant="quiet" loading={busy === `decline-${selectedConnection.connectionId}`} disabled={Boolean(busy) || actionNeedsRefresh} onClick={() => act(`decline-${selectedConnection.connectionId}`, () => api.decideFriend(selectedConnection.connectionId, 'declined'), 'ปฏิเสธคำชวนแล้ว')}>ปฏิเสธ</Button><Button loading={busy === `accept-${selectedConnection.connectionId}`} disabled={Boolean(busy) || actionNeedsRefresh} onClick={() => act(`accept-${selectedConnection.connectionId}`, () => api.decideFriend(selectedConnection.connectionId, 'accepted'), 'ตอบรับแล้ว เริ่มหาห้องด้วยกันได้เลย')}>ตอบรับคำชวน</Button></>
           : selectedConnection.status === 'pending' && selectedConnection.direction === 'outgoing' ? <Button variant="quiet" disabled={Boolean(busy)} onClick={() => openWithdrawal(selectedConnection, true)}><X size={16}/>ถอนคำชวน</Button>
             : <Button variant="secondary" onClick={() => { closeProfile(); openInvitations(selectedConnection.status === 'pending' ? 'outgoing' : 'history'); }}>ดูสถานะคำชวน</Button>
-    }</>}><div className="friend-full-profile"><FriendAvatar person={selectedPerson}/><h2>{selectedPerson.firstName} {selectedPerson.lastName}</h2><p>{selectedPerson.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p>
-      {selectedConnection?.status === 'accepted' && <FriendAge age={selectedPerson.age}/>}
-      <h3>เกี่ยวกับฉัน</h3><p>{selectedPerson.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</p><h3>ไลฟ์สไตล์</h3><p>{selectedPerson.lifestyle || 'ยังไม่ได้ระบุ'}</p><h3>งบค่าห้องที่ตั้งไว้</h3><p>{budgetLabel(selectedPerson)}</p>{selectedConnection?.status === 'pending' && selectedConnection.direction === 'outgoing' && <p className="friend-waiting" role="status">ส่งคำชวนแล้ว · รอเพื่อนตอบรับ</p>}{selectedConnection?.status === 'cancelled' && <p className="friend-waiting">{invitationLabel(selectedConnection)} ไม่มีการแชร์ช่องทางติดต่อจากคำชวนนี้</p>}{selectedConnection?.status === 'declined' && <p className="friend-waiting">คำชวนนี้ไม่ได้รับการตอบรับ ไม่มีการแชร์ช่องทางติดต่อ</p>}{(selectedPerson.lineId || selectedPerson.instagram || selectedPerson.email || selectedPerson.phone) && <ContactActions {...selectedPerson}/>}</div></Modal></div>}
+    }</>}><div className="friend-full-profile"><FriendAvatar person={selectedPerson}/><h2>{selectedPerson.firstName} {selectedPerson.lastName}</h2><ProfileDemographics age={selectedPerson.age} gender={selectedPerson.gender}/><p>{selectedPerson.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p>
+      <h3>เกี่ยวกับฉัน</h3><p>{selectedPerson.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</p><h3>ไลฟ์สไตล์</h3><p>{selectedPerson.lifestyle || 'ยังไม่ได้ระบุ'}</p>
+      <h3>เพศที่สะดวกแชร์ห้อง</h3><p>{roommateGenderLabel(selectedPerson.preferredGender)}</p>
+      <h3>ช่วงอายุที่สะดวกแชร์ห้อง</h3><p>{ageRange(selectedPerson.preferredAgeMin, selectedPerson.preferredAgeMax)}</p>
+      <h3>งบค่าห้องที่ตั้งไว้</h3><p>{budgetLabel(selectedPerson)}</p>{selectedConnection?.status === 'pending' && selectedConnection.direction === 'outgoing' && <p className="friend-waiting" role="status">ส่งคำชวนแล้ว · รอเพื่อนตอบรับ</p>}{selectedConnection?.status === 'cancelled' && <p className="friend-waiting">{invitationLabel(selectedConnection)} ไม่มีการแชร์ช่องทางติดต่อจากคำชวนนี้</p>}{selectedConnection?.status === 'declined' && <p className="friend-waiting">คำชวนนี้ไม่ได้รับการตอบรับ ไม่มีการแชร์ช่องทางติดต่อ</p>}{(selectedPerson.lineId || selectedPerson.instagram || selectedPerson.email || selectedPerson.phone) && <ContactActions {...selectedPerson}/>}</div></Modal></div>}
   </div>;
 }

@@ -1,4 +1,4 @@
-import { genderLabel } from '../lib/profileLabels';
+import { ageRange, genderLabel } from '../lib/profileLabels';
 ﻿import { Skeleton } from '../components/Skeleton';
 import { AtSign, HeartHandshake, LogOut, Mail, MessageCircle, Pencil, Phone, RefreshCw, UserRound } from 'lucide-react';
 import { useEffect, useRef, useState, type FocusEvent, type FormEvent } from 'react';
@@ -164,7 +164,7 @@ export function ProfilePage() {
   return <div className="page profile-page"><PageHeader title="โปรไฟล์ของฉัน" subtitle={user.profileSetupPending ? 'กรอกข้อมูลให้ครบเพื่อเริ่มใช้งาน RoomMatch' : 'ข้อมูลส่วนตัว ไลฟ์สไตล์ ความต้องการ และช่องทางการติดต่อของคุณ'}/>
     <section className="profile-summary"><div className="profile-avatar"><ProfilePhoto src={user.profileImage} fallback={initials}/></div><div className="profile-identity"><div><h2>{user.firstName} {user.lastName}</h2><span>{user.university || (user.accountType === 'general' ? 'ผู้ใช้ทั่วไป' : 'สมาชิก RoomMatch')}</span></div><p><Mail size={16}/>{user.email}</p></div>{!editing && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil size={17}/>แก้ไขโปรไฟล์</Button>}</section>
     {!editing ? <div className="profile-section-grid api-profile-view"><ProfileCard icon={<UserRound/>} title="ข้อมูลส่วนตัว"><dl className="profile-data-list profile-personal-data"><div><dt>เบอร์โทร</dt><dd><Phone size={16}/>{user.phone}</dd></div><div><dt>เพศ</dt><dd>{genderLabel(user.gender)}</dd></div><div className="profile-half-field"><dt>วันเกิด</dt><dd>{formatBirthDate(user.dateOfBirth) || 'ยังไม่ระบุ'}</dd></div><div className="profile-half-field"><dt>อายุ</dt><dd>{age === null ? 'กรอกวันเกิดในโปรไฟล์เพื่อคำนวณอายุ' : `${age} ปี`}</dd></div><div><dt>เกี่ยวกับฉัน</dt><dd>{user.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</dd></div></dl></ProfileCard>
-      <ProfileCard icon={<HeartHandshake/>} title="ไลฟ์สไตล์และความต้องการ"><dl className="profile-data-list"><div><dt>ไลฟ์สไตล์</dt><dd>{lifestyle?.lifestyleName || 'ยังไม่ระบุ'}</dd></div><div><dt>เพศที่สะดวกแชร์ห้อง</dt><dd>{genderLabel(preference?.preferredGender)}</dd></div><div><dt>ช่วงอายุ</dt><dd>{ageRange(preference?.preferredAgeMin, preference?.preferredAgeMax)}</dd></div><div><dt>งบประมาณ</dt><dd>{budgetRange(preference?.budgetMin, preference?.budgetMax)}</dd></div></dl></ProfileCard>
+      <ProfileCard icon={<HeartHandshake/>} title="ไลฟ์สไตล์และความต้องการ"><dl className="profile-data-list"><div><dt>ไลฟ์สไตล์</dt><dd>{lifestyle?.lifestyleName || 'ยังไม่ระบุ'}</dd></div><div><dt>เพศที่สะดวกแชร์ห้อง</dt><dd>{genderLabel(preference?.preferredGender)}</dd></div><div><dt>ช่วงอายุ</dt><dd>{ageRange(preference?.preferredAgeMin, preference?.preferredAgeMax, 'ยังไม่ระบุช่วงอายุ')}</dd></div><div><dt>งบประมาณ</dt><dd>{budgetRange(preference?.budgetMin, preference?.budgetMax)}</dd></div></dl></ProfileCard>
       <ProfileCard icon={<MessageCircle/>} title="ช่องทางติดต่อ"><div className="profile-contact-list"><Contact icon={<MessageCircle/>} label="LINE" value={user.lineId}/><Contact icon={<AtSign/>} label="Instagram" value={user.instagram}/><Contact icon={<Mail/>} label="อีเมลบัญชี" value={user.email}/></div></ProfileCard></div>
     : <form ref={formRef} className="profile-editor" onSubmit={submit} noValidate aria-busy={saving}
       onBlur={validateProfileField} onChange={event => validateProfileField(event, true)}><fieldset className="image-upload-fields" disabled={saving}>
@@ -218,12 +218,6 @@ export function ProfilePage() {
 function ProfileCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) { return <section className="profile-info-card"><header><span>{icon}</span><div><h2>{title}</h2></div></header>{children}</section>; }
 function Contact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <div className="profile-contact-item"><span>{icon}</span><div><small>{label}</small><strong className={value ? '' : 'empty-value'}>{value || 'ยังไม่ระบุ'}</strong></div></div>; }
 
-function ageRange(minimum?: number | null, maximum?: number | null) {
-  if (minimum == null && maximum == null) return 'ยังไม่ระบุช่วงอายุ';
-  if (minimum == null) return `ไม่เกิน ${maximum} ปี`;
-  if (maximum == null) return `ตั้งแต่ ${minimum} ปี`;
-  return `${minimum}–${maximum} ปี`;
-}
 function budgetRange(minimum?: number | null, maximum?: number | null) {
   if (minimum == null && maximum == null) return 'ยังไม่ระบุงบประมาณ';
   if (minimum == null) return `ไม่เกิน ฿${maximum!.toLocaleString('th-TH')} / เดือน`;

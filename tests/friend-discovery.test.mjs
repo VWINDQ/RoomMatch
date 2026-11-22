@@ -10,7 +10,8 @@ import { openDatabase } from './support/postgres.mjs';
 
 let db, application, baseUrl;
 const contactFields = ['email', 'phone', 'lineId', 'instagram'];
-const profileKeys = ['bio', 'budgetMax', 'budgetMin', 'firstName', 'lastName', 'lifestyle', 'profileImage', 'university', 'userId'];
+const profileKeys = ['age', 'bio', 'budgetMax', 'budgetMin', 'firstName', 'gender', 'lastName', 'lifestyle',
+  'preferredAgeMax', 'preferredAgeMin', 'preferredGender', 'profileImage', 'university', 'userId'];
 
 async function start() {
   application = await startRoomMatchServer({ db, host: '127.0.0.1', port: 0, logger: { error() {} } });
@@ -89,6 +90,34 @@ test('search supports Thai full names, name parts, university, bio and lifestyle
   for (const query of ['kmutt', 'ชอบอ่านหนังสือ', '   ']) {
     assert.equal((await api(`/friends?q=${encodeURIComponent(query)}`, 1)).body.people.length, 3);
   }
+});
+
+test('discovery calculates completed years and keeps birthdays and contacts private before and after inviting', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 5, 15, 12) });
+  await db.prepare('UPDATE USER SET date_of_birth = ? WHERE user_id = ?').run('2004-06-16', 2);
+  await db.prepare("UPDATE USER SET gender = 'female' WHERE user_id = 2").run();
+  await db.prepare("UPDATE PREFERENCE SET preferred_gender = 'non_binary', preferred_age_min = 20, preferred_age_max = 25 WHERE user_id = 2").run();
+  await db.prepare('UPDATE USER SET date_of_birth = ? WHERE user_id = ?').run('2004-06-14', 3);
+  const result = await api('/friends', 1);
+  assert.equal(result.status, 200);
+  const people = new Map(result.body.people.map(person => [person.userId, person]));
+  assert.equal(people.get(2).age, 21);
+  assert.equal(people.get(2).gender, 'female');
+  assert.equal(people.get(2).preferredGender, 'non_binary');
+  assert.equal(people.get(2).preferredAgeMin, 20);
+  assert.equal(people.get(2).preferredAgeMax, 25);
+  assert.equal(people.get(3).age, 22);
+  assert.equal(people.get(4).age, null);
+  const invitation = await invite();
+  assert.equal(invitation.person.age, 21);
+  assert.deepEqual(invitation.person, people.get(2));
+  for (const person of [...people.values(), invitation.person]) {
+    assert.deepEqual(Object.keys(person).sort(), profileKeys);
+  }
+  const { body } = await api('/friends/connections', 1);
+  assert.equal(body.connections[0].person.age, 21);
+  await db.prepare('UPDATE USER SET date_of_birth = ? WHERE user_id = ?').run('2026-06-16', 4);
+  assert.equal((await api('/friends?q=Dan', 1)).body.people[0].age, null);
 });
 
 test('search treats wildcard and SQL-like characters as literals and enforces query length', async () => {
@@ -195,7 +224,7 @@ test('connection IDs must be positive safe integers', async () => {
   }
 });
 
-test('acceptance reveals age and contacts only to both participants and never changes room data', async () => {
+test('acceptance reveals contacts only to both participants and never changes room data', async () => {
   await db.exec("UPDATE USER SET date_of_birth = '1996-01-01' WHERE user_id = 1");
   await db.exec("UPDATE USER SET date_of_birth = '2002-01-01' WHERE user_id = 2");
   const year = new Date().getFullYear();
@@ -213,7 +242,7 @@ test('acceptance reveals age and contacts only to both participants and never ch
     assert.equal(connection.person.email, `friend-${otherId}@example.test`);
     assert.equal(connection.person.lineId, `line-${otherId}`);
     assert.equal(connection.person.age, year - (otherId === 1 ? 1996 : 2002));
-    assert.deepEqual(Object.keys(connection.person).sort(), [...profileKeys, ...contactFields, 'age'].sort());
+    assert.deepEqual(Object.keys(connection.person).sort(), [...profileKeys, ...contactFields].sort());
   }
   assert.deepEqual((await api('/friends/connections?userId=1', 3)).body.connections, []);
   const outsiderProfiles = (await api('/friends', 3)).body.people;
