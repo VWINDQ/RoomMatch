@@ -39,7 +39,7 @@ test('friend invitation → consent → shared contacts without changing room ma
   assert.equal(discover.status, 200);
   assert.equal(discover.body.people.length, 1);
   assert.equal(discover.body.people[0].userId, bob.id);
-  for (const field of ['email', 'phone', 'lineId', 'instagram', 'passwordHash', 'dateOfBirth']) {
+  for (const field of ['email', 'phone', 'lineId', 'passwordHash', 'dateOfBirth']) {
     assert.equal(field in discover.body.people[0], false);
   }
   assert.equal((await api('/friends?q=%25', alice.token)).body.people.length, 0);

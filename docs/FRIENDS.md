@@ -17,15 +17,15 @@
 
 | สถานะ | ผู้ทำรายการต่อได้ | การเปิดเผยช่องทางติดต่อ |
 | --- | --- | --- |
-| `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | เก็บเป็นส่วนตัว |
+| `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | เห็น Instagram; LINE อีเมลและเบอร์โทรเป็นส่วนตัว |
 | `accepted` | ค้นหาห้องด้วยกัน; ยังไม่มี unfriend | ทั้งสองฝ่ายเห็น LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้ |
-| `declined` | ดูประวัติ ไม่ส่งซ้ำ/เปลี่ยนผล | เก็บเป็นส่วนตัว |
-| `cancelled` | ผู้ส่งถอนซ้ำแบบ idempotent ได้ แต่ไม่ส่งคำชวนใหม่ | เก็บเป็นส่วนตัว |
+| `declined` | ดูประวัติ ไม่ส่งซ้ำ/เปลี่ยนผล | เห็น Instagram; LINE อีเมลและเบอร์โทรเป็นส่วนตัว |
+| `cancelled` | ผู้ส่งถอนซ้ำแบบ idempotent ได้ แต่ไม่ส่งคำชวนใหม่ | เห็น Instagram; LINE อีเมลและเบอร์โทรเป็นส่วนตัว |
 
 การ์ดและหน้าต่างโปรไฟล์แสดงอายุเต็มปีและเพศของเจ้าของโปรไฟล์ทั้งก่อนและหลังส่งคำชวน โดยเก็บวันเกิดเป็นส่วนตัว
 ช่องเพศและช่วงอายุที่สะดวกแชร์ห้องอ่านจากความต้องการของเจ้าของโปรไฟล์ ค่าที่ยังไม่ได้ตั้งจะแสดง “ยังไม่ระบุ”
 หากไม่มีวันเกิดหรือคำนวณไม่ได้ ค่าอายุจะเป็น `null` และแสดง “ยังไม่ระบุอายุ”
-คนนอกไม่เห็น connection ของคู่อื่นแม้แนบ userId ใน query ช่องทางติดต่อเปิดเผยกับเพื่อนที่ตอบรับแล้วเท่านั้น
+คนนอกไม่เห็น connection ของคู่อื่นแม้แนบ userId ใน query Instagram แสดงในโปรไฟล์หาเพื่อนได้ก่อนตอบรับ ส่วน LINE อีเมลและเบอร์โทรเปิดเผยกับเพื่อนที่ตอบรับแล้วเท่านั้น
 เมื่อคู่ inactive API จะไม่คืนคู่นั้นใน connections; หลังโหลดใหม่ UI ต้องไม่ใช้ contact ที่ cache ไว้
 ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ, unfriend, ส่งซ้ำหลัง declined/cancelled
 หรือการสมัครห้องแบบกลุ่ม (อย่าใช้ POST สวนทางแทนการตอบรับ ต้อง PATCH โดยผู้รับ)
@@ -116,8 +116,8 @@ allowed; acceptance is not exclusive.
   invitation returns `409`; withdrawal never ends an accepted friendship.
 
 Discovery exposes name, age in completed years, gender, university, bio, profile image, lifestyle, and stated roommate preferences (gender, age range, and budget).
-It does not expose exact birth dates, passwords, email, phone, LINE, or Instagram.
-Contact fields become available to the two participants only after acceptance.
+Instagram is included in public friend profiles for authenticated discovery. Exact birth dates, passwords, email, phone and LINE are not exposed before acceptance.
+The remaining private contact fields become available to the two participants only after acceptance.
 There is no fabricated compatibility score or automatic acceptance.
 
 ## UI and room handoff
@@ -168,7 +168,7 @@ URL/ชื่อฟิลด์ API หรือ frontend ของเพื่�
 ### ข้อมูลและสิทธิ์
 
 - `GET /api/friends` คืน `{ people: [...] }` พร้อมข้อมูลสาธารณะและงบประมาณ
-  ไม่คืน email, phone, LINE, Instagram, วันเกิด หรือ password hash
+  คืน Instagram สำหรับแสดงบนการ์ด แต่ไม่คืน email, phone, LINE, วันเกิด หรือ password hash
 - `GET /api/friends/connections` คืนเฉพาะคู่ของบัญชีที่ล็อกอิน พร้อม direction
   `incoming`/`outgoing` การระบุ `userId` ใน query ไม่ทำให้ดูคู่ของคนอื่นได้
 - `POST /api/friends/connections` ใช้ body `{ "recipientId": 2 }` โดยต้องเป็น number
@@ -233,10 +233,10 @@ Tests ใหม่อยู่ใน `tests/friend-discovery.test.mjs` เปิ
 
 ก่อน commit ให้ลอง UI บน desktop/mobile:
 
-1. A ค้นชื่อเต็มของ B และดูโปรไฟล์ ต้องไม่เห็นช่องทางติดต่อ
+1. A ค้นชื่อเต็มของ B และดูโปรไฟล์ เห็น Instagram ได้ แต่ต้องไม่เห็น LINE อีเมลและเบอร์โทร
 2. A ส่งคำชวน แล้ว refresh ต้องมีคำชวน outgoing ของ A และ incoming ของ B
-3. B ตอบรับ ทั้ง A/B ต้องเห็นเพื่อนและช่องทางติดต่อ แต่บัญชี C ต้องไม่เห็นข้อมูลติดต่อ
-4. ทดลองปฏิเสธกับอีกคู่ ต้องไม่เปิดข้อมูลติดต่อหรือเปลี่ยนสมาชิกห้อง
+3. B ตอบรับ ทั้ง A/B ต้องเห็นเพื่อนและช่องทางติดต่อ แต่บัญชี C ต้องไม่เห็น LINE อีเมลและเบอร์โทร
+4. ทดลองปฏิเสธกับอีกคู่ ต้องไม่เปิด LINE อีเมลและเบอร์โทร หรือเปลี่ยนสมาชิกห้อง
 5. กดค้นหาห้องด้วยกัน ต้องเปิดบริบทเพื่อนที่ตอบรับ ไม่ใช่เพิ่มสมาชิก/จองห้องอัตโนมัติ
 
 Checklist ข้างต้นตรวจผ่าน browser ด้วย 3 บัญชีแล้วใน [RM-17 acceptance](RM17_ACCEPTANCE.md)
@@ -248,7 +248,7 @@ Checklist ข้างต้นตรวจผ่าน browser ด้วย 3 �
 เมื่อส่ง/ตอบคำชวนแล้ว API ตอบ 409 หน้าหาเพื่อนจะอ่านรายการความสัมพันธ์ล่าสุด
 เปลี่ยนปุ่มในโปรไฟล์ให้ตรงสถานะ และเอาคนที่มีคำชวนแล้วออกจากรายการคนใหม่
 โดยไม่แจ้งว่าส่ง/ตอบรับสำเร็จหากคำสั่งนั้นล้มเหลว ช่องทางติดต่อยังใช้ข้อมูลที่ API
-อนุญาตหลังตอบรับเท่านั้น คำชวนถูกถอน/ปฏิเสธไม่เปิดช่องทางติดต่อ
+อนุญาตหลังตอบรับเท่านั้น ยกเว้น Instagram ที่แสดงในโปรไฟล์หาเพื่อนได้ตั้งแต่เริ่ม คำชวนถูกถอน/ปฏิเสธไม่เปิด LINE อีเมลหรือเบอร์โทร
 
 หากโหลดสถานะล่าสุดไม่ได้ ปิดปุ่มส่ง/ตอบคำชวนและแสดงปุ่มอัปเดตในหน้าต่างโปรไฟล์
 เมื่อโหลดใหม่สำเร็จจึงเปิดปุ่มตามสถานะจริงและล้างข้อความผิดพลาดเดิม
