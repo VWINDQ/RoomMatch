@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { RoomGallery } from '../components/RoomGallery';
+import { RoommateProfileModal } from '../components/RoommateProfileModal';
 import { ProfilePhoto } from '../components/ProfilePhoto';
 import { Price } from '../components/RoomCard';
 import { Button, EmptyState, Modal, StatusBadge } from '../components/UI';
@@ -16,6 +17,7 @@ export function RoomDetailPage() {
   const [room, setRoom] = useState<Room | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [sending, setSending] = useState(false); const [reload, setReload] = useState(0);
   const [requestError, setRequestError] = useState('');
   const [requestNeedsRefresh, setRequestNeedsRefresh] = useState(false);
+  const [selectedResidentId, setSelectedResidentId] = useState<string | null>(null);
   const requestFeedback = useRef<HTMLParagraphElement>(null);
   const currentRoomId = useRef(id);
   currentRoomId.current = id;
@@ -95,16 +97,25 @@ export function RoomDetailPage() {
     } finally { setWithdrawing(false); }
   };
   const closeWithdrawal = () => { if (withdrawing) return; setWithdrawOpen(false); if (room?.requestStatus !== 'pending') requestAnimationFrame(() => requestPanel.current?.focus()); };
-  useEffect(() => { setWithdrawOpen(false); setWithdrawError(''); setRequestError(''); setRequestNeedsRefresh(false); setSending(false); }, [id]);
+  useEffect(() => { setWithdrawOpen(false); setWithdrawError(''); setRequestError(''); setRequestNeedsRefresh(false); setSending(false); setSelectedResidentId(null); }, [id]);
   if (loading) return <div className="page"><Skeleton variant="room-detail"/></div>;
   if (error || !room) return <div className="page"><EmptyState icon={<RefreshCw/>} title="เปิดประกาศนี้ไม่ได้" text={error || 'ไม่พบประกาศห้องนี้'} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
+  const ownerResident = room.ownerResidentProfile;
+  const selectedResident = room.roomId !== id || selectedResidentId === null ? undefined
+    : ownerResident?.userId === selectedResidentId ? ownerResident
+      : room.members?.find(member => member.userId === selectedResidentId)?.profile;
   const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอเจ้าของห้องตอบกลับ' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
   return <div className="page detail-page"><button className="back-link" onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}><ArrowLeft size={18}/>{back.label}</button>
     <div className="detail-title"><div><StatusBadge status={room.status}/><h1>{room.title}</h1><p><MapPin size={16}/>{room.locality || 'เจ้าของยังไม่ระบุย่าน · ดูแผนที่ด้านล่าง'}</p></div></div><RoomGallery room={room}/>
     <div className="detail-layout"><div className="detail-main"><section><h2>เกี่ยวกับห้องนี้</h2><p className="description">{room.description || 'เจ้าของห้องยังไม่ได้เพิ่มรายละเอียด'}</p><div className="fact-row"><span><UsersRound/>พักได้ {room.capacity} คน</span><span><UserRound/>ว่าง {room.availableSlots} ที่</span><span><CalendarDays/>ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span></div></section>
       <section><h2>ค่าใช้จ่ายที่ควรทราบ</h2><p className="description">{room.costNotes || 'เจ้าของยังไม่ระบุค่าน้ำ ค่าไฟ เงินประกัน หรือค่าแรกเข้า กรุณาสอบถามก่อนตกลงเข้าพัก'}</p>{!room.priceBasis && <p className="inline-note">ประกาศเดิมยังไม่ระบุว่าราคาต่อคนหรือทั้งห้อง กรุณายืนยันกับเจ้าของก่อนเทียบงบ</p>}</section>
       <section className="capacity-note"><ShieldCheck/><div><h2>นับเฉพาะคนที่พักในห้อง</h2><p>{room.ownerIsResident === false ? 'ผู้ลงประกาศไม่ได้พักในห้องนี้ จึงไม่นับเป็นผู้พัก' : 'ผู้ลงประกาศพักอยู่ด้วย จึงนับเป็นผู้พัก 1 คน'} · เมื่อเต็มจะหยุดรับคำขอใหม่</p></div></section>
-      <section><h2>ผู้พักในห้อง</h2><div className="detail-member-list">{room.ownerIsResident !== false && <Member person={room.owner} label="ผู้ลงประกาศ · พักอยู่ด้วย"/>}{room.members?.map(member => <Member key={member.userId} person={member.user} label="ผู้พัก"/>)}</div>{room.ownerIsResident === false && !room.members?.length && (room.isOwner || room.isMember) && <p className="field-hint">ยังไม่มีผู้พักที่ได้รับอนุมัติ</p>}{!room.isOwner && !room.isMember && <p className="field-hint">รายชื่อผู้พักจะแสดงเมื่อผู้ลงประกาศอนุมัติให้คุณเข้าพักแล้ว</p>}</section>
+      <section><h2>ผู้พักในห้อง</h2><div className="detail-member-list">
+        {room.ownerIsResident !== false && <Member person={room.owner} label="ผู้ลงประกาศ · พักอยู่ด้วย"
+          onView={ownerResident && (() => setSelectedResidentId(ownerResident.userId))}/>}
+        {room.members?.map(member => <Member key={member.userId} person={member.user} label="ผู้พัก"
+          onView={member.profile && (() => setSelectedResidentId(member.userId))}/>)}
+      </div>{room.ownerIsResident === false && !room.members?.length && (room.isOwner || room.isMember) && <p className="field-hint">ยังไม่มีผู้พักที่ได้รับอนุมัติ</p>}{!room.isOwner && !room.isMember && <p className="field-hint">รายชื่อผู้พักจะแสดงเมื่อผู้ลงประกาศอนุมัติให้คุณเข้าพักแล้ว</p>}</section>
       {room.googleMapsUrl && <section className="map-preview"><div><MapPin/><span><strong>ตำแหน่งห้อง</strong><small>เปิด Google Maps ในแท็บใหม่</small></span></div><a className="button button-secondary" href={room.googleMapsUrl} target="_blank" rel="noreferrer">ดูบนแผนที่ <ExternalLink size={16}/></a></section>}
     </div><aside ref={requestPanel} tabIndex={-1} className="detail-sidebar" aria-label="คำขอเข้าพักและเจ้าของห้อง"><Price amount={room.price} basis={room.priceBasis}/><StatusBadge status={room.status}/><Button variant="secondary" className={`w-full ${favoriteFeedback ? 'has-favorite-feedback' : ''}`} onAnimationEnd={() => setFavoriteFeedback(false)} aria-label={room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} aria-pressed={Boolean(room.isFavorite)} loading={savingFavorite} onClick={toggleFavorite}><Heart size={17} fill={room.isFavorite ? 'currentColor' : 'none'}/>{room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}</Button><hr/><h2>เจ้าของประกาศ</h2><div className="owner-mini"><span><ProfilePhoto src={room.owner?.profileImage || ''} fallback={room.owner?.firstName?.charAt(0) || 'R'}/></span><div><strong>{room.owner ? `${room.owner.firstName} ${room.owner.lastName}` : 'สมาชิก RoomMatch'}</strong><small>{room.owner?.university || 'ผู้ลงประกาศ'}</small></div></div>
       {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`, { state: { from: back.to, focusReturnId: back.focusTarget } })}>แก้ไขประกาศของฉัน</Button> : <Button className="w-full" loading={sending} disabled={requestNeedsRefresh || room.requestStatus === 'pending' || room.isMember || room.status !== 'available' || room.availableSlots < 1} onClick={requestRoom}>{requestLabel}</Button>}
@@ -117,9 +128,20 @@ export function RoomDetailPage() {
     </aside></div>
     {withdrawOpen && <Modal title="ถอนคำขอเข้าพัก?" onClose={closeWithdrawal} actions={<><Button variant="quiet" disabled={withdrawing} onClick={closeWithdrawal}>{room.requestStatus === 'pending' ? 'เก็บคำขอไว้' : 'กลับไปดูสถานะ'}</Button><Button variant="danger" loading={withdrawing} disabled={room.requestStatus !== 'pending' || !room.pendingRequestId} onClick={withdraw}>ยืนยันถอนคำขอ</Button></>}><p>ถอนคำขอสำหรับ “{room.title}” เจ้าของห้องจะเห็นว่าคุณถอนแล้ว ประวัติจะยังอยู่และส่งคำขอใหม่ได้หากห้องยังว่าง</p>{room.requestStatus === 'pending' && !room.pendingRequestId && <p className="form-alert" role="alert">ยังโหลดรหัสคำขอไม่ได้ กรุณาปิดหน้าต่างแล้วรีเฟรชหน้านี้ก่อนลองอีกครั้ง</p>}{room.requestStatus !== 'pending' && <p className="inline-note" role="status">{room.requestStatus === 'approved' ? 'เจ้าของอนุมัติคำขอแล้ว การถอนครั้งนี้ไม่สำเร็จ' : 'คำขอนี้ไม่ได้รอพิจารณาแล้ว กรุณาตรวจสอบสถานะล่าสุด'}</p>}{withdrawError && <p ref={withdrawFeedback} tabIndex={-1} className="form-alert" role="alert">{withdrawError}</p>}</Modal>}
     {leaveOpen && <Modal title="ออกจากห้องนี้?" onClose={() => { if (!leaving) setLeaveOpen(false); }} actions={<><Button variant="quiet" disabled={leaving} onClick={() => setLeaveOpen(false)}>อยู่ในห้องต่อ</Button><Button variant="danger" loading={leaving} onClick={leave}>ยืนยันออกจากห้อง</Button></>}><p>คุณจะคืนที่ว่างและไม่เห็นสมาชิกหรือช่องทางติดต่อผ่านห้องนี้อีก ประวัติคำขอจะยังอยู่ หากกลับเข้าพักต้องให้เจ้าของอนุมัติใหม่</p><p className="inline-note">ควรคุยกับเจ้าของเรื่องการย้ายออกและค่าใช้จ่ายที่ตกลงกันก่อน</p>{leaveError && <p className="form-alert" role="alert">{leaveError}</p>}</Modal>}
+    {selectedResident && <RoommateProfileModal title="โปรไฟล์สมาชิกห้อง" person={selectedResident} onClose={() => setSelectedResidentId(null)}/>}
   </div>;
 }
 
-function Member({ person, label }: { person?: { firstName?: string; lastName?: string; profileImage?: string }; label: string }) {
-  return <div className="detail-member"><span><ProfilePhoto src={person?.profileImage || ''} fallback={person?.firstName?.charAt(0) || 'R'}/></span><div><strong>{person ? `${person.firstName || ''} ${person.lastName || ''}`.trim() : 'สมาชิก RoomMatch'}</strong><small>{label}</small></div></div>;
+function Member({ person, label, onView }: { person?: { firstName?: string; lastName?: string; profileImage?: string }; label: string; onView?: () => void }) {
+  const name = person ? `${person.firstName || ''} ${person.lastName || ''}`.trim() : 'สมาชิก RoomMatch';
+  return <div className="detail-member">
+    <span><ProfilePhoto src={person?.profileImage || ''} fallback={person?.firstName?.charAt(0) || 'R'}/></span>
+    <div className="detail-member-info">
+      <div><strong>{name}</strong><small>{label}</small></div>
+      {onView && <Button type="button" variant="quiet" aria-label={`ดูโปรไฟล์ ${name}`} onClick={event => {
+        event.currentTarget.focus();
+        onView();
+      }}>ดูโปรไฟล์</Button>}
+    </div>
+  </div>;
 }

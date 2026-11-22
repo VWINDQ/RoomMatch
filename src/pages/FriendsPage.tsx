@@ -5,7 +5,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { PageHeader } from '../components/Layout';
 import { ProfileDemographics } from '../components/ProfileDemographics';
-import { ageRange, roommateGenderLabel } from '../lib/profileLabels';
+import { roommateGenderLabel } from '../lib/profileLabels';
+import { RoommateProfileModal, roommateBudgetLabel } from '../components/RoommateProfileModal';
 import { ContactActions } from '../components/ContactActions';
 import { Button, EmptyState, Modal } from '../components/UI';
 import { api, ApiError } from '../lib/api';
@@ -36,13 +37,6 @@ function FriendAvatar({ person }: { person: FriendProfile }) {
     : <span>{person.firstName.charAt(0)}{person.lastName.charAt(0)}</span>}</div>;
 }
 
-function budgetLabel(person: FriendProfile) {
-  if (person.budgetMin === null && person.budgetMax === null) return 'ยังไม่ได้ระบุงบประมาณ';
-  if (person.budgetMin === null) return `ไม่เกิน ฿${person.budgetMax!.toLocaleString('th-TH')} / เดือน`;
-  if (person.budgetMax === null) return `ตั้งแต่ ฿${person.budgetMin.toLocaleString('th-TH')} / เดือน`;
-  return `฿${person.budgetMin.toLocaleString('th-TH')}–${person.budgetMax.toLocaleString('th-TH')} / เดือน`;
-}
-
 function PersonCard({ person, badge, actions, onView, accepted = false }: {
   person: FriendProfile; badge?: ReactNode; actions: ReactNode; onView: () => void; accepted?: boolean;
 }) {
@@ -50,7 +44,7 @@ function PersonCard({ person, badge, actions, onView, accepted = false }: {
     <header><FriendAvatar person={person}/><div><h2>{person.firstName} {person.lastName}</h2><ProfileDemographics age={person.age} gender={person.gender}/><p>{person.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p></div></header>
     {badge && <div className="friend-status">{badge}</div>}
     <p className="friend-bio">{person.bio || 'ยังไม่ได้เขียนแนะนำตัว ลองทำความรู้จักกันก่อนตัดสินใจแชร์ห้อง'}</p>
-    <dl className="friend-facts"><div><dt>ไลฟ์สไตล์</dt><dd>{person.lifestyle || 'ยังไม่ได้ระบุ'}</dd></div><div><dt>เพศที่สะดวกแชร์ห้อง</dt><dd>{roommateGenderLabel(person.preferredGender)}</dd></div><div><dt>งบค่าห้องที่ตั้งไว้</dt><dd>{budgetLabel(person)}</dd></div></dl>
+    <dl className="friend-facts"><div><dt>ไลฟ์สไตล์</dt><dd>{person.lifestyle || 'ยังไม่ได้ระบุ'}</dd></div><div><dt>เพศที่สะดวกแชร์ห้อง</dt><dd>{roommateGenderLabel(person.preferredGender)}</dd></div><div><dt>งบค่าห้องที่ตั้งไว้</dt><dd>{roommateBudgetLabel(person)}</dd></div></dl>
     {accepted && <ContactActions {...person}/>}
     <button className="friend-profile-link" onClick={onView}>ดูโปรไฟล์</button>
     <footer>{actions}</footer>
@@ -225,16 +219,12 @@ export function FriendsPage() {
       {withdrawalConnection.status !== 'pending' && !withdrawalError && <p className="inline-note" role="status">สถานะล่าสุด: {invitationLabel(withdrawalConnection)}</p>}
       {withdrawalError && <p ref={withdrawalFeedback} tabIndex={-1} className="form-alert" role="alert">{withdrawalConnection.status === 'accepted' ? 'เพื่อนตอบรับคำชวนแล้ว ถอนคำชวนไม่ได้ ความเป็นเพื่อนยังอยู่' : withdrawalConnection.status === 'declined' ? 'เพื่อนปฏิเสธคำชวนแล้ว ดูรายการนี้ได้ในประวัติ' : withdrawalConnection.status === 'cancelled' ? 'คำชวนนี้ถูกถอนแล้ว ประวัติยังอยู่และไม่มีการแชร์ช่องทางติดต่อ' : withdrawalError}</p>}
     </Modal></div>}
-    {selectedPerson && <div ref={profileDialog} aria-busy={Boolean(busy)}><Modal title="ทำความรู้จักเพื่อน" onClose={closeProfile} actions={<>{actionNeedsRefresh && <Button variant="secondary" disabled={loading || Boolean(busy)} onClick={() => setReload(current => current + 1)}>อัปเดตคำชวน</Button>}{actionError && <p ref={actionFeedback} tabIndex={-1} className="form-alert" role="alert">{actionError}</p>}{
+    {selectedPerson && <div ref={profileDialog} aria-busy={Boolean(busy)}><RoommateProfileModal title="ทำความรู้จักเพื่อน" person={selectedPerson} onClose={closeProfile} actions={<>{actionNeedsRefresh && <Button variant="secondary" disabled={loading || Boolean(busy)} onClick={() => setReload(current => current + 1)}>อัปเดตคำชวน</Button>}{actionError && <p ref={actionFeedback} tabIndex={-1} className="form-alert" role="alert">{actionError}</p>}{
       !selectedConnection ? <Button className="w-full" loading={Boolean(busy)} disabled={actionNeedsRefresh} onClick={() => act(`invite-${selectedPerson.userId}`, () => api.inviteFriend(selectedPerson.userId), 'ส่งคำชวนแล้ว ดูสถานะได้ที่แท็บคำชวน')}><UserRoundPlus size={18}/>ชวนหาห้องด้วยกัน</Button>
         : selectedConnection.status === 'accepted' ? <Link className="button button-primary w-full" to={`/rooms?withFriend=${selectedPerson.userId}`}>ค้นหาห้องด้วยกัน</Link>
           : selectedConnection.status === 'pending' && selectedConnection.direction === 'incoming' ? <><Button variant="quiet" loading={busy === `decline-${selectedConnection.connectionId}`} disabled={Boolean(busy) || actionNeedsRefresh} onClick={() => act(`decline-${selectedConnection.connectionId}`, () => api.decideFriend(selectedConnection.connectionId, 'declined'), 'ปฏิเสธคำชวนแล้ว')}>ปฏิเสธ</Button><Button loading={busy === `accept-${selectedConnection.connectionId}`} disabled={Boolean(busy) || actionNeedsRefresh} onClick={() => act(`accept-${selectedConnection.connectionId}`, () => api.decideFriend(selectedConnection.connectionId, 'accepted'), 'ตอบรับแล้ว เริ่มหาห้องด้วยกันได้เลย')}>ตอบรับคำชวน</Button></>
           : selectedConnection.status === 'pending' && selectedConnection.direction === 'outgoing' ? <Button variant="quiet" disabled={Boolean(busy)} onClick={() => openWithdrawal(selectedConnection, true)}><X size={16}/>ถอนคำชวน</Button>
             : <Button variant="secondary" onClick={() => { closeProfile(); openInvitations(selectedConnection.status === 'pending' ? 'outgoing' : 'history'); }}>ดูสถานะคำชวน</Button>
-    }</>}><div className="friend-full-profile"><FriendAvatar person={selectedPerson}/><h2>{selectedPerson.firstName} {selectedPerson.lastName}</h2><ProfileDemographics age={selectedPerson.age} gender={selectedPerson.gender}/><p>{selectedPerson.university || 'ยังไม่ได้ระบุมหาวิทยาลัย'}</p>
-      <h3>เกี่ยวกับฉัน</h3><p>{selectedPerson.bio || 'ยังไม่ได้เขียนแนะนำตัว'}</p><h3>ไลฟ์สไตล์</h3><p>{selectedPerson.lifestyle || 'ยังไม่ได้ระบุ'}</p>
-      <h3>เพศที่สะดวกแชร์ห้อง</h3><p>{roommateGenderLabel(selectedPerson.preferredGender)}</p>
-      <h3>ช่วงอายุที่สะดวกแชร์ห้อง</h3><p>{ageRange(selectedPerson.preferredAgeMin, selectedPerson.preferredAgeMax)}</p>
-      <h3>งบค่าห้องที่ตั้งไว้</h3><p>{budgetLabel(selectedPerson)}</p>{selectedConnection?.status === 'pending' && selectedConnection.direction === 'outgoing' && <p className="friend-waiting" role="status">ส่งคำชวนแล้ว · รอเพื่อนตอบรับ</p>}{selectedConnection?.status === 'cancelled' && <p className="friend-waiting">{invitationLabel(selectedConnection)} ไม่มีการแชร์ช่องทางติดต่อจากคำชวนนี้</p>}{selectedConnection?.status === 'declined' && <p className="friend-waiting">คำชวนนี้ไม่ได้รับการตอบรับ ไม่มีการแชร์ช่องทางติดต่อ</p>}{(selectedPerson.lineId || selectedPerson.instagram || selectedPerson.email || selectedPerson.phone) && <ContactActions {...selectedPerson}/>}</div></Modal></div>}
+    }</>}>{selectedConnection?.status === 'pending' && selectedConnection.direction === 'outgoing' && <p className="friend-waiting" role="status">ส่งคำชวนแล้ว · รอเพื่อนตอบรับ</p>}{selectedConnection?.status === 'cancelled' && <p className="friend-waiting">{invitationLabel(selectedConnection)} ไม่มีการแชร์ช่องทางติดต่อจากคำชวนนี้</p>}{selectedConnection?.status === 'declined' && <p className="friend-waiting">คำชวนนี้ไม่ได้รับการตอบรับ ไม่มีการแชร์ช่องทางติดต่อ</p>}{(selectedPerson.lineId || selectedPerson.instagram || selectedPerson.email || selectedPerson.phone) && <ContactActions {...selectedPerson}/>}</RoommateProfileModal></div>}
   </div>;
 }

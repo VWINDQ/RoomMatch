@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import { startRoomMatchServer } from '../server/app.js';
 import { createToken } from '../server/auth.js';
+import { calculateAge } from '../shared/age.js';
 import { openDatabase } from './support/postgres.mjs';
 
 let db, application, baseUrl;
@@ -111,6 +112,7 @@ test('public room details cannot bypass member-list authorization', async () => 
     const details = await api(`/rooms/${roomId}`, userId);
     assert.equal(details.status, 200);
     assert.deepEqual(details.body.room.members, [], `viewer ${userId}`);
+    assert.equal('ownerResidentProfile' in details.body.room, false);
     assert.equal(details.body.room.memberCount, 1);
     assert.equal(details.body.room.availableSlots, 1);
     assert.equal(details.body.room.owner.userId, 1);
@@ -120,6 +122,32 @@ test('public room details cannot bypass member-list authorization', async () => 
     assert.deepEqual(details.body.room.members.map(member => member.userId), [2]);
     assert.equal('lineId' in details.body.room.members[0], false);
   }
+});
+
+test('room details attach resident profiles only to the room owner and approved viewers', async () => {
+  const roomId = await room();
+  await approve(roomId);
+  await db.prepare("UPDATE USER SET gender = 'female', university = 'Resident University' WHERE user_id = 2").run();
+  await db.prepare("INSERT INTO LIFESTYLE(user_id,lifestyle_name) VALUES (2,'Quiet')").run();
+  await db.prepare("INSERT INTO PREFERENCE(user_id,preferred_gender,preferred_age_min,budget_max) VALUES (2,'any',20,5000)").run();
+  for (const viewer of [1, 2]) {
+    const { body } = await api(`/rooms/${roomId}`, viewer);
+    assert.equal(body.room.ownerResidentProfile.userId, 1);
+    assert.equal(body.room.ownerResidentProfile.gender, null);
+    assert.deepEqual(body.room.members[0].profile, {
+      userId: 2, firstName: 'Student 2', lastName: 'Match test', profileImage: null,
+      gender: 'female', age: calculateAge('2000-01-01'), university: 'Resident University',
+      bio: 'คำแนะนำตัว', lifestyle: 'Quiet', preferredGender: 'any', preferredAgeMin: 20,
+      preferredAgeMax: null, budgetMin: null, budgetMax: 5000,
+    });
+    for (const field of ['dateOfBirth', 'date_of_birth', 'lineId', 'instagram', 'email', 'phone']) {
+      assert.equal(field in body.room.ownerResidentProfile, false);
+    }
+  }
+  await db.prepare('UPDATE ROOM SET owner_is_resident = FALSE WHERE room_id = ?').run(roomId);
+  const { body } = await api(`/rooms/${roomId}`, 1);
+  assert.equal('ownerResidentProfile' in body.room, false);
+  assert.equal(body.room.members[0].profile.userId, 2);
 });
 
 test('owner and approved members see the owner exactly once, with safe fields and stable ordering', async () => {
