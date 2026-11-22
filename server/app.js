@@ -14,6 +14,7 @@ import { roomPagination, selectRoomPage } from './roomPagination.js';
 import { createImageStorage } from './uploads.js';
 import { validateListing, isWebUrl } from '../shared/listingValidation.js';
 import { validateAccountProfile } from '../shared/accountProfile.js';
+import { registrationNameError } from '../shared/registrationNames.js';
 
 function assertListing(body, options) {
   const fieldErrors = validateListing(body, options);
@@ -156,6 +157,33 @@ function accountDetails(body, requireBirthDate) {
   if (Object.keys(fieldErrors).length) throw new HttpError(400, 'Invalid account profile fields', fieldErrors);
   const university = body.accountType === 'student' ? body.university.trim() : null;
   return { accountType: body.accountType, university, dateOfBirth };
+}
+
+function registrationProfile(body) {
+  const fieldErrors = {};
+  for (const field of ['firstName', 'lastName']) {
+    const message = registrationNameError(field, body[field]);
+    if (message) fieldErrors[field] = message;
+  }
+  let phone, profile, gender;
+  try { phone = phoneNumber(body.phone); }
+  catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    fieldErrors.phone = error.fieldErrors?.phone || (typeof body.phone !== 'string' || !body.phone.trim()
+      ? 'กรุณากรอกเบอร์โทรศัพท์' : 'กรอกเบอร์โทรศัพท์เป็นตัวเลข 10 หลัก');
+  }
+  try { profile = accountDetails(body, true); }
+  catch (error) {
+    if (!(error instanceof HttpError) || !error.fieldErrors) throw error;
+    Object.assign(fieldErrors, error.fieldErrors);
+  }
+  try { gender = text(body.gender, 'gender', { max: 50 }); }
+  catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    fieldErrors.gender = 'กรุณาระบุเพศให้ถูกต้อง (ไม่เกิน 50 ตัวอักษร)';
+  }
+  if (Object.keys(fieldErrors).length) throw new HttpError(400, 'Invalid registration profile fields', fieldErrors);
+  return { ...profile, firstName: body.firstName.trim(), lastName: body.lastName.trim(), phone, gender };
 }
 
 function splitStoredDescription(stored = '') {
@@ -332,7 +360,7 @@ async function queryUser(db, userId) {
   return await db.prepare('SELECT * FROM USER WHERE user_id = ?').get(userId);
 }
 
-async function authenticate(db, request, { optional = false, allowPending = false } = {}) {
+async function authenticate(db, request, { optional = false } = {}) {
   const token = bearerToken(request);
   if (!token) {
     if (optional) return null;
@@ -341,10 +369,6 @@ async function authenticate(db, request, { optional = false, allowPending = fals
   const userId = verifyToken(token);
   const user = await queryUser(db, userId);
   assert(user && user.is_active, 401, 'Authentication required');
-  if (user.profile_setup_pending && !allowPending) {
-    if (optional) return null;
-    throw new HttpError(403, 'กรุณากรอกโปรไฟล์ให้ครบก่อนใช้งาน');
-  }
   return user;
 }
 
@@ -541,7 +565,7 @@ function matchPath(pathname, pattern) {
 }
 
 export function createRequestHandler(db, { logger = console, staticDirectory = DEFAULT_STATIC_DIRECTORY, uploadDirectory, oauth } = {}) {
-  const handleOAuth = createGoogleOAuthHandler(db, { ...oauth, sendJson, userDto, logger });
+  const handleOAuth = createGoogleOAuthHandler(db, { ...oauth, readJson, registrationProfile, sendJson, userDto, logger });
   const imageStorage = createImageStorage({ directory: uploadDirectory, db });
   const imageUrl = (value, userId, field) => imageStorage.validateUrl(value, userId, url => webUrl(url, field, { required: true }));
   const handleRoomRequest = createRoomRequestHandler(db, {
@@ -576,7 +600,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (await handleOAuth(request, response, url)) return;
 
       if (request.method === 'POST' && pathname === '/api/uploads/images') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         const imageUrl = await imageStorage.upload(request, user.user_id);
         sendJson(response, 201, { imageUrl }, request);
         return;
@@ -584,14 +608,11 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
 
       if (request.method === 'POST' && pathname === '/api/auth/register') {
         const body = await readJson(request);
-        const firstName = text(body.firstName, 'firstName', { required: true, max: 100 });
-        const lastName = text(body.lastName, 'lastName', { required: true, max: 100 });
-        const phone = phoneNumber(body.phone);
+        const { firstName, lastName, phone, gender, accountType, university, dateOfBirth } = registrationProfile(body);
         const email = text(body.email, 'email', { required: true, max: 320 }).toLowerCase();
         assert(EMAIL_PATTERN.test(email), 400, 'email must be valid');
         const password = text(body.password, 'password', { required: true, max: 256 });
         assert(password.length >= 8, 400, 'password must be at least 8 characters');
-        const { accountType, university, dateOfBirth } = accountDetails(body, true);
         const duplicateEmail = () => new HttpError(409, 'Email is already registered', { email: 'อีเมลนี้มีบัญชีแล้ว กรุณาเข้าสู่ระบบหรือใช้อีเมลอื่น' });
         if (await db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email)) throw duplicateEmail();
 
@@ -607,7 +628,7 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
             firstName,
             lastName,
             phone,
-            text(body.gender, 'gender', { max: 50 }),
+            gender,
             dateOfBirth,
             passwordHash,
             university,
@@ -644,13 +665,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'GET' && pathname === '/api/auth/me') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         sendJson(response, 200, { user: userDto(user, { privateFields: true }) }, request);
         return;
       }
 
       if (request.method === 'GET' && pathname === '/api/profile') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         const lifestyle = await db.prepare('SELECT * FROM LIFESTYLE WHERE user_id = ?').get(user.user_id);
         const preference = await db.prepare('SELECT * FROM PREFERENCE WHERE user_id = ?').get(user.user_id);
         sendJson(response, 200, {
@@ -662,14 +683,14 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       }
 
       if (request.method === 'POST' && pathname === '/api/profile/reminder/acknowledge') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         await db.prepare('UPDATE USER SET profile_reminder_seen_at = clock_timestamp() WHERE user_id = ? AND profile_reminder_seen_at IS NULL').run(user.user_id);
         sendJson(response, 200, { acknowledged: true }, request);
         return;
       }
 
       if (request.method === 'PATCH' && pathname === '/api/profile') {
-        const user = await authenticate(db, request, { allowPending: true });
+        const user = await authenticate(db, request);
         const body = await readJson(request);
         const pending = user.profile_setup_pending;
         const changingAccount = pending || Object.hasOwn(body, 'accountType') || (user.account_type && Object.hasOwn(body, 'university'));

@@ -1,12 +1,14 @@
 import { SessionSkeleton, Skeleton } from './components/Skeleton';
 import { Component, lazy, Suspense, useEffect, type ComponentProps, type ReactNode } from 'react';
-import { Navigate, Outlet, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { AppProvider, useApp } from './AppContext';
 import { AppShell } from './components/Layout';
 import { Toast } from './components/Toast';
 import { Button } from './components/UI';
 import { LoginPage, RegisterPage } from './pages/AuthPages';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
+import { GoogleRegistrationPage } from './pages/GoogleRegistrationPage';
+import { ProfileReminder } from './components/ProfileReminder';
 import { RoomsPage } from './pages/RoomsPage';
 
 const ListingFormPage = lazy(() => import('./pages/ListingFormPage').then(module => ({ default: module.ListingFormPage })));
@@ -64,7 +66,6 @@ function ProtectedRoutes() {
   const { user, authLoading, authError, retryAuth } = useApp(); const location = useLocation();
   if (authLoading) return <SessionSkeleton/>;
   if (authError) return <main className="route-loading"><p>{authError}</p><button className="button button-primary" onClick={retryAuth}>ลองเชื่อมต่ออีกครั้ง</button></main>;
-  if (user?.profileSetupPending && location.pathname !== '/profile') return <Navigate to="/profile" replace/>;
   return user ? <Outlet key={user.userId}/> : <Navigate to="/login" replace state={{ from: location.pathname + location.search + location.hash }}/>;
 }
 
@@ -76,15 +77,21 @@ function GuestOnly({ children, redirectTo }: { children: ReactNode; redirectTo?:
   return user ? <Navigate to={destination} replace/> : children;
 }
 
+function RoomSearch() {
+  const navigate = useNavigate();
+  return <><RoomsPage/><ProfileReminder onEdit={() => navigate('/profile', { state: { editProfile: true } })}/></>;
+}
+
 function RoutedApp() {
   const { toast, toastTone } = useApp();
   return <><ScrollToTop/><Routes>
     <Route path="/auth/google/complete" element={<OAuthCallbackPage/>}/>
+    <Route path="/auth/google/register" element={<GuestOnly redirectTo="/rooms"><GoogleRegistrationPage/></GuestOnly>}/>
     <Route path="/login" element={<GuestOnly><LoginPage/></GuestOnly>}/>
-    <Route path="/register" element={<GuestOnly redirectTo="/profile"><RegisterPage/></GuestOnly>}/>
+    <Route path="/register" element={<GuestOnly redirectTo="/rooms"><RegisterPage/></GuestOnly>}/>
     <Route element={<ProtectedRoutes/>}><Route element={<AppShell/>}>
       <Route path="/favorites" element={<DeferredPage variant="rooms"><FavoritesPage/></DeferredPage>}/>
-      <Route path="/rooms" element={<RoomsPage/>}/><Route path="/rooms/:id" element={<DeferredPage variant="room-detail"><RoomDetailPage/></DeferredPage>}/>
+      <Route path="/rooms" element={<RoomSearch/>}/><Route path="/rooms/:id" element={<DeferredPage variant="room-detail"><RoomDetailPage/></DeferredPage>}/>
       <Route path="/my-listings" element={<DeferredPage variant="listings"><MyListingsPage/></DeferredPage>}/><Route path="/my-listings/new" element={<DeferredPage variant="listing-form"><ListingFormPage/></DeferredPage>}/><Route path="/my-listings/:id/edit" element={<DeferredPage variant="listing-form"><ListingFormPage/></DeferredPage>}/>
       <Route path="/requests" element={<DeferredPage variant="requests"><RequestsPage/></DeferredPage>}/><Route path="/matches" element={<DeferredPage variant="matches"><MatchesPage/></DeferredPage>}/><Route path="/profile" element={<DeferredPage variant="profile"><ProfilePage/></DeferredPage>}/>
       <Route path="/friends" element={<DeferredPage variant="friends"><FriendsPage/></DeferredPage>}/>

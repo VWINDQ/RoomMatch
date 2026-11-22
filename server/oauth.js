@@ -34,7 +34,7 @@ function readCookie(request, name) {
   return matches.length === 1 ? matches[0].slice(name.length + 1) : null;
 }
 
-export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthConfiguration(), fetch: providerFetch, sendJson, userDto, logger = console }) {
+export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthConfiguration(), fetch: providerFetch, readJson, registrationProfile, sendJson, userDto, logger = console }) {
   let client;
   if (configuration) {
     client = new oidc.Configuration({
@@ -57,28 +57,49 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
     response.end();
   };
 
-  async function resolveAccount(claims) {
+  function verifiedRegistration(claims) {
     assert(typeof claims.sub === 'string' && claims.sub.length > 0 && claims.sub.length <= 255
       && claims.email_verified === true && typeof claims.email === 'string' && claims.email.length <= 320
       && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(claims.email), 400, 'invalid_identity');
-    return db.transaction(async () => {
-      // Serialize first sign-ins for the same Google subject across all API instances.
-      await db.prepare('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))').get(`google:${claims.sub}`);
-      const existing = await db.prepare(`SELECT u.* FROM USER u JOIN oauth_identity i ON i.user_id = u.user_id
-        WHERE i.provider = 'google' AND i.subject = ?`).get(claims.sub);
-      if (existing) {
-        assert(existing.is_active, 403, 'account_unavailable');
-        return existing;
-      }
-      const email = claims.email.toLowerCase();
-      // Matching email alone is not authorization to link a pre-existing account.
-      assert(!(await db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email)), 409, 'email_exists');
-      const name = value => typeof value === 'string' ? value.trim().slice(0, 100) : '';
-      const user = await db.prepare(`INSERT INTO USER(first_name, last_name, email, password_hash, profile_setup_pending)
-        VALUES (?, ?, ?, NULL, TRUE) RETURNING *`).get(name(claims.given_name) || name(claims.name) || 'Google', name(claims.family_name) || '-', email);
-      await db.prepare("INSERT INTO oauth_identity(provider, subject, user_id) VALUES ('google', ?, ?)").run(claims.sub, user.user_id);
-      return user;
-    });
+    const name = value => typeof value === 'string' ? value.trim().slice(0, 100) : '';
+    return { subject: claims.sub, email: claims.email.toLowerCase(), firstName: name(claims.given_name), lastName: name(claims.family_name) };
+  }
+
+  const findGoogleUser = subject => db.prepare(`SELECT u.* FROM USER u JOIN oauth_identity i ON i.user_id = u.user_id
+    WHERE i.provider = 'google' AND i.subject = ?`).get(subject);
+  const emailTaken = email => db.prepare('SELECT 1 FROM USER WHERE lower(email) = lower(?)').get(email);
+  const sendSession = (response, status, user, request) =>
+    sendJson(response, status, { token: createToken(user.user_id), user: userDto(user, { privateFields: true }) }, request);
+
+  function browserTicket(request, url) {
+    assert(request.headers.origin === configuration.origin && request.headers['content-type']?.split(';')[0] === 'application/json', 403, 'Invalid OAuth exchange origin');
+    const flow = url.searchParams.get('flow');
+    assert(validToken(flow) && url.searchParams.getAll('flow').length === 1, 401, 'Google sign-in expired. Please try again.');
+    const ticket = readCookie(request, cookieName('ticket', flow));
+    assert(validToken(ticket), 401, 'Google sign-in expired. Please try again.');
+    return { flow, hash: digest(ticket) };
+  }
+
+  async function registerGoogle(hash, body) {
+    const { firstName, lastName, phone, gender, dateOfBirth, accountType, university } = registrationProfile(body);
+    try {
+      return await db.transaction(async () => {
+        const ticket = await db.prepare(`DELETE FROM oauth_ticket WHERE ticket_hash = ? AND registration IS NOT NULL
+          AND expires_at > clock_timestamp() RETURNING registration`).get(hash);
+        assert(ticket, 401, 'Google registration expired. Please try again.');
+        const { subject, email } = ticket.registration;
+        // Different tickets for the same identity must not create two accounts.
+        await db.prepare('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))').get(`google:${subject}`);
+        assert(!(await findGoogleUser(subject)) && !(await emailTaken(email)), 409, 'Google account or email already registered');
+        const user = await db.prepare(`INSERT INTO USER(first_name, last_name, phone, gender, date_of_birth, account_type, university, email, password_hash)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL) RETURNING *`).get(firstName, lastName, phone, gender, dateOfBirth, accountType, university, email);
+        await db.prepare("INSERT INTO oauth_identity(provider, subject, user_id) VALUES ('google', ?, ?)").run(subject, user.user_id);
+        return user;
+      });
+    } catch (error) {
+      if (error.code === '23505') throw new HttpError(409, 'Google account or email already registered');
+      throw error;
+    }
   }
 
   return async (request, response, url) => {
@@ -124,14 +145,19 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
         const tokens = await oidc.authorizationCodeGrant(client, incoming, {
           expectedState: state, expectedNonce: attempt.nonce, pkceCodeVerifier: attempt.code_verifier, idTokenExpected: true,
         });
-        const user = await resolveAccount(tokens.claims());
+        const registration = verifiedRegistration(tokens.claims());
+        const user = await findGoogleUser(registration.subject);
+        if (user) assert(user.is_active, 403, 'account_unavailable');
+        else assert(!(await emailTaken(registration.email)), 409, 'email_exists');
         const ticket = opaqueToken();
-        await db.prepare(`INSERT INTO oauth_ticket(ticket_hash, user_id, expires_at)
-          VALUES (?, ?, clock_timestamp() + interval '1 minute')`).run(digest(ticket), user.user_id);
-        const target = new URL('/auth/google/complete', configuration.origin);
-        target.searchParams.set('returnTo', user.profile_setup_pending ? '/profile' : safeReturnTo(attempt.return_to));
+        const expiresIn = user ? 60 : 600;
+        await db.prepare(`INSERT INTO oauth_ticket(ticket_hash, user_id, registration, expires_at)
+          VALUES (?, ?, ?, clock_timestamp() + ? * interval '1 second')`)
+          .run(digest(ticket), user?.user_id ?? null, user ? null : JSON.stringify(registration), expiresIn);
+        const target = new URL(user ? '/auth/google/complete' : '/auth/google/register', configuration.origin);
+        if (user) target.searchParams.set('returnTo', safeReturnTo(attempt.return_to));
         target.searchParams.set('flow', state);
-        redirect(response, target.href, [cookie('state', state, '', 0), cookie('ticket', state, ticket, 60)]);
+        redirect(response, target.href, [cookie('state', state, '', 0), cookie('ticket', state, ticket, expiresIn)]);
       } catch (error) {
         const knownErrors = new Set(['invalid_state', 'invalid_identity', 'email_exists', 'account_unavailable', 'cancelled', 'failed']);
         const reason = error instanceof HttpError && knownErrors.has(error.message) ? error.message : error.code === '23505' ? 'email_exists' : 'failed';
@@ -142,18 +168,38 @@ export function createGoogleOAuthHandler(db, { configuration = readGoogleOAuthCo
       return true;
     }
     if (request.method === 'POST' && url.pathname === '/api/auth/oauth/session') {
-      assert(request.headers.origin === configuration.origin && request.headers['content-type']?.split(';')[0] === 'application/json', 403, 'Invalid OAuth exchange origin');
-      const flow = url.searchParams.get('flow');
-      assert(validToken(flow) && url.searchParams.getAll('flow').length === 1, 401, 'Google sign-in expired. Please try again.');
-      const ticket = readCookie(request, cookieName('ticket', flow));
-      assert(validToken(ticket), 401, 'Google sign-in expired. Please try again.');
+      const { flow, hash } = browserTicket(request, url);
       const session = await db.prepare(`DELETE FROM oauth_ticket WHERE ticket_hash = ?
-        AND expires_at > clock_timestamp() RETURNING user_id`).get(digest(ticket));
-      response.setHeader('Set-Cookie', cookie('ticket', flow, '', 0));
+        AND user_id IS NOT NULL AND expires_at > clock_timestamp() RETURNING user_id`).get(hash);
       assert(session, 401, 'Google sign-in expired. Please try again.');
+      response.setHeader('Set-Cookie', cookie('ticket', flow, '', 0));
       const user = await db.prepare('SELECT * FROM USER WHERE user_id = ?').get(session.user_id);
       assert(user?.is_active, 401, 'Google sign-in expired. Please try again.');
-      sendJson(response, 200, { token: createToken(user.user_id), user: userDto(user, { privateFields: true }) }, request);
+      sendSession(response, 200, user, request);
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/auth/oauth/registration/preview') {
+      const { hash } = browserTicket(request, url);
+      const ticket = await db.prepare(`SELECT registration FROM oauth_ticket WHERE ticket_hash = ?
+        AND registration IS NOT NULL AND expires_at > clock_timestamp()`).get(hash);
+      assert(ticket, 401, 'Google registration expired. Please try again.');
+      const { email, firstName, lastName } = ticket.registration;
+      sendJson(response, 200, { email, firstName, lastName }, request);
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/auth/oauth/registration/confirm') {
+      const { flow, hash } = browserTicket(request, url);
+      const user = await registerGoogle(hash, await readJson(request));
+      response.setHeader('Set-Cookie', cookie('ticket', flow, '', 0));
+      sendSession(response, 201, user, request);
+      return true;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/auth/oauth/registration/cancel') {
+      const { flow, hash } = browserTicket(request, url);
+      const ticket = await db.prepare('DELETE FROM oauth_ticket WHERE ticket_hash = ? AND registration IS NOT NULL RETURNING ticket_hash').get(hash);
+      assert(ticket, 401, 'Google registration expired. Please try again.');
+      response.setHeader('Set-Cookie', cookie('ticket', flow, '', 0));
+      sendJson(response, 200, { cancelled: true }, request);
       return true;
     }
     throw new HttpError(404, 'Endpoint not found');

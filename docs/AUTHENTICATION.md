@@ -51,9 +51,14 @@ No live Google login can be verified until a real client and redirect URI exist.
 
 ## Account behavior
 
-- A new Google identity creates a user with `password_hash = NULL`, then opens
-  `/profile` to collect the phone number, birth date and account type. Students select or enter a university name. The verified Google email is retained. The setup remains pending across sessions until a valid profile is saved.
-  Google sometimes omits a family name; `-` is used until the user edits it.
+- A new Google identity opens a signup form with the verified email displayed as
+  read-only and any given/family names supplied by Google. The remaining fields
+  follow email signup: name, phone, birth date, and account type are required,
+  gender is optional, and university is required for students. Confirmation
+  creates the RoomMatch account and Google identity in
+  one transaction and starts an application session without a local password.
+- Successful email and Google signups open `/rooms` and show the existing profile
+  reminder once. Continuing from the reminder opens the profile editor.
 - Returning users are identified by the verified Google `sub`, not by email.
   Changing a Google email does not silently overwrite the RoomMatch profile.
 - An email already registered in RoomMatch is **not automatically linked**.
@@ -61,8 +66,8 @@ No live Google login can be verified until a real client and redirect URI exist.
   existing account and adding/resetting a local password are not implemented.
 - Google-only accounts cannot use password login. Disabled accounts cannot
   complete either Google login or the subsequent session exchange.
-- A returning user with no pending setup goes back to the requested application route; redirect
-  targets are restricted to RoomMatch routes.
+- Returning users default to `/rooms`, including accounts with incomplete profiles.
+  Sign-in initiated from a protected application route preserves its destination.
 
 ## Flow and storage
 
@@ -76,21 +81,27 @@ serialized per provider subject and protected by unique database constraints.
 The callback never places a RoomMatch bearer token or Google tokens in a URL.
 Each attempt has separately named state and ticket cookies, suffixed with the
 random OAuth state. Concurrent Google logins in the same browser profile cannot
-overwrite or clear each other's cookies. The callback sets a random, HttpOnly,
-SameSite=Strict ticket cookie valid for one minute and redirects to
+overwrite or clear each other's cookies. For a returning user the callback sets
+a random, HttpOnly, SameSite=Strict ticket cookie valid for one minute and redirects to
 `/auth/google/complete?returnTo=...&flow=...`. The non-secret `flow` identifier
 selects that attempt's cookie; it cannot authenticate without the HttpOnly ticket.
-The SPA exchanges it once via a same-origin JSON POST to
+The SPA exchanges a returning user's ticket once via a same-origin JSON POST to
 `/api/auth/oauth/session?flow=...`, then establishes the session in that tab.
+For a new user the callback redirects to `/auth/google/register?flow=...` with a
+ten-minute registration ticket. The preview returns the server-verified email
+and suggested names. The confirmation accepts the validated profile fields and uses the
+email and subject from the ticket. Cancelling revokes the ticket. Previewing,
+cancelling, or leaving the form does not create a RoomMatch account.
 Ticket values are stored only as SHA-256 hashes. HTTPS cookies use `Secure` and
 the `__Host-` prefix. Callback redirects disable caching and referrer forwarding.
 Google access/refresh tokens are not persisted. Expired attempts/tickets are
 cleaned when a new Google sign-in begins; schedule cleanup separately if needed
 when traffic stops. Proxy access logs should omit callback query strings.
 
-The three additive tables are `oauth_identity`, `oauth_attempt`, `oauth_ticket`.
-The migration makes the existing password column nullable without rewriting any
-passwords or user rows. OAuth data is separate from the legacy SQLite import.
+The OAuth tables are `oauth_identity`, `oauth_attempt`, and `oauth_ticket`.
+Migration `007_google_registration.sql` allows each ticket to hold either a
+returning user's ID or pending registration details. OAuth data is separate
+from the legacy SQLite import.
 Application bearer tokens live in per-tab `sessionStorage`, with the existing
 seven-day server-side lifetime. Reloading preserves the tab's account. Login,
 logout and session expiration do not change another tab's account or unsaved
@@ -103,7 +114,7 @@ restore it. Logout still does not revoke a copied bearer token on the server.
 On upgrade, the client removes the legacy shared `localStorage` token without
 importing it. Refresh all old tabs and sign in again. Deploy the API and frontend
 together: Google ticket exchange now requires `flow`; an OAuth flow started
-before deployment may need to be restarted. No database migration is required.
+before deployment may need to be restarted. The API applies migrations at startup.
 
 Endpoints:
 
@@ -113,6 +124,9 @@ Endpoints:
 | GET | `/api/auth/oauth/google` | Begin sign-in; optional local `returnTo` |
 | GET | `/api/auth/oauth/google/callback` | Validate and consume provider response |
 | POST | `/api/auth/oauth/session?flow=...` | Same-origin, one-time exchange of the selected attempt's ticket |
+| POST | `/api/auth/oauth/registration/preview?flow=...` | Read verified signup details using the browser ticket |
+| POST | `/api/auth/oauth/registration/confirm?flow=...` | Create the account from the ticket and confirmed names |
+| POST | `/api/auth/oauth/registration/cancel?flow=...` | Revoke a pending signup ticket |
 
 ## Verification
 

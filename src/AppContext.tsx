@@ -2,13 +2,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api, ApiError, SessionChangedError, subscribeUnauthorized, tokenStorage } from './lib/api';
 import type { User } from './types';
 import type { ToastTone } from './components/Toast';
+import type { RegistrationProfile } from './lib/registration';
 
-type RegisterPayload = { firstName: string; lastName: string; email: string; password: string; phone: string; gender?: string; dateOfBirth: string; accountType: string; university?: string };
+type RegisterPayload = RegistrationProfile & { email: string; password: string };
 type AppState = {
   user: User | null; authLoading: boolean; authError: string; toast: string; toastTone: ToastTone;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   completeOAuth: (flow: string) => Promise<void>;
+  registerGoogle: (flow: string, profile: RegistrationProfile) => Promise<void>;
   consumeRegistrationReminder: () => boolean;
   logout: () => boolean; registerLogoutGuard: (guard: () => boolean) => () => void;
   refreshUser: (updated?: User) => Promise<void>; retryAuth: () => Promise<void>; notify: (message: string, tone?: ToastTone) => void;
@@ -131,6 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, authLoading, authError, toast, toastTone, notify, refreshUser, retryAuth, completeOAuth, consumeRegistrationReminder,
     login: (email, password) => signIn(() => api.login({ email, password })),
     register: payload => signIn(() => api.register(payload), true),
+    registerGoogle: (flow, profile) => signIn(() => api.confirmGoogleRegistration(flow, profile), true),
     logout, registerLogoutGuard,
   }), [authError, authLoading, completeOAuth, consumeRegistrationReminder, logout, registerLogoutGuard, notify, refreshUser, retryAuth, signIn, toast, toastTone, user]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
