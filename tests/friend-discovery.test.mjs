@@ -9,8 +9,8 @@ import { createToken } from '../server/auth.js';
 import { openDatabase } from './support/postgres.mjs';
 
 let db, application, baseUrl;
-const contactFields = ['email', 'phone', 'lineId', 'instagram'];
-const profileKeys = ['age', 'bio', 'budgetMax', 'budgetMin', 'firstName', 'gender', 'lastName', 'lifestyle',
+const contactFields = ['email', 'phone', 'lineId'];
+const profileKeys = ['age', 'bio', 'budgetMax', 'budgetMin', 'firstName', 'gender', 'instagram', 'lastName', 'lifestyle',
   'preferredAgeMax', 'preferredAgeMin', 'preferredGender', 'profileImage', 'university', 'userId'];
 
 async function start() {
@@ -79,6 +79,8 @@ test('discovery omits self and inactive accounts and returns only public profile
   assert.equal(person.budgetMin, 0);
   assert.equal(person.budgetMax, 5000);
   assert.equal(person.lifestyle, 'ตื่นเช้า ไม่สูบบุหรี่');
+  assert.equal(person.instagram, 'instagram-2');
+  for (const field of contactFields) assert.equal(field in person, false);
 });
 
 test('search supports Thai full names, name parts, university, bio and lifestyle', async () => {
@@ -157,6 +159,7 @@ test('pending invitations have correct directions, hide contacts and reject dupl
   assert.equal(invitation.direction, 'outgoing');
   assert.equal(invitation.respondedAt, null);
   assert.equal(invitation.person.userId, 2);
+  assert.equal(invitation.person.instagram, 'instagram-2');
   for (const userId of [1, 2]) {
     const result = await api('/friends/connections', userId);
     assert.equal(result.body.connections.length, 1);
