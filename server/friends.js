@@ -20,7 +20,6 @@ async function profile(db, row, isAcceptedFriend = false) {
   const result = {
     userId: row.user_id, firstName: row.first_name, lastName: row.last_name,
     university: row.university, bio: row.bio, profileImage: row.profile_image,
-    instagram: row.instagram,
     age: calculateAge(row.date_of_birth),
     gender: row.gender,
     preferredGender: preference?.preferred_gender ?? null,
@@ -29,7 +28,7 @@ async function profile(db, row, isAcceptedFriend = false) {
     budgetMin: preference?.budget_min ?? null, budgetMax: preference?.budget_max ?? null,
   };
   if (isAcceptedFriend) Object.assign(result, {
-    lineId: row.line_id, email: row.email, phone: row.phone,
+    instagram: row.instagram, lineId: row.line_id, email: row.email, phone: row.phone,
   });
   return result;
 }
@@ -87,9 +86,11 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
       assert(await db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(viewerId), 401, 'Authentication required');
       assert(await db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(body.recipientId), 404, 'ไม่พบผู้ใช้นี้');
       await db.prepare('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))').get(`friend:${Math.min(viewerId, body.recipientId)}:${Math.max(viewerId, body.recipientId)}`);
-      const existing = await db.prepare(`SELECT 1 FROM FRIEND_CONNECTION
-        WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)`)
+      const existing = await db.prepare(`SELECT status FROM FRIEND_CONNECTION
+        WHERE status <> 'cancelled' AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))`)
         .get(viewerId, body.recipientId, body.recipientId, viewerId);
+      assert(existing?.status !== 'declined', 409, 'คำชวนนี้ถูกปฏิเสธแล้ว จึงส่งคำชวนใหม่ให้คนนี้ไม่ได้');
+      assert(existing?.status !== 'accepted', 409, 'คุณเป็นเพื่อนกันแล้ว ดูได้ที่แท็บเพื่อนของฉัน');
       assert(!existing, 409, 'คุณกับคนนี้มีคำชวนอยู่แล้ว กรุณาดูที่แท็บคำชวนหรือเพื่อนของฉัน');
       const result = await db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?) RETURNING connection_id').run(viewerId, body.recipientId);
       const row = await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ? FOR UPDATE').get(result.insertId);
