@@ -307,9 +307,11 @@ test('pausing a listing keeps current members and matches available to participa
   }
 });
 
-test('deleting a room removes its matches and member rows instead of leaving broken references', async () => {
+test('deleting a vacated room removes its historical matches and member rows', async () => {
   const roomId = await room();
   await approve(roomId);
+  assert.equal((await api(`/rooms/${roomId}/members/me`, 2, 'DELETE')).status, 200);
+  assert.equal((await api(`/rooms/${roomId}`, 1, 'PATCH', { ownerIsResident: false })).status, 200);
   assert.equal((await api(`/rooms/${roomId}`, 1, 'DELETE')).status, 200);
   assert.equal((await api(`/rooms/${roomId}/members`, 2)).status, 404);
   assert.deepEqual((await api('/matches', 1)).body.matches, []);

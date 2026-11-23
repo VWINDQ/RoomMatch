@@ -66,6 +66,7 @@ for (const [endpoint, size, viewer] of [['/favorites', 12, 3], ['/my/rooms', 10,
   test(`${endpoint} removing the last item clamps one page, then handles zero records`, async t => {
     const { db, api, rows } = await fixture(t, size+1);
     const path = `${endpoint}?q=Private%20pagination&page=2`;
+    if (endpoint === '/my/rooms') await db.prepare('UPDATE ROOM SET owner_is_resident=FALSE WHERE room_id=ANY(?::bigint[])').run(rows.map(room => room.room_id));
     const last = await api(path,viewer);
     assert.equal(last.rooms.length,1);
     const remove = id => api(`/rooms/${id}${endpoint === '/favorites' ? '/favorite' : ''}`,viewer,'DELETE');

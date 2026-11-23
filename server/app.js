@@ -972,10 +972,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
       if (request.method === 'DELETE' && pathMatch) {
         const user = await authenticate(db, request);
         const roomId = integer(pathMatch[0], 'roomId', { required: true, min: 1 });
-        const room = await getRoomRow(db, roomId);
-        assert(room, 404, 'Room not found');
-        assert(room.owner_id === user.user_id, 403, 'Only the room owner can delete this room');
-        await db.prepare('DELETE FROM ROOM WHERE room_id = ?').run(roomId);
+        await db.transaction(async () => {
+          const room = await getRoomRow(db, roomId, { lock: true });
+          assert(room, 404, 'Room not found');
+          assert(room.owner_id === user.user_id, 403, 'Only the room owner can delete this room');
+          assert(occupants(room) === 0, 409, 'ยังลบประกาศไม่ได้เพราะห้องนี้มีผู้พักอยู่ หากต้องการหยุดรับคำขอ ให้เลือกพักประกาศ');
+          await db.prepare('DELETE FROM ROOM WHERE room_id = ?').run(roomId);
+        });
         sendJson(response, 200, { success: true }, request);
         return;
       }

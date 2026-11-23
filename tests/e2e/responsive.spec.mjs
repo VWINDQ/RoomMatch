@@ -148,8 +148,19 @@ async function inspectDialog(page, testInfo, name) {
 
 test('delete-listing confirmation modal', async ({ page, environment }, testInfo) => {
   await openRoute(page, environment, routes.find(route => route.name === 'my-listings'));
-  await page.getByRole('button', { name: /^ลบ / }).first().click();
+  const occupied = page.locator('.my-listing').filter({ hasText: 'ห้องนี้มีผู้พักอยู่ จึงลบไม่ได้' }).first();
+  await expect(occupied.getByRole('button', { name: /^ลบ / })).toBeDisabled();
+  const empty = await environment.db.prepare(`INSERT INTO ROOM(owner_id, description, google_maps_url, price, capacity)
+    VALUES (1, 'ห้องว่างสำหรับทดสอบลบ', 'https://maps.google.com', 1000, 2) RETURNING room_id`).run();
+  await page.reload();
+  await page.locator(`#listing-${empty.insertId}`).getByRole('button', { name: /^ลบ / }).click();
   await inspectDialog(page, testInfo, 'delete-modal');
+  await page.locator(`#listing-${empty.insertId}`).getByRole('button', { name: /^ลบ / }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('รูปประกาศ รายการโปรด คำขอ และประวัติสมาชิก');
+  await dialog.getByRole('button', { name: 'ลบประกาศ', exact: true }).click();
+  await expect(page.getByText('ลบประกาศแล้ว', { exact: true })).toBeVisible();
+  await expect(page.locator(`#listing-${empty.insertId}`)).toHaveCount(0);
 });
 
 test('friend profile and invitation views', async ({ page, environment }, testInfo) => {

@@ -192,6 +192,7 @@ for (const [path, endpoint, actor, selector, size] of cases) {
       const keep=(await response.json()).rooms.slice(0,size+1).map(room=>room.roomId);
       if(path==='/favorites') await db.prepare("DELETE FROM ROOM_FAVORITE WHERE user_id=3 AND room_id IN (SELECT room_id FROM ROOM WHERE description LIKE 'Private pagination%') AND room_id<>ALL(?::bigint[])").run(keep);
       else await db.prepare("DELETE FROM ROOM WHERE description LIKE 'Private pagination%' AND room_id<>ALL(?::bigint[])").run(keep);
+      if (path === '/my-listings') await db.prepare('UPDATE ROOM SET owner_is_resident=FALSE WHERE room_id=ANY(?::bigint[])').run(keep);
       await page.goto(url+'&page=2'); await expect(page.locator(selector)).toHaveCount(1);
       await clearScroll(page);
       const reloaded=page.waitForResponse(response=>new URL(response.url()).pathname===endpoint&&response.request().method()==='GET');
