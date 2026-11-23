@@ -45,8 +45,7 @@
 .listing-form,.profile-editor { padding-bottom: 24px; }
 .profile-actions>.form-feedback { display: block; }
 .profile-actions>.form-action-buttons { display: flex; }
-.filter-sheet { top: 24px; right: 24px; height: auto; max-height: calc(100dvh - 48px); border-radius: 26px; overflow: hidden; }
-:is(.my-listings-page, .favorites-page) .filter-sheet { width: min(540px, 100%); }
+.filter-sheet { top: 24px; right: 24px; bottom: auto; width: min(540px, 100% - 48px); height: auto; max-height: calc(100dvh - 48px); border-radius: 26px; overflow: hidden; }
 .filter-scroll { display: grid; gap: 20px; padding-top: 20px; }
 .filter-scroll fieldset { padding: 0 0 20px; }
 /* Keep dialog controls visible; only the content scrolls on short screens. */
@@ -78,12 +77,13 @@
 }
 @media (max-width: 700px) {
   .room-card>.favorite-button { left: 74px; right: auto; }
-  .filter-sheet { top: auto; right: 0; bottom: 0; height: auto; max-height: 88dvh; border-radius: 24px 24px 0 0; }
-  :is(.my-listings-page, .favorites-page) .filter-sheet { width: 100%; }
+  .filter-sheet { top: auto; right: 0; bottom: 0; width: 100%; max-height: 88dvh; border-radius: 24px 24px 0 0; }
   .room-grid { grid-template-columns: 1fr; }
   .room-card-link { display: grid; grid-template-columns: 126px minmax(0,1fr); }
   .room-card-copy .location { flex: initial; }
-  .room-card-image { min-height: 200px; }
+  /* Let the horizontal grid size the image frame independently of the photo. */
+  .room-card-image { height: auto; min-height: 200px; aspect-ratio: auto; }
+  .room-card-image > :is(img, .photo-fallback) { position: absolute; inset: 0; }
   .request-history-actions { max-width: none; grid-column: 2; justify-content: flex-start; }
   .request-card .request-history-actions .button { min-height: 40px; }
 }
