@@ -1,4 +1,5 @@
 import { Skeleton } from '../components/Skeleton';
+import { FriendSearchContext } from '../components/FriendSearchContext';
 import { ArrowLeft, CalendarDays, ExternalLink, Heart, MapPin, RefreshCw, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -48,7 +49,8 @@ export function RoomDetailPage() {
   const cancelledNote = useRef<HTMLParagraphElement>(null);
   const requestPanel = useRef<HTMLElement>(null);
   const withdrawFeedback = useRef<HTMLParagraphElement>(null);
-  const location = useLocation(); const back = roomReturn(location.state);
+  const location = useLocation(); const friendSearch = new URLSearchParams(location.search).has('withFriend');
+  const back = roomReturn(location.state ?? (friendSearch ? { from: `/rooms${location.search}` } : undefined));
   const [leaveOpen, setLeaveOpen] = useState(false); const [leaving, setLeaving] = useState(false); const [leaveError, setLeaveError] = useState('');
   const leave = async () => { if (!room || leaving) return; setLeaving(true); setLeaveError(''); try { await api.leaveRoom(room.roomId); setLeaveOpen(false); setRequestError(''); notify('ออกจากห้องแล้ว ประวัติคำขอเดิมยังอยู่'); setReload(value => value + 1); } catch (caught) { setLeaveError(caught instanceof Error ? caught.message : 'ออกจากห้องไม่สำเร็จ'); } finally { setLeaving(false); } };
   useEffect(() => { let active = true; setLoading(true); setError(''); api.room(id).then(value => active && setRoom(value)).catch(caught => active && setError(caught instanceof Error ? caught.message : 'โหลดห้องไม่สำเร็จ')).finally(() => active && setLoading(false)); return () => { active = false; }; }, [id, reload]);
@@ -106,6 +108,7 @@ export function RoomDetailPage() {
       : room.members?.find(member => member.userId === selectedResidentId)?.profile;
   const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอเจ้าของห้องตอบกลับ' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
   return <div className="page detail-page"><button className="back-link" onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}><ArrowLeft size={18}/>{back.label}</button>
+    <FriendSearchContext/>
     <div className="detail-title"><div><StatusBadge status={room.status}/><h1>{room.title}</h1><p><MapPin size={16}/>{room.locality || 'เจ้าของยังไม่ระบุย่าน · ดูแผนที่ด้านล่าง'}</p></div></div><RoomGallery room={room}/>
     <div className="detail-layout"><div className="detail-main"><section><h2>เกี่ยวกับห้องนี้</h2><p className="description">{room.description || 'เจ้าของห้องยังไม่ได้เพิ่มรายละเอียด'}</p><div className="fact-row"><span><UsersRound/>พักได้ {room.capacity} คน</span><span><UserRound/>ว่าง {room.availableSlots} ที่</span><span><CalendarDays/>ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span></div></section>
       <section><h2>ค่าใช้จ่ายที่ควรทราบ</h2><p className="description">{room.costNotes || 'เจ้าของยังไม่ระบุค่าน้ำ ค่าไฟ เงินประกัน หรือค่าแรกเข้า กรุณาสอบถามก่อนตกลงเข้าพัก'}</p>{!room.priceBasis && <p className="inline-note">ประกาศเดิมยังไม่ระบุว่าราคาต่อคนหรือทั้งห้อง กรุณายืนยันกับเจ้าของก่อนเทียบงบ</p>}</section>

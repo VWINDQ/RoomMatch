@@ -5,6 +5,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import type { FriendProfile } from '../types';
 
+export function FriendSearchExplanation() {
+  return <>ระบบค้นหาห้องที่มีที่ว่างพอ ที่ว่างอาจเปลี่ยนได้และยังไม่มีการจอง ทั้งคู่ต้องส่งคำขอแยกกันและได้รับอนุมัติเป็นรายคน ผู้ลงประกาศอาจอนุมัติเพียงคนเดียว</>;
+}
+
 export function FriendSearchContext() {
   const [params] = useSearchParams();
   const friendId = params.get('withFriend');
@@ -22,5 +26,8 @@ export function FriendSearchContext() {
     return () => { active = false; };
   }, [friendId]);
   if (!friendId) return null;
-  return <aside className="friends-note friend-search-context"><span><HeartHandshake/></span>{!error && !person ? <Skeleton variant="friend-context"/> : <p>{error || (person ? `กำลังหาห้องกับ ${person.firstName} ${person.lastName}` : 'กำลังโหลดข้อมูลเพื่อน…')}<br/><small>{person ? 'แสดงห้องที่มีที่ว่างพอสำหรับคนที่ยังไม่ได้อยู่ในห้องนั้น ทั้งคู่ยังต้องส่งคำขอและให้เจ้าของอนุมัติแยกกัน' : 'การหาห้องด้วยกันยังไม่เพิ่มสมาชิกห้องอัตโนมัติ'}</small></p>}<Link to={error ? '/friends' : '/rooms'}>{error ? 'กลับไปหาเพื่อน' : 'หาห้องตามปกติ'}</Link></aside>;
+  const soloParams = new URLSearchParams(params);
+  soloParams.delete('withFriend');
+  soloParams.delete('page');
+  return <aside className="friends-note friend-search-context"><span><HeartHandshake/></span>{!error && !person ? <Skeleton variant="friend-context"/> : <p>{error || (person ? `กำลังหาห้องกับ ${person.firstName} ${person.lastName}` : 'กำลังโหลดข้อมูลเพื่อน…')}<br/><small>{person && <FriendSearchExplanation/>}</small></p>}<Link to={error ? '/friends' : { pathname: '/rooms', search: soloParams.toString() }}>{error ? 'กลับไปหาเพื่อน' : 'หาห้องตามปกติ'}</Link></aside>;
 }

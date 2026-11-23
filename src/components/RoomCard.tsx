@@ -38,7 +38,7 @@ export function RoomCard({ room, onFavoriteChange, priority = false }: { room: R
   };
 
   return <article className={`room-card ${room.status !== 'available' ? 'is-unavailable' : ''}`}>
-    <Link id={id} className="room-card-link" to={`/rooms/${room.roomId}`} state={{ from: location.pathname + location.search, focusReturnId: id }} aria-label={`ดูห้อง ${room.title}`} onClick={() => sessionStorage.setItem(`roommatch:focus:${location.pathname}${location.search}`, id)}>
+    <Link id={id} className="room-card-link" to={{ pathname: `/rooms/${room.roomId}`, search: location.pathname === '/rooms' && new URLSearchParams(location.search).has('withFriend') ? location.search : '' }} state={{ from: location.pathname + location.search, focusReturnId: id }} aria-label={`ดูห้อง ${room.title}`} onClick={() => sessionStorage.setItem(`roommatch:focus:${location.pathname}${location.search}`, id)}>
       <div className="room-card-image"><RoomImage room={room} priority={priority}/><StatusBadge status={room.status}/></div><div className="room-card-copy">
         <div className="room-title-price"><h2>{room.title}</h2><Price amount={room.price} basis={room.priceBasis} compact/></div>
         <p className="location"><MapPin size={15}/><span>{room.locality || 'เจ้าของยังไม่ระบุย่าน · ดูแผนที่ในรายละเอียด'}</span></p>

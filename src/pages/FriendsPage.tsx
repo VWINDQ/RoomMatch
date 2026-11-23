@@ -8,6 +8,7 @@ import { ProfileDemographics } from '../components/ProfileDemographics';
 import { roommateGenderLabel } from '../lib/profileLabels';
 import { RoommateProfileModal, roommateBudgetLabel } from '../components/RoommateProfileModal';
 import { ContactActions } from '../components/ContactActions';
+import { FriendSearchExplanation } from '../components/FriendSearchContext';
 import { FriendInstagram } from '../components/FriendInstagram';
 import { Button, EmptyState, Modal } from '../components/UI';
 import { api, ApiError } from '../lib/api';
@@ -212,6 +213,7 @@ export function FriendsPage() {
     <div className="friends-note"><span><HeartHandshake size={25}/></span><p>เริ่มจากทำความรู้จัก ไม่ต้องมีห้องก่อน<br/><small>ช่องทางติดต่อจะแชร์เมื่อทั้งสองฝ่ายตอบรับเป็นเพื่อนกัน</small></p><Link to="/profile">เติมโปรไฟล์ของฉัน</Link></div>
     <nav ref={tabsRef} className="friend-tabs" aria-label="หมวดหาเพื่อน">{tabs.map(tab => <button key={tab.value} aria-pressed={view === tab.value} className={view === tab.value ? 'selected' : ''} onClick={() => { if (tab.value === 'invitations') openInvitations(); else { setView(tab.value); setActionError(''); } }}>{tab.label}{Boolean(tab.count) && <span>{tab.count}</span>}</button>)}</nav>
     {view === 'invitations' && <><nav ref={invitationFilters} className="invitation-filters" aria-label="ประเภทคำชวน">{(Object.keys(invitationGroups) as InvitationView[]).map(key => <button key={key} className={invitationView === key ? 'selected' : ''} aria-pressed={invitationView === key} onClick={() => { setInvitationView(key); setActionError(''); }}>{invitationGroups[key].label}<span>{invitationGroups[key].items.length}</span></button>)}</nav><div className="invitation-heading"><h2>{activeInvitation.title}</h2><p>{activeInvitation.description}</p></div></>}
+    {view === 'friends' && !loading && !error && connections.some(item => item.status === 'accepted') && <p className="inline-note"><FriendSearchExplanation/></p>}
     {view === 'discover' && <label className="friend-search"><Search size={20}/><input aria-label="ค้นหาเพื่อน" placeholder="ค้นหาชื่อ มหาวิทยาลัย หรือไลฟ์สไตล์" maxLength={100} disabled={Boolean(busy)} value={query} onChange={event => setQuery(event.target.value)}/>{query && <button disabled={Boolean(busy)} onClick={() => setQuery('')} aria-label="ล้างคำค้นหาเพื่อน"><X size={18}/></button>}</label>}
     {actionNeedsRefresh && !selected && !actionError && <p className="inline-note" role="status">กรุณาอัปเดตคำชวนเพื่อตรวจสถานะล่าสุดก่อนดำเนินการต่อ</p>}
     {actionError && !selected && <p ref={actionFeedback} tabIndex={-1} className="form-alert" role="alert">{actionError}</p>}
