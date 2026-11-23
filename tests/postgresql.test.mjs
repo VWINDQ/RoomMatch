@@ -29,11 +29,12 @@ test('account profile migration preserves legacy records without classifying the
       VALUES('Existing','Student',?,'legacy-hash',?,?) RETURNING user_id, university`).get(`${type}@example.test`, university, type)));
     await runMigrations(db);
     await runMigrations(db);
-    const { account_type, profile_setup_pending, profile_reminder_seen_at, ...retained } = await db.prepare('SELECT * FROM USER WHERE user_id=?').get(legacy.user_id);
+    const { account_type, profile_setup_pending, profile_reminder_seen_at, share_resident_profile, ...retained } = await db.prepare('SELECT * FROM USER WHERE user_id=?').get(legacy.user_id);
     assert.deepEqual(retained, Object.fromEntries(Object.entries(legacy).filter(([name]) => !['account_type', 'profile_setup_pending'].includes(name))));
     assert.equal(account_type, null);
     assert.equal(profile_setup_pending, false);
     assert.equal(profile_reminder_seen_at, null);
+    assert.equal(share_resident_profile, false);
     for (const student of students) {
       assert.deepEqual(await db.prepare('SELECT account_type, university FROM USER WHERE user_id=?').get(student.user_id),
         { account_type: 'student', university: student.university });
@@ -126,7 +127,7 @@ test('SQLite import preserves every business row, credentials, image paths, hist
     for (const table of BUSINESS_TABLES) {
       const actual = await db.prepare(`SELECT * FROM ${tableIdentifier(table)} ORDER BY 1, 2`).all();
       const normalized = expected.get(table).map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, value && ['created_at','updated_at','requested_at','responded_at','joined_at','matched_at'].includes(key) ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : value + 'Z').toISOString() : value])));
-      assert.deepEqual(actual, table === 'USER' ? normalized.map(row => ({ ...row, account_type: null, profile_setup_pending: false, profile_reminder_seen_at: null })) : table === 'ROOM' ? normalized.map(row => ({ ...row, owner_is_resident: true })) : normalized, table);
+      assert.deepEqual(actual, table === 'USER' ? normalized.map(row => ({ ...row, account_type: null, profile_setup_pending: false, profile_reminder_seen_at: null, share_resident_profile: false })) : table === 'ROOM' ? normalized.map(row => ({ ...row, owner_is_resident: true })) : normalized, table);
       assert.equal(counts[table], normalized.length);
     }
     assert.deepEqual(readFileSync(source), before);

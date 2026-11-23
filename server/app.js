@@ -9,7 +9,7 @@ import { assert, HttpError } from './errors.js';
 import { openDatabase } from './database.js';
 import { handleFriendRoutes } from './friends.js';
 import { createRoomRequestHandler } from './requests.js';
-import { canViewRoomMembers, createRoomMatchesHandler, listRoomMembers } from './matches.js';
+import { createRoomMatchesHandler, listRoomMembers, listSharedResidentProfiles } from './matches.js';
 import { roomPagination, selectRoomPage } from './roomPagination.js';
 import { createImageStorage } from './uploads.js';
 import { validateListing, isWebUrl } from '../shared/listingValidation.js';
@@ -211,6 +211,7 @@ function userDto(row, { privateFields = false } = {}) {
       university: row.university,
       accountType: row.account_type,
       profileSetupPending: row.profile_setup_pending,
+      shareResidentProfile: row.share_resident_profile === true,
       profileReminderSeen: row.profile_reminder_seen_at != null,
       bio: row.bio,
       email: row.email,
@@ -312,6 +313,7 @@ function roomDto(row, images = [], options = {}) {
     ...(options.requestStatus !== undefined ? { requestStatus: options.requestStatus } : {}),
     ...(options.pendingRequestId !== undefined ? { pendingRequestId: options.pendingRequestId } : {}),
     ...(options.members ? { members: options.members } : {}),
+    ...(options.sharedResidentProfiles ? { sharedResidentProfiles: options.sharedResidentProfiles } : {}),
     ...(options.ownerResidentProfile ? { ownerResidentProfile: options.ownerResidentProfile } : {}),
   };
 }
@@ -718,6 +720,10 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           ['dateOfBirth', 'date_of_birth', (value) => isoDate(value, 'dateOfBirth')],
           ['university', 'university', (value) => text(value, 'university', { max: 255 })],
           ['profileImage', 'profile_image', (value) => value === '' || value == null ? null : imageUrl(value, user.user_id, 'profileImage')],
+          ['shareResidentProfile', 'share_resident_profile', (value) => {
+            assert(typeof value === 'boolean', 400, 'shareResidentProfile must be a boolean');
+            return value;
+          }],
           ['bio', 'bio', (value) => text(value, 'bio', { max: 1_000 })],
           ['instagram', 'instagram', (value) => text(value, 'instagram', { max: 100 })],
           ['lineId', 'line_id', (value) => text(value, 'lineId', { max: 100 })],
@@ -851,13 +857,13 @@ export function createRequestHandler(db, { logger = console, staticDirectory = D
           isFavorite = Boolean(await db.prepare('SELECT 1 FROM ROOM_FAVORITE WHERE user_id = ? AND room_id = ?').get(currentUser.user_id, roomId));
         }
         const isMember = Boolean(currentUser && await db.prepare("SELECT 1 FROM ROOM_MEMBER WHERE room_id = ? AND user_id = ? AND status = 'approved'").get(roomId, currentUser.user_id));
-        const residents = await canViewRoomMembers(db, room, currentUser?.user_id)
-          ? await listRoomMembers(db, roomId, userDto, { includeProfiles: true })
-          : [];
+        const canSeeMembers = isMember || (currentUser && room.owner_id === currentUser.user_id);
+        const residents = canSeeMembers ? await listRoomMembers(db, roomId, userDto, { includeProfiles: true }) : [];
+        const sharedResidentProfiles = currentUser && !canSeeMembers ? await listSharedResidentProfiles(db, roomId) : undefined;
         const members = residents.filter(member => member.status !== 'owner');
         const ownerResidentProfile = residents.find(member => member.status === 'owner')?.profile;
         sendJson(response, 200, {
-          room: roomDto(room, await imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, pendingRequestId, members, ownerResidentProfile, isMember, isFavorite }),
+          room: roomDto(room, await imageRows(db, roomId), { currentUserId: currentUser?.user_id, requestStatus, pendingRequestId, members, ownerResidentProfile, sharedResidentProfiles, isMember, isFavorite }),
         }, request);
         return;
       }

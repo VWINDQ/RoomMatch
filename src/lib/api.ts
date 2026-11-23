@@ -88,6 +88,7 @@ export function normalizeUser(value: unknown): User {
     userId: text(source, 'userId', 'user_id', 'id'), firstName: text(source, 'firstName', 'first_name'), lastName: text(source, 'lastName', 'last_name'),
     phone: text(source, 'phone'), gender: text(source, 'gender'), dateOfBirth: text(source, 'dateOfBirth', 'date_of_birth'), university: text(source, 'university'),
     accountType: text(source, 'accountType'), profileSetupPending: source.profileSetupPending === true,
+    shareResidentProfile: source.shareResidentProfile === true,
     profileReminderSeen: typeof source.profileReminderSeen === 'boolean' ? source.profileReminderSeen : undefined,
     profileImage: text(source, 'profileImage', 'profile_image'), bio: text(source, 'bio'), email: text(source, 'email'), instagram: text(source, 'instagram'),
     lineId: text(source, 'lineId', 'line_id'), isActive: Boolean(pick(source, 'isActive', 'is_active') ?? true),
@@ -144,6 +145,14 @@ function normalizeRoom(value: unknown): Room {
     priceBasis: (pick(source, 'priceBasis', 'price_basis') ?? null) as Room['priceBasis'], locality: text(source, 'locality'), costNotes: text(source, 'costNotes', 'cost_notes'), isMember: Boolean(source.isMember),
     status: (text(source, 'status') || 'available') as Room['status'], createdAt: text(source, 'createdAt', 'created_at'), owner: source.owner ? normalizeUser(source.owner) : undefined,
     images, members: Array.isArray(rawMembers) ? rawMembers.map(normalizeMember) : undefined, memberCount: numeric(source, 'memberCount', 'member_count'),
+    sharedResidentProfiles: Array.isArray(source.sharedResidentProfiles) ? source.sharedResidentProfiles.map(value => {
+      const profile = object(value);
+      return {
+        userId: text(profile, 'userId'), firstName: text(profile, 'firstName'), lastName: text(profile, 'lastName'),
+        profileImage: text(profile, 'profileImage'), bio: text(profile, 'bio'), lifestyle: text(profile, 'lifestyle'),
+        isListingOwner: profile.isListingOwner === true,
+      };
+    }) : undefined,
     ownerResidentProfile: source.ownerResidentProfile ? normalizeRoommateProfile(source.ownerResidentProfile) : undefined,
     ownerIsResident: Boolean(pick(source, 'ownerIsResident', 'owner_is_resident') ?? true),
     occupantCount: pick(source, 'occupantCount', 'occupant_count') == null ? numeric(source, 'memberCount', 'member_count') + Number(pick(source, 'ownerIsResident', 'owner_is_resident') ?? true) : numeric(source, 'occupantCount', 'occupant_count'),

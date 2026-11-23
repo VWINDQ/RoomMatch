@@ -118,6 +118,6 @@ test('authorized viewers can open each resident’s profile from room details', 
   await expect(section.getByRole('button')).toHaveCount(4);
   await signIn(page, environment, 'empty');
   await page.goto(`/rooms/${roomId}`);
-  await expect(section.locator('.detail-member')).toHaveCount(1);
-  await expect(section.getByRole('button')).toHaveCount(0);
+  await expect(section.locator('.detail-member')).toHaveCount(0);
+  await expect(section.getByText('ผู้พัก 4 คนไม่ได้เปิดเผยโปรไฟล์')).toBeVisible();
 });

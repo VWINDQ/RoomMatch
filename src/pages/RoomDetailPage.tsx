@@ -1,6 +1,6 @@
 import { Skeleton } from '../components/Skeleton';
 import { FriendSearchContext } from '../components/FriendSearchContext';
-import { ArrowLeft, CalendarDays, ExternalLink, Heart, MapPin, RefreshCw, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ExternalLink, Heart, MapPin, RefreshCw, ShieldCheck, UsersRound } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
@@ -103,22 +103,33 @@ export function RoomDetailPage() {
   if (loading) return <div className="page"><Skeleton variant="room-detail"/></div>;
   if (error || !room) return <div className="page"><EmptyState icon={<RefreshCw/>} title="เปิดประกาศนี้ไม่ได้" text={error || 'ไม่พบประกาศห้องนี้'} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
   const ownerResident = room.ownerResidentProfile;
+  const sharedResidents = room.sharedResidentProfiles;
+  const hiddenResidents = sharedResidents ? Math.max(0, room.occupantCount - sharedResidents.length) : 0;
   const selectedResident = room.roomId !== id || selectedResidentId === null ? undefined
     : ownerResident?.userId === selectedResidentId ? ownerResident
-      : room.members?.find(member => member.userId === selectedResidentId)?.profile;
+      : room.members?.find(member => member.userId === selectedResidentId)?.profile
+        ?? sharedResidents?.find(member => member.userId === selectedResidentId);
   const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอเจ้าของห้องตอบกลับ' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
   return <div className="page detail-page"><button className="back-link" onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}><ArrowLeft size={18}/>{back.label}</button>
     <FriendSearchContext/>
     <div className="detail-title"><div><StatusBadge status={room.status}/><h1>{room.title}</h1><p><MapPin size={16}/>{room.locality || 'เจ้าของยังไม่ระบุย่าน · ดูแผนที่ด้านล่าง'}</p></div></div><RoomGallery room={room}/>
-    <div className="detail-layout"><div className="detail-main"><section><h2>เกี่ยวกับห้องนี้</h2><p className="description">{room.description || 'เจ้าของห้องยังไม่ได้เพิ่มรายละเอียด'}</p><div className="fact-row"><span><UsersRound/>พักได้ {room.capacity} คน</span><span><UserRound/>ว่าง {room.availableSlots} ที่</span><span><CalendarDays/>ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span></div></section>
+    <div className="detail-layout"><div className="detail-main"><section><h2>เกี่ยวกับห้องนี้</h2><p className="description">{room.description || 'เจ้าของห้องยังไม่ได้เพิ่มรายละเอียด'}</p><div className="fact-row"><span><UsersRound aria-hidden="true"/>รองรับ {room.capacity} คน · มีผู้พักแล้ว {room.occupantCount} คน · ว่าง {room.availableSlots} ที่</span><span><CalendarDays/>ลงประกาศ {room.createdAt ? new Date(room.createdAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</span></div></section>
       <section><h2>ค่าใช้จ่ายที่ควรทราบ</h2><p className="description">{room.costNotes || 'เจ้าของยังไม่ระบุค่าน้ำ ค่าไฟ เงินประกัน หรือค่าแรกเข้า กรุณาสอบถามก่อนตกลงเข้าพัก'}</p>{!room.priceBasis && <p className="inline-note">ประกาศเดิมยังไม่ระบุว่าราคาต่อคนหรือทั้งห้อง กรุณายืนยันกับเจ้าของก่อนเทียบงบ</p>}</section>
       <section className="capacity-note"><ShieldCheck/><div><h2>นับเฉพาะคนที่พักในห้อง</h2><p>{room.ownerIsResident === false ? 'ผู้ลงประกาศไม่ได้พักในห้องนี้ จึงไม่นับเป็นผู้พัก' : 'ผู้ลงประกาศพักอยู่ด้วย จึงนับเป็นผู้พัก 1 คน'} · เมื่อเต็มจะหยุดรับคำขอใหม่</p></div></section>
-      <section><h2>ผู้พักในห้อง</h2><div className="detail-member-list">
-        {room.ownerIsResident !== false && <Member person={room.owner} label="ผู้ลงประกาศ · พักอยู่ด้วย"
-          onView={ownerResident && (() => setSelectedResidentId(ownerResident.userId))}/>}
-        {room.members?.map(member => <Member key={member.userId} person={member.user} label="ผู้พัก"
-          onView={member.profile && (() => setSelectedResidentId(member.userId))}/>)}
-      </div>{room.ownerIsResident === false && !room.members?.length && (room.isOwner || room.isMember) && <p className="field-hint">ยังไม่มีผู้พักที่ได้รับอนุมัติ</p>}{!room.isOwner && !room.isMember && <p className="field-hint">รายชื่อผู้พักจะแสดงเมื่อผู้ลงประกาศอนุมัติให้คุณเข้าพักแล้ว</p>}</section>
+      <section>
+        <h2>ผู้พักในห้อง</h2>
+        {room.occupantCount === 0 ? <p className="field-hint">ยังไม่มีผู้พัก คนที่เข้าร่วมภายหลังอาจเป็นผู้สมัครคนอื่น</p> : <>
+          {(room.isOwner || room.isMember || Boolean(sharedResidents?.length)) && <div className="detail-member-list">
+            {ownerResident && <Member person={ownerResident} label="ผู้ลงประกาศ · พักอยู่ด้วย" onView={() => setSelectedResidentId(ownerResident.userId)}/>}
+            {room.members?.map(member => <Member key={member.userId} person={member.user} label="ผู้พักในห้อง"
+              onView={member.profile && (() => setSelectedResidentId(member.userId))}/>)}
+            {sharedResidents?.map(person => <Member key={person.userId} person={person}
+              label={person.isListingOwner ? 'ผู้ลงประกาศ · พักอยู่ด้วย' : 'ผู้พักในห้อง'} onView={() => setSelectedResidentId(person.userId)}/>)}
+          </div>}
+          {hiddenResidents > 0 && <p className="field-hint">ผู้พัก {hiddenResidents} คนไม่ได้เปิดเผยโปรไฟล์</p>}
+          {!sharedResidents && !room.isOwner && !room.isMember && <p className="field-hint">เข้าสู่ระบบเพื่อดูโปรไฟล์ที่ผู้พักเปิดเผย</p>}
+        </>}
+      </section>
       {room.googleMapsUrl && <section className="map-preview"><div><MapPin/><span><strong>ตำแหน่งห้อง</strong><small>เปิด Google Maps ในแท็บใหม่</small></span></div><a className="button button-secondary" href={room.googleMapsUrl} target="_blank" rel="noreferrer">ดูบนแผนที่ <ExternalLink size={16}/></a></section>}
     </div><aside ref={requestPanel} tabIndex={-1} className="detail-sidebar" aria-label="คำขอเข้าพักและเจ้าของห้อง"><Price amount={room.price} basis={room.priceBasis}/><StatusBadge status={room.status}/><Button variant="secondary" className={`w-full ${favoriteFeedback ? 'has-favorite-feedback' : ''}`} onAnimationEnd={() => setFavoriteFeedback(false)} aria-label={room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} aria-pressed={Boolean(room.isFavorite)} loading={savingFavorite} onClick={toggleFavorite}><Heart size={17} fill={room.isFavorite ? 'currentColor' : 'none'}/>{room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}</Button><hr/><h2>ผู้ลงประกาศ</h2><div className="owner-mini"><span><ProfilePhoto src={room.owner?.profileImage || ''} fallback={room.owner?.firstName?.charAt(0) || 'R'}/></span><div><strong>{room.owner ? `${room.owner.firstName} ${room.owner.lastName}` : 'สมาชิก RoomMatch'}</strong><small>{room.ownerIsResident ? 'พักอยู่ด้วย' : 'ไม่ได้พักในห้อง'}{room.owner?.university && ` · ${room.owner.university}`}</small></div></div>
       {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`, { state: { from: back.to, focusReturnId: back.focusTarget } })}>แก้ไขประกาศของฉัน</Button> : <Button className="w-full" loading={sending} disabled={requestNeedsRefresh || room.requestStatus === 'pending' || room.isMember || room.status !== 'available' || room.availableSlots < 1} onClick={requestRoom}>{requestLabel}</Button>}

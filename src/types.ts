@@ -12,6 +12,7 @@ export type User = {
   university: string;
   accountType?: string;
   profileSetupPending?: boolean;
+  shareResidentProfile?: boolean;
   profileReminderSeen?: boolean;
   profileImage: string;
   bio: string;
@@ -42,6 +43,7 @@ export type Room = {
   images: RoomImage[];
   members?: RoomMember[];
   ownerResidentProfile?: RoommateProfile;
+  sharedResidentProfiles?: SharedResidentProfile[];
   memberCount: number;
   availableSlots: number;
   isOwner?: boolean;
@@ -107,6 +109,8 @@ export type RoommateProfile = {
   bio: string; profileImage: string; lifestyle: string;
   budgetMin: number | null; budgetMax: number | null;
 };
+export type SharedResidentProfile = Pick<RoommateProfile, 'userId' | 'firstName' | 'lastName' | 'profileImage' | 'bio' | 'lifestyle'> & { isListingOwner: boolean };
+
 export type FriendProfile = RoommateProfile & {
   lineId?: string; instagram?: string; email?: string; phone?: string;
 };

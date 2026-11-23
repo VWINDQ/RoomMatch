@@ -135,7 +135,9 @@ export function ProfilePage() {
       if (!mounted.current) return;
       const profileImage = imageUrls[0]?.trim() || '';
       const preferredGender = String(data.get('preferredGender') ?? '');
-      const updated = await api.updateProfile({ firstName: String(data.get('firstName')).trim(), lastName: String(data.get('lastName')).trim(), phone, gender: String(data.get('gender')), dateOfBirth, university: readUniversity(data), ...(accountType ? { accountType } : {}), profileImage, bio: String(data.get('bio')).trim(), instagram: String(data.get('instagram')).trim(), lineId: String(data.get('lineId')).trim(), ...(lifestyleName ? { lifestyleName } : {}), preference: { ...(preferredGender ? { preferredGender } : {}), preferredAgeMin: ageMinRaw ? ageMin : null, preferredAgeMax: ageMaxRaw ? ageMax : null, budgetMin: budgetMinRaw ? budgetMin : null, budgetMax: budgetMaxRaw ? budgetMax : null } });
+      const shareResidentProfile = data.has('shareResidentProfile');
+      const residentSharingChange = shareResidentProfile === Boolean(profile.user.shareResidentProfile) ? {} : { shareResidentProfile };
+      const updated = await api.updateProfile({ firstName: String(data.get('firstName')).trim(), lastName: String(data.get('lastName')).trim(), phone, gender: String(data.get('gender')), dateOfBirth, university: readUniversity(data), ...(accountType ? { accountType } : {}), profileImage, bio: String(data.get('bio')).trim(), ...residentSharingChange, instagram: String(data.get('instagram')).trim(), lineId: String(data.get('lineId')).trim(), ...(lifestyleName ? { lifestyleName } : {}), preference: { ...(preferredGender ? { preferredGender } : {}), preferredAgeMin: ageMinRaw ? ageMin : null, preferredAgeMax: ageMaxRaw ? ageMax : null, budgetMin: budgetMinRaw ? budgetMin : null, budgetMax: budgetMaxRaw ? budgetMax : null } });
       if (!mounted.current) return;
       await refreshUser(updated.user);
       if (!mounted.current) return;
@@ -185,6 +187,10 @@ export function ProfilePage() {
           }}/>
         <ImagePicker label="รูปโปรไฟล์" images={images} onCheckingChange={setCheckingImages} onChange={setImages} disabled={saving} error={errors.profileImage} fieldName="profileImage"/>
         <Textarea label="เกี่ยวกับฉัน" name="bio" maxLength={1000} rows={4} defaultValue={user.bio}/>
+        <div className="resident-sharing">
+          <label><input type="checkbox" name="shareResidentProfile" defaultChecked={user.shareResidentProfile} aria-describedby="resident-sharing-hint"/> เปิดโปรไฟล์ให้ผู้สนใจห้องเห็น</label>
+          <p id="resident-sharing-hint" className="field-hint">เมื่อคุณพักอยู่ในห้อง ผู้ใช้ที่เข้าสู่ระบบจะเห็นชื่อ รูปโปรไฟล์ คำแนะนำตัว และไลฟ์สไตล์ก่อนส่งคำขอ คุณปิดการแชร์ได้ทุกเมื่อ ควรเก็บช่องทางติดต่อไว้ในช่องข้อมูลติดต่อของโปรไฟล์</p>
+        </div>
       </div></section>
       <section className="form-section"><header><span>2</span><div><h2>ไลฟ์สไตล์และความต้องการ</h2><p>ช่วยให้การจับคู่มีบริบทที่ชัดเจนขึ้น</p></div></header><div className="form-section-body"><Input label={lifestyle ? 'ไลฟ์สไตล์ *' : 'ไลฟ์สไตล์'} name="lifestyleName" required={Boolean(lifestyle)} error={errors.lifestyleName} maxLength={400} defaultValue={lifestyle?.lifestyleName} placeholder="เช่น ตื่นเช้า • ไม่สูบบุหรี่ • ชอบห้องเงียบ"/><label className="field"><span className="field-label">เพศที่สะดวกแชร์ห้อง</span><select name="preferredGender" defaultValue={preference?.preferredGender || ''} aria-invalid={errors.preferredGender ? true : undefined} aria-describedby={errors.preferredGender ? 'preferred-gender-error' : undefined}>
         {!preference?.preferredGender && <option value="" disabled>ยังไม่ระบุ</option>}
