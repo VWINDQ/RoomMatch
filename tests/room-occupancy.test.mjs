@@ -162,3 +162,37 @@ test('a residence change racing with approval cannot reserve the same last place
   const full = (await api(`/rooms/${room.roomId}`)).body.room;
   assert.equal(full.occupantCount, 1); assert.equal(full.status, 'full'); assert.equal(full.availableSlots, 0);
 });
+
+
+test('only the owner can delete an empty listing, and occupied listings can be paused', async t => {
+  const { api, create, request, approve } = await fixture(t);
+  const room = await create({ ownerIsResident: true });
+  const path = `/rooms/${room.roomId}`;
+  assert.equal((await api(path, null, 'DELETE')).status, 401);
+  assert.equal((await api(path, 2, 'DELETE')).status, 403);
+  assert.match((await api(path, 1, 'DELETE')).body.error, /พักประกาศ/);
+  const requestId = await request(room.roomId, 2);
+  assert.equal((await approve(requestId)).status, 200);
+  assert.equal((await api('/my/rooms')).body.rooms[0].status, 'full');
+  assert.equal((await api('/matches', 2)).body.matches[0].room.roomId, room.roomId);
+  assert.equal((await api(path, 1, 'PATCH', { ownerIsResident: false, status: 'inactive' })).status, 200);
+  assert.equal((await api(path, 1, 'DELETE')).status, 409);
+  assert.equal((await api(`${path}/members/me`, 2, 'DELETE')).status, 200);
+  assert.equal((await api(path, 1, 'DELETE')).status, 200);
+  assert.equal((await api(path, 1, 'DELETE')).status, 404);
+});
+
+test('approval and deletion cannot both succeed for the same room', async t => {
+  const { api, create, request, approve } = await fixture(t);
+  const room = await create();
+  const requestId = await request(room.roomId, 2);
+  const path = `/rooms/${room.roomId}`;
+  const [approval, deletion] = await Promise.all([approve(requestId), api(path, 1, 'DELETE')]);
+  if (approval.status === 200) {
+    assert.equal(deletion.status, 409);
+    assert.deepEqual((await api(`${path}/members`, 2)).body.members.map(member => member.userId), [2]);
+  } else {
+    assert.equal(approval.status, 404);
+    assert.equal(deletion.status, 200);
+  }
+});

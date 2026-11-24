@@ -34,10 +34,11 @@ Setup, safe SQLite import, environment variables, tests and deployment:
 - `MATCHES` records the owner as `initiator_user_id`, the approved member as
   `completer_user_id`, and the room that brought them together.
 - `FRIEND_CONNECTION.sender_id` and `recipient_id` reference `USER`. An unordered
-  pair is unique; self-invitations are forbidden. Only a pending invitation can
-  transition to accepted/declined/cancelled, with a response timestamp. Cancelled
-  invitations remain in history and do not grant contact access. The existing
-  one-invitation-per-pair rule is unchanged; this migration does not enable re-sending.
+  pair is unique among pending, accepted and declined invitations; self-invitations
+  are forbidden. A pending invitation can transition to accepted, declined or cancelled,
+  recording its response timestamp. PostgreSQL migration 008 limits the unique index
+  to non-cancelled invitations. A resend inserts a fresh row, while every withdrawal
+  remains in history with its original timestamps. Contacts are shared on acceptance.
 
 Deleting a user or room cascades to dependent rows. Frequently queried foreign
 keys, statuses, price, image order, and match roles are indexed. A partial unique

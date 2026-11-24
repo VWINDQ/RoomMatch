@@ -749,7 +749,7 @@ for (const action of ['status', 'delete']) {
 test(`an old listing action cannot show a notification in the next account (${action})`, async () => {
   tokenStorage.set('old-token');
   const pending = deferred();
-  const room = { roomId: '1', title: 'Old listing', status: 'available', price: 5000, capacity: 2 };
+  const room = { roomId: '1', title: 'Old listing', status: 'available', price: 5000, capacity: 2, ownerIsResident: false, occupantCount: 0 };
   respond = async path => path === '/api/auth/me' ? json({ user }) : json({ rooms: [room], total: 1, page: 1, pageSize: 10, totalPages: 1 });
   await act(async () => root.render(createElement(StrictMode, null,
     createElement(MemoryRouter, { initialEntries: ['/my-listings'] }, createElement(App)))));

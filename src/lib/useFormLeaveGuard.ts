@@ -10,7 +10,7 @@ export function useFormLeaveGuard(formRef: RefObject<HTMLFormElement | null>, im
     const fields = Array.from(formRef.current?.elements ?? []).filter(
       (field): field is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement =>
         (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) && Boolean(field.name) && field.type !== 'file',
-    ).map(field => [field.name, field.value]);
+    ).map(field => [field.name, field instanceof HTMLInputElement && field.type === 'checkbox' ? field.checked : field.value]);
     return JSON.stringify({ fields, state, images: images.map(image => image.file ? `file:${image.id}` : image.url) });
   }, [formRef, images, state]);
 

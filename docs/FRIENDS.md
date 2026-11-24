@@ -17,17 +17,17 @@
 
 | สถานะ | ผู้ทำรายการต่อได้ | การเปิดเผยช่องทางติดต่อ |
 | --- | --- | --- |
-| `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | เห็น Instagram; LINE อีเมลและเบอร์โทรเป็นส่วนตัว |
+| `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | ช่องทางติดต่อเป็นส่วนตัว |
 | `accepted` | ค้นหาห้องด้วยกัน; ยังไม่มี unfriend | ทั้งสองฝ่ายเห็น LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้ |
-| `declined` | ดูประวัติ ไม่ส่งซ้ำ/เปลี่ยนผล | เห็น Instagram; LINE อีเมลและเบอร์โทรเป็นส่วนตัว |
-| `cancelled` | ผู้ส่งถอนซ้ำแบบ idempotent ได้ แต่ไม่ส่งคำชวนใหม่ | เห็น Instagram; LINE อีเมลและเบอร์โทรเป็นส่วนตัว |
+| `declined` | ดูประวัติ ไม่ส่งซ้ำ/เปลี่ยนผล | ช่องทางติดต่อเป็นส่วนตัว |
+| `cancelled` | ผู้ส่งถอนซ้ำโดยได้ผลเดิม หรือส่งคำชวนใหม่จากประวัติ | ช่องทางติดต่อเป็นส่วนตัว |
 
 การ์ดและหน้าต่างโปรไฟล์แสดงอายุเต็มปีและเพศของเจ้าของโปรไฟล์ทั้งก่อนและหลังส่งคำชวน โดยเก็บวันเกิดเป็นส่วนตัว
 ช่องเพศและช่วงอายุที่สะดวกแชร์ห้องอ่านจากความต้องการของเจ้าของโปรไฟล์ ค่าที่ยังไม่ได้ตั้งจะแสดง “ยังไม่ระบุ”
 หากไม่มีวันเกิดหรือคำนวณไม่ได้ ค่าอายุจะเป็น `null` และแสดง “ยังไม่ระบุอายุ”
-คนนอกไม่เห็น connection ของคู่อื่นแม้แนบ userId ใน query Instagram แสดงในโปรไฟล์หาเพื่อนได้ก่อนตอบรับ ส่วน LINE อีเมลและเบอร์โทรเปิดเผยกับเพื่อนที่ตอบรับแล้วเท่านั้น
+คนนอกไม่เห็น connection ของคู่อื่นแม้แนบ userId ใน query Instagram, LINE, อีเมล และเบอร์โทรเปิดเผยกับเพื่อนที่ตอบรับแล้วเท่านั้น
 เมื่อคู่ inactive API จะไม่คืนคู่นั้นใน connections; หลังโหลดใหม่ UI ต้องไม่ใช้ contact ที่ cache ไว้
-ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ, unfriend, ส่งซ้ำหลัง declined/cancelled
+ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ, unfriend, ส่งซ้ำหลัง declined
 หรือการสมัครห้องแบบกลุ่ม (อย่าใช้ POST สวนทางแทนการตอบรับ ต้อง PATCH โดยผู้รับ)
 
 ### ตัวอย่างเรียก API
@@ -94,11 +94,10 @@ merged Favorites migration adds `ROOM_FAVORITE`, so the current database has ten
 business tables. The internal migration ledger is not another business entity.
 
 `USER 1:N FRIEND_CONNECTION` has two roles: sender and recipient. No room is required.
-An unordered user pair has one invitation; self-invitations and duplicate reversed
-invitations are forbidden. Status starts `pending`; only the recipient can move it
+A pair can have multiple withdrawn records and one current pending, accepted, or declined invitation. Self-invitations and duplicate reversed invitations are forbidden. Status starts `pending`; only the recipient can move it
 to `accepted` or `declined`. Migration `006` also permits the sender to withdraw a
 pending invitation as `cancelled`. All three final states remain in history and
-cannot be reversed or re-sent in this version. Several accepted connections are
+cannot be reversed. PostgreSQL migration 008 allows a fresh invitation after withdrawal while preserving the withdrawn row. A pending, accepted, or declined invitation blocks duplicate invitations in either direction. Several accepted connections are
 allowed; acceptance is not exclusive.
 
 ## API
@@ -116,7 +115,7 @@ allowed; acceptance is not exclusive.
   invitation returns `409`; withdrawal never ends an accepted friendship.
 
 Discovery exposes name, age in completed years, gender, university, bio, profile image, lifestyle, and stated roommate preferences (gender, age range, and budget).
-Instagram is included in public friend profiles for authenticated discovery. Exact birth dates, passwords, email, phone and LINE are not exposed before acceptance.
+Instagram, email, phone, and LINE are shared only with accepted friends. Exact birth dates and passwords stay private.
 The remaining private contact fields become available to the two participants only after acceptance.
 There is no fabricated compatibility score or automatic acceptance.
 
@@ -129,8 +128,8 @@ then shows the validated accepted partner as context. Normal room search remains
 unchanged when this query parameter is absent.
 
 Pending outgoing cards and their profile dialogs offer **ถอนคำชวน**. Confirmation
-explains that history is retained and this pair cannot be invited again under the
-existing uniqueness rule. Closing confirmation from a profile returns to that
+explains that history is retained and the sender can start a new invitation from
+that history. Closing confirmation from a profile returns to that
 profile. Success opens invitation history with focus on its selected filter;
 sender/recipient history labels distinguish who withdrew and show the withdrawal
 time. Cancelled invitations do not show contact controls or recipient decisions.
@@ -168,7 +167,7 @@ URL/ชื่อฟิลด์ API หรือ frontend ของเพื่�
 ### ข้อมูลและสิทธิ์
 
 - `GET /api/friends` คืน `{ people: [...] }` พร้อมข้อมูลสาธารณะและงบประมาณ
-  คืน Instagram สำหรับแสดงบนการ์ด แต่ไม่คืน email, phone, LINE, วันเกิด หรือ password hash
+  ช่องทางติดต่อ วันเกิด และ password hash เป็นข้อมูลส่วนตัวในผลการค้นหา
 - `GET /api/friends/connections` คืนเฉพาะคู่ของบัญชีที่ล็อกอิน พร้อม direction
   `incoming`/`outgoing` การระบุ `userId` ใน query ไม่ทำให้ดูคู่ของคนอื่นได้
 - `POST /api/friends/connections` ใช้ body `{ "recipientId": 2 }` โดยต้องเป็น number
@@ -233,7 +232,7 @@ Tests ใหม่อยู่ใน `tests/friend-discovery.test.mjs` เปิ
 
 ก่อน commit ให้ลอง UI บน desktop/mobile:
 
-1. A ค้นชื่อเต็มของ B และดูโปรไฟล์ เห็น Instagram ได้ แต่ต้องไม่เห็น LINE อีเมลและเบอร์โทร
+1. A ค้นชื่อเต็มของ B และดูโปรไฟล์ ช่องทางติดต่อทั้งหมดยังเป็นส่วนตัว
 2. A ส่งคำชวน แล้ว refresh ต้องมีคำชวน outgoing ของ A และ incoming ของ B
 3. B ตอบรับ ทั้ง A/B ต้องเห็นเพื่อนและช่องทางติดต่อ แต่บัญชี C ต้องไม่เห็น LINE อีเมลและเบอร์โทร
 4. ทดลองปฏิเสธกับอีกคู่ ต้องไม่เปิด LINE อีเมลและเบอร์โทร หรือเปลี่ยนสมาชิกห้อง
@@ -248,7 +247,7 @@ Checklist ข้างต้นตรวจผ่าน browser ด้วย 3 �
 เมื่อส่ง/ตอบคำชวนแล้ว API ตอบ 409 หน้าหาเพื่อนจะอ่านรายการความสัมพันธ์ล่าสุด
 เปลี่ยนปุ่มในโปรไฟล์ให้ตรงสถานะ และเอาคนที่มีคำชวนแล้วออกจากรายการคนใหม่
 โดยไม่แจ้งว่าส่ง/ตอบรับสำเร็จหากคำสั่งนั้นล้มเหลว ช่องทางติดต่อยังใช้ข้อมูลที่ API
-อนุญาตหลังตอบรับเท่านั้น ยกเว้น Instagram ที่แสดงในโปรไฟล์หาเพื่อนได้ตั้งแต่เริ่ม คำชวนถูกถอน/ปฏิเสธไม่เปิด LINE อีเมลหรือเบอร์โทร
+อนุญาตหลังตอบรับเท่านั้น คำชวนที่ถูกถอนหรือปฏิเสธจะเก็บช่องทางติดต่อเป็นส่วนตัว
 
 หากโหลดสถานะล่าสุดไม่ได้ ปิดปุ่มส่ง/ตอบคำชวนและแสดงปุ่มอัปเดตในหน้าต่างโปรไฟล์
 เมื่อโหลดใหม่สำเร็จจึงเปิดปุ่มตามสถานะจริงและล้างข้อความผิดพลาดเดิม

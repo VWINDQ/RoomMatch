@@ -124,6 +124,61 @@ test('public room details cannot bypass member-list authorization', async () => 
   }
 });
 
+test('room details disclose only opted-in current residents to signed-in applicants', async () => {
+  const roomId = await room(1, 3);
+  const path = `/rooms/${roomId}`;
+  const consent = (id, value) => api('/profile', id, 'PATCH', { shareResidentProfile: value });
+  const details = async viewer => (await api(path, viewer)).body.room;
+  assert.equal((await api('/profile', 2)).body.user.shareResidentProfile, false);
+  assert.equal((await consent(null, true)).status, 401);
+  for (const invalid of ['true', null, 1]) assert.equal((await consent(2, invalid)).status, 400);
+  await approve(roomId, 2);
+  await request(roomId, 3);
+  const hidden = await details(4);
+  assert.equal(hidden.occupantCount, 2);
+  assert.equal(hidden.availableSlots, 1);
+  assert.deepEqual(hidden.sharedResidentProfiles, []);
+  assert.deepEqual(hidden.members, []);
+  assert.equal('ownerResidentProfile' in hidden, false);
+  assert.equal(JSON.stringify(hidden).includes('Student 2'), false);
+
+  assert.equal((await api('/profile', 2, 'PATCH', { userId: 3, shareResidentProfile: true, lifestyleName: 'Quiet' })).body.user.shareResidentProfile, true);
+  assert.equal((await api('/profile', 3)).body.user.shareResidentProfile, false);
+  assert.equal((await consent(1, true)).status, 200);
+  assert.equal((await consent(3, true)).status, 200);
+  const shown = await details(4);
+  assert.deepEqual(shown.sharedResidentProfiles.map(profile => [profile.userId, profile.isListingOwner]), [[1, true], [2, false]]);
+  for (const profile of shown.sharedResidentProfiles) {
+    assert.deepEqual(Object.keys(profile).sort(), ['bio', 'firstName', 'isListingOwner', 'lastName', 'lifestyle', 'profileImage', 'userId']);
+  }
+  assert.equal(shown.sharedResidentProfiles[1].lifestyle, 'Quiet');
+  assert.equal('sharedResidentProfiles' in await details(null), false);
+  assert.equal((await api(`${path}/members`, null)).status, 401);
+  assert.equal((await api(`${path}/members`, 4)).status, 403);
+
+  await approve(roomId, 5);
+  assert.equal((await details(4)).status, 'full');
+  assert.equal((await details(4)).availableSlots, 0);
+  assert.equal((await consent(2, false)).status, 200);
+  assert.deepEqual((await details(4)).sharedResidentProfiles.map(person => person.userId), [1]);
+  for (const viewer of [1, 2]) {
+    const privileged = await details(viewer);
+    assert.equal('sharedResidentProfiles' in privileged, false);
+    assert.equal(privileged.ownerResidentProfile.userId, 1);
+    assert.deepEqual(privileged.members.map(member => member.profile.userId), [2, 5]);
+  }
+  await consent(2, true);
+  assert.equal((await api(`${path}/members/me`, 2, 'DELETE')).status, 200);
+  assert.equal((await details(4)).occupantCount, 2);
+  assert.deepEqual((await details(4)).sharedResidentProfiles.map(person => person.userId), [1]);
+  assert.equal((await api(path, 1, 'PATCH', { ownerIsResident: false })).status, 200);
+  const nonresidentOwner = await details(4);
+  assert.equal(nonresidentOwner.occupantCount, 1);
+  assert.deepEqual(nonresidentOwner.sharedResidentProfiles, []);
+  assert.equal((await api(`${path}/members/me`, 5, 'DELETE')).status, 200);
+  assert.equal((await details(4)).occupantCount, 0);
+});
+
 test('room details attach resident profiles only to the room owner and approved viewers', async () => {
   const roomId = await room();
   await approve(roomId);
@@ -307,9 +362,11 @@ test('pausing a listing keeps current members and matches available to participa
   }
 });
 
-test('deleting a room removes its matches and member rows instead of leaving broken references', async () => {
+test('deleting a vacated room removes its historical matches and member rows', async () => {
   const roomId = await room();
   await approve(roomId);
+  assert.equal((await api(`/rooms/${roomId}/members/me`, 2, 'DELETE')).status, 200);
+  assert.equal((await api(`/rooms/${roomId}`, 1, 'PATCH', { ownerIsResident: false })).status, 200);
   assert.equal((await api(`/rooms/${roomId}`, 1, 'DELETE')).status, 200);
   assert.equal((await api(`/rooms/${roomId}/members`, 2)).status, 404);
   assert.deepEqual((await api('/matches', 1)).body.matches, []);

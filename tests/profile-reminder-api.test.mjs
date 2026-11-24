@@ -68,8 +68,8 @@ test('profile reminder migration preserves existing account data and acknowledge
   const before = await db.prepare('SELECT * FROM USER ORDER BY user_id').all();
   await runMigrations(db);
   const after = await db.prepare('SELECT * FROM USER ORDER BY user_id').all();
-  assert.deepEqual(after.map(({ profile_reminder_seen_at, ...row }) => row), before);
-  assert.ok(after.every(row => row.profile_reminder_seen_at === null));
+  assert.deepEqual(after.map(({ profile_reminder_seen_at, share_resident_profile, ...row }) => row), before);
+  assert.ok(after.every(row => row.profile_reminder_seen_at === null && row.share_resident_profile === false));
   await db.exec('UPDATE USER SET profile_reminder_seen_at=CURRENT_TIMESTAMP WHERE user_id=1');
   const acknowledged = await db.prepare('SELECT * FROM USER ORDER BY user_id').all();
   await runMigrations(db);

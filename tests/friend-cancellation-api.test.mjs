@@ -38,7 +38,7 @@ async function fixture(t, filename = ':memory:') {
   return { db, api, invite, cancel, close };
 }
 
-const privateFields = ['email', 'phone', 'lineId', 'passwordHash', 'dateOfBirth'];
+const privateFields = ['instagram', 'email', 'phone', 'lineId', 'passwordHash', 'dateOfBirth'];
 const row = async (db, id) => await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id=?').get(id);
 
 test('sender withdraws pending invitation without sharing contacts or changing room and favorite data', async t => {
@@ -103,9 +103,18 @@ test('retrying withdrawal preserves its original timestamp and final state', asy
   for (const status of ['accepted', 'declined']) {
     assert.equal((await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status })).status, 409);
   }
-  for (const [sender, recipient] of [[1, 2], [2, 1]]) {
-    assert.equal((await api('/friends/connections', sender, 'POST', { recipientId: recipient })).status, 409);
-  }
+  const attempts = await Promise.all([
+    api('/friends/connections', 1, 'POST', { recipientId: 2 }),
+    api('/friends/connections', 1, 'POST', { recipientId: 2 }),
+    api('/friends/connections', 2, 'POST', { recipientId: 1 }),
+  ]);
+  assert.deepEqual(attempts.map(result => result.status).sort(), [201, 409, 409]);
+  const replacement = attempts.find(result => result.status === 201).body.connection;
+  assert.notEqual(replacement.connectionId, invitation.connectionId);
+  assert.equal(replacement.respondedAt, null);
+  assert.ok(new Date(replacement.createdAt) >= new Date(first.body.connection.respondedAt));
+  assert.deepEqual(await row(db, invitation.connectionId), original);
+  assert.deepEqual((await api('/friends/connections', 1)).body.connections.map(item => item.status), ['pending', 'cancelled']);
 });
 
 test('accepted or declined invitations cannot be withdrawn or change consent', async t => {

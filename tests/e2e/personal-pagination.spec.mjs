@@ -309,6 +309,7 @@ for (const [path, endpoint, size, actor, selector] of [
     const keepIds=ids.slice(0,size+1);
     if (path === '/favorites') await db.prepare('DELETE FROM ROOM_FAVORITE WHERE user_id=3 AND room_id=ANY(?::bigint[]) AND room_id<>ALL(?::bigint[])').run(ids,keepIds);
     else await db.prepare('DELETE FROM ROOM WHERE room_id=ANY(?::bigint[]) AND room_id<>ALL(?::bigint[])').run(ids,keepIds);
+    if (path === '/my-listings') await db.prepare('UPDATE ROOM SET owner_is_resident=FALSE WHERE room_id=ANY(?::bigint[])').run(keepIds);
     await signIn(page,environment,actor);
     await page.goto(`${base}&page=2`); await ready(page,2,size+1);
     let deletes=0, reads=0;

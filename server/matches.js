@@ -8,9 +8,7 @@ export async function canViewRoomMembers(db, room, userId) {
     WHERE room_id = ? AND user_id = ? AND status = 'approved'`).get(room.room_id, userId));
 }
 
-export async function listRoomMembers(db, roomId, userDto, { includeProfiles = false } = {}) {
-  const rows = await db.prepare(`
-    WITH residents AS (
+const residentsQuery = `WITH residents AS (
     SELECT u.user_id, u.first_name, u.last_name, u.profile_image,
       'owner' AS membership_status, 0 AS role_order,
       room.created_at AS joined_at
@@ -21,7 +19,11 @@ export async function listRoomMembers(db, roomId, userDto, { includeProfiles = f
       rm.joined_at AS joined_at
     FROM ROOM_MEMBER rm JOIN USER u ON u.user_id = rm.user_id
     WHERE rm.room_id = ? AND rm.status = 'approved'
-    )
+    )`;
+
+export async function listRoomMembers(db, roomId, userDto, { includeProfiles = false } = {}) {
+  const rows = await db.prepare(`
+    ${residentsQuery}
     SELECT residents.*${includeProfiles ? `,
       person.date_of_birth, person.gender, person.university, person.bio, lifestyle.lifestyle_name,
       preference.preferred_gender, preference.preferred_age_min, preference.preferred_age_max,
@@ -44,6 +46,23 @@ export async function listRoomMembers(db, roomId, userDto, { includeProfiles = f
       preferredGender: row.preferred_gender, preferredAgeMin: row.preferred_age_min, preferredAgeMax: row.preferred_age_max,
       budgetMin: row.budget_min, budgetMax: row.budget_max,
     } } : {}),
+  }));
+}
+
+export async function listSharedResidentProfiles(db, roomId) {
+  const rows = await db.prepare(`
+    ${residentsQuery}
+    SELECT residents.user_id, residents.first_name, residents.last_name, residents.profile_image,
+      residents.membership_status, person.bio, lifestyle.lifestyle_name
+    FROM residents
+    JOIN USER person ON person.user_id = residents.user_id
+    LEFT JOIN LIFESTYLE lifestyle ON lifestyle.user_id = residents.user_id
+    WHERE person.share_resident_profile AND person.is_active = 1
+    ORDER BY residents.role_order, residents.joined_at, residents.user_id
+  `).all(roomId, roomId);
+  return rows.map(row => ({
+    userId: row.user_id, firstName: row.first_name, lastName: row.last_name, profileImage: row.profile_image,
+    bio: row.bio, lifestyle: row.lifestyle_name, isListingOwner: row.membership_status === 'owner',
   }));
 }
 
