@@ -60,6 +60,7 @@ export function RoomDetailPage() {
   const { id = '' } = useParams(); const navigate = useNavigate(); const { notify, user } = useApp();
   const [room, setRoom] = useState<Room | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [sending, setSending] = useState(false); const [reload, setReload] = useState(0);
   const [requestError, setRequestError] = useState('');
+  const [unavailableRoomId, setUnavailableRoomId] = useState<string | null>(null);
   const [requestNeedsRefresh, setRequestNeedsRefresh] = useState(false);
   const [selectedResidentId, setSelectedResidentId] = useState<string | null>(null);
   const requestFeedback = useRef<HTMLParagraphElement>(null);
@@ -108,6 +109,11 @@ export function RoomDetailPage() {
     } catch (caught) {
       if (currentRoomId.current !== room.roomId) return;
       const message = caught instanceof Error ? caught.message : 'ส่งคำขอไม่สำเร็จ';
+      if (caught instanceof ApiError && caught.status === 404) {
+        setUnavailableRoomId(room.roomId);
+        setRoom(null);
+        return;
+      }
       setRequestError(message);
       if (caught instanceof ApiError && caught.status === 409) {
         setRequestNeedsRefresh(true);
@@ -144,6 +150,7 @@ export function RoomDetailPage() {
   const closeWithdrawal = () => { if (withdrawing) return; setWithdrawOpen(false); if (room?.requestStatus !== 'pending') requestAnimationFrame(() => requestPanel.current?.focus()); };
   useEffect(() => { setWithdrawOpen(false); setWithdrawError(''); setRequestError(''); setRequestNeedsRefresh(false); setSending(false); setSelectedResidentId(null); }, [id]);
   if (loading) return <div className="page"><Skeleton variant="room-detail"/></div>;
+  if (unavailableRoomId === id) return <div className="page"><EmptyState icon={<RefreshCw/>} title="ประกาศนี้ไม่พร้อมใช้งาน" text="ไม่พบประกาศห้องนี้แล้ว" action={<Button onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}>{back.label}</Button>}/></div>;
   if (error || !room) return <div className="page"><EmptyState icon={<RefreshCw/>} title="เปิดประกาศนี้ไม่ได้" text={error || 'ไม่พบประกาศห้องนี้'} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
   const ownerResident = room.ownerResidentProfile;
   const sharedResidents = room.sharedResidentProfiles;
