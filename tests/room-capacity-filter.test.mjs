@@ -31,7 +31,7 @@ after(() => dom.window.close());
 
 const button = label => [...document.querySelectorAll('button')].find(el => el.textContent === label);
 const capacityField = () => [...document.querySelectorAll('label')].find(el => el.textContent.startsWith('จำนวนผู้พักทั้งหมด')).querySelector('input');
-const slotsField = () => [...document.querySelectorAll('label')].find(el => el.textContent.startsWith('ที่ว่างสำหรับผู้พักใหม่')).querySelector('input');
+const slotsField = () => [...document.querySelectorAll('label')].find(el => el.textContent.startsWith('จำนวนที่ว่างที่ต้องการ')).querySelector('input');
 const settle = () => act(async () => new Promise(resolve => setTimeout(resolve, 10)));
 async function waitForRequest(predicate) {
   const deadline = Date.now() + 1000;
