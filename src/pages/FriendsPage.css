@@ -1,3 +1,13 @@
+.friends-page .page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.friends-page .page-header p {
+  max-width: none;
+  text-wrap: wrap;
+}
+.friends-page .page-actions { width: auto; }
+
 .friends-page .invitation-filters { margin: 0 0 20px; padding: 5px; border: 1px solid var(--border-soft); border-radius: 18px; display: flex; flex-wrap: wrap; gap: 5px; width: fit-content; background: var(--surface-muted); }
 .friends-page .invitation-filters button { min-height: 44px; padding: 9px 13px; border: 0; border-radius: 13px; display: flex; align-items: center; justify-content: center; gap: 7px; background: transparent; color: var(--text-secondary); font-size: .8rem; cursor: pointer; }
 .friends-page .invitation-filters button.selected { background: var(--surface); color: var(--primary); font-weight: 700; box-shadow: 2px 3px 6px rgba(57,49,42,.08), inset 0 1px 0 white; }

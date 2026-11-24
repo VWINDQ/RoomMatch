@@ -635,7 +635,7 @@ p,.description,.field-hint,.field-error,input,textarea,select { font-family: 'Fr
 .friend-search-context { background: var(--pastel-yellow); }
 @media (min-width: 1500px) { .friend-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (max-width: 767px) {
-  .friends-page .page-header { position: relative; padding-right: 50px; }.friends-page .page-actions { position: absolute; top: 0; right: 0; margin: 0; width: auto; }.friend-refresh { width: 44px; padding: 10px; }.friend-refresh>span { display: none; }
+  .friends-page .page-header { gap: 8px; }.friend-refresh { width: 44px; padding: 10px; }.friend-refresh>span { display: none; }
   .friend-grid { grid-template-columns: 1fr; gap: 16px; }.friend-card { padding: 20px; }
   .friends-note { padding: 16px; display: grid; grid-template-columns: auto minmax(0,1fr); gap: 12px; }.friends-note>a { grid-column: 2; padding: 0; }
   .friend-tabs { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 6px; }.friend-tabs button { min-width: 0; padding: 9px 7px; font-size: .76rem; gap: 5px; }
