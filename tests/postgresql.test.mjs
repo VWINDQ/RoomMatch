@@ -43,7 +43,7 @@ test('account profile migration preserves legacy records without classifying the
   } finally { await db.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
-test('friend reinvitation migration retains cancelled invitation IDs and timestamps', async () => {
+test('friend reinvitation migrations retain cancelled and declined invitation history', async () => {
   const db = await openDatabase({ filename: ':memory:', seed: false, migrate: false });
   const directory = mkdtempSync(join(tmpdir(), 'roommatch-friend-reinvitation-'));
   try {
@@ -51,15 +51,22 @@ test('friend reinvitation migration retains cancelled invitation IDs and timesta
     writeFileSync(join(directory, initial), readFileSync(new URL(`../database/postgresql/migrations/${initial}`, import.meta.url)));
     await runMigrations(db, directory);
     await db.exec(`INSERT INTO "USER"(user_id, first_name, last_name, email, password_hash)
-      VALUES (1, 'Original', 'Sender', 'sender@example.test', 'test-only'), (2, 'Original', 'Recipient', 'recipient@example.test', 'test-only')`);
+      VALUES (1, 'Original', 'Sender', 'sender@example.test', 'test-only'), (2, 'Original', 'Recipient', 'recipient@example.test', 'test-only'),
+        (3, 'Other', 'Sender', 'sender-3@example.test', 'test-only'), (4, 'Other', 'Recipient', 'recipient-4@example.test', 'test-only')`);
     const withdrawn = await db.prepare(`INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id, status, created_at, responded_at)
       VALUES (1, 2, 'cancelled', '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z') RETURNING *`).get();
+    const declined = await db.prepare(`INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id, status, created_at, responded_at)
+      VALUES (3, 4, 'declined', '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z') RETURNING *`).get();
     const resend = db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?) RETURNING connection_id');
     await assert.rejects(resend.get(1, 2), uniqueError);
+    await assert.rejects(resend.get(3, 4), uniqueError);
     await runMigrations(db);
     assert.deepEqual(await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id=?').get(withdrawn.connection_id), withdrawn);
     assert.notEqual((await resend.get(1, 2)).connection_id, withdrawn.connection_id);
     await assert.rejects(resend.get(2, 1), uniqueError);
+    assert.deepEqual(await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id=?').get(declined.connection_id), declined);
+    assert.notEqual((await resend.get(3, 4)).connection_id, declined.connection_id);
+    await assert.rejects(resend.get(4, 3), uniqueError);
   } finally { await db.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 

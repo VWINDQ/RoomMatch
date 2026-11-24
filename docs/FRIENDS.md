@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | ช่องทางติดต่อเป็นส่วนตัว |
 | `accepted` | ค้นหาห้องด้วยกัน; ยังไม่มี unfriend | ทั้งสองฝ่ายเห็น LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้ |
-| `declined` | ดูประวัติ ไม่ส่งซ้ำ/เปลี่ยนผล | ช่องทางติดต่อเป็นส่วนตัว |
+| `declined` | ผู้ส่งเดิมส่งคำชวนใหม่จากประวัติได้ | ช่องทางติดต่อเป็นส่วนตัว |
 | `cancelled` | ผู้ส่งถอนซ้ำโดยได้ผลเดิม หรือส่งคำชวนใหม่จากประวัติ | ช่องทางติดต่อเป็นส่วนตัว |
 
 การ์ดและหน้าต่างโปรไฟล์แสดงอายุเต็มปีและเพศของเจ้าของโปรไฟล์ทั้งก่อนและหลังส่งคำชวน โดยเก็บวันเกิดเป็นส่วนตัว
@@ -27,7 +27,7 @@
 หากไม่มีวันเกิดหรือคำนวณไม่ได้ ค่าอายุจะเป็น `null` และแสดง “ยังไม่ระบุอายุ”
 คนนอกไม่เห็น connection ของคู่อื่นแม้แนบ userId ใน query Instagram, LINE, อีเมล และเบอร์โทรเปิดเผยกับเพื่อนที่ตอบรับแล้วเท่านั้น
 เมื่อคู่ inactive API จะไม่คืนคู่นั้นใน connections; หลังโหลดใหม่ UI ต้องไม่ใช้ contact ที่ cache ไว้
-ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ, unfriend, ส่งซ้ำหลัง declined
+ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ, unfriend
 หรือการสมัครห้องแบบกลุ่ม (อย่าใช้ POST สวนทางแทนการตอบรับ ต้อง PATCH โดยผู้รับ)
 
 ### ตัวอย่างเรียก API
@@ -94,10 +94,10 @@ merged Favorites migration adds `ROOM_FAVORITE`, so the current database has ten
 business tables. The internal migration ledger is not another business entity.
 
 `USER 1:N FRIEND_CONNECTION` has two roles: sender and recipient. No room is required.
-A pair can have multiple withdrawn records and one current pending, accepted, or declined invitation. Self-invitations and duplicate reversed invitations are forbidden. Status starts `pending`; only the recipient can move it
+A pair can have multiple cancelled or declined records and at most one pending or accepted invitation. Self-invitations and duplicate reversed invitations are forbidden. Status starts `pending`; only the recipient can move it
 to `accepted` or `declined`. Migration `006` also permits the sender to withdraw a
 pending invitation as `cancelled`. All three final states remain in history and
-cannot be reversed. PostgreSQL migration 008 allows a fresh invitation after withdrawal while preserving the withdrawn row. A pending, accepted, or declined invitation blocks duplicate invitations in either direction. Several accepted connections are
+cannot be reversed. PostgreSQL migration 008 allows a fresh invitation after withdrawal while preserving the withdrawn row. Migration 010 also allows the original sender to resend after a decline. A pending or accepted invitation blocks duplicate invitations in either direction. Several accepted connections are
 allowed; acceptance is not exclusive.
 
 ## API
