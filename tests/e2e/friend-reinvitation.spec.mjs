@@ -12,6 +12,8 @@ test('only the original sender can resend a declined invitation from history', a
   await page.goto('/friends?view=invitations&invitations=history');
   await expect(page.getByText('คำชวนไม่ได้รับการตอบรับ', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'ส่งคำชวนใหม่', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'ยืนยันส่งคำชวนเป็นเพื่อน' }).locator('.contact-disclosure')).toBeVisible();
+  await page.getByRole('button', { name: 'ยืนยันส่งคำชวน', exact: true }).click();
   await expect(page.getByText('ส่งคำชวนใหม่แล้ว ดูสถานะได้ที่รอเพื่อนตอบ')).toBeVisible();
   await expect(page.getByText('คำชวนไม่ได้รับการตอบรับ', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ส่งคำชวนใหม่', exact: true })).toHaveCount(0);
@@ -26,6 +28,7 @@ test('a withdrawn friendship invitation can be resent from history', async ({ pa
   await page.getByRole('dialog').getByRole('button', { name: /ยืนยันถอน/ }).click();
   await expect(page.getByText('คุณถอนคำชวนแล้ว', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'ส่งคำชวนใหม่' }).click();
+  await page.getByRole('button', { name: 'ยืนยันส่งคำชวน', exact: true }).click();
   await expect(page.getByText('ส่งคำชวนใหม่แล้ว ดูสถานะได้ที่รอเพื่อนตอบ')).toBeVisible();
   await expect(page.getByText('คุณถอนคำชวนแล้ว', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'ส่งคำชวนใหม่' })).toHaveCount(0);

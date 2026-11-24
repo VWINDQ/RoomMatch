@@ -6,6 +6,8 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { RoomGallery } from '../components/RoomGallery';
 import { RoommateProfileModal } from '../components/RoommateProfileModal';
+import { matchContactNames, ownContactDisclosure } from '../components/ContactDisclosure';
+import { ConfirmSendButton } from '../components/ConfirmSendButton';
 import { ProfilePhoto } from '../components/ProfilePhoto';
 import { Price } from '../components/RoomCard';
 import { Button, EmptyState, Modal, StatusBadge } from '../components/UI';
@@ -50,10 +52,7 @@ function ResidentFriendInvitation({ recipientId }: { recipientId: string }) {
   return <div className="resident-invitation">
     {error && <p role="alert">{error}</p>}
     {status && <p role="status">{status}</p>}
-    {connection === null && <>
-      <p className="field-hint">หากอีกฝ่ายตอบรับ คุณทั้งคู่จะเห็นช่องทางติดต่อที่แต่ละคนแชร์ไว้</p>
-      <Button loading={sending} onClick={invite}>ส่งคำชวนเป็นเพื่อน</Button>
-    </>}
+    {connection === null && <ConfirmSendButton loading={sending} onConfirm={invite}>ส่งคำชวนเป็นเพื่อน</ConfirmSendButton>}
   </div>;
 }
 
@@ -153,6 +152,8 @@ export function RoomDetailPage() {
     : ownerResident?.userId === selectedResidentId ? ownerResident
       : room.members?.find(member => member.userId === selectedResidentId)?.profile
         ?? sharedResidents?.find(member => member.userId === selectedResidentId);
+  const requestDisabled = requestNeedsRefresh || room.requestStatus === 'pending' || room.isMember || room.status !== 'available' || room.availableSlots < 1;
+  const ownChannels = matchContactNames(user);
   const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอเจ้าของห้องตอบกลับ' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
   return <div className="page detail-page"><button className="back-link" onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}><ArrowLeft size={18}/>{back.label}</button>
     <FriendSearchContext/>
@@ -176,7 +177,10 @@ export function RoomDetailPage() {
       </section>
       {room.googleMapsUrl && <section className="map-preview"><div><MapPin/><span><strong>ตำแหน่งห้อง</strong><small>เปิด Google Maps ในแท็บใหม่</small></span></div><a className="button button-secondary" href={room.googleMapsUrl} target="_blank" rel="noreferrer">ดูบนแผนที่ <ExternalLink size={16}/></a></section>}
     </div><aside ref={requestPanel} tabIndex={-1} className="detail-sidebar" aria-label="คำขอเข้าพักและเจ้าของห้อง"><Price amount={room.price} basis={room.priceBasis}/><StatusBadge status={room.status}/><Button variant="secondary" className={`w-full ${favoriteFeedback ? 'has-favorite-feedback' : ''}`} onAnimationEnd={() => setFavoriteFeedback(false)} aria-label={room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} aria-pressed={Boolean(room.isFavorite)} loading={savingFavorite} onClick={toggleFavorite}><Heart size={17} fill={room.isFavorite ? 'currentColor' : 'none'}/>{room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}</Button><hr/><h2>ผู้ลงประกาศ</h2><div className="owner-mini"><span><ProfilePhoto src={room.owner?.profileImage || ''} fallback={room.owner?.firstName?.charAt(0) || 'R'}/></span><div><strong>{room.owner ? `${room.owner.firstName} ${room.owner.lastName}` : 'สมาชิก RoomMatch'}</strong><small>{room.ownerIsResident ? 'พักอยู่ด้วย' : 'ไม่ได้พักในห้อง'}{room.owner?.university && ` · ${room.owner.university}`}</small></div></div>
-      {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`, { state: { from: back.to, focusReturnId: back.focusTarget } })}>แก้ไขประกาศของฉัน</Button> : <Button className="w-full" loading={sending} disabled={requestNeedsRefresh || room.requestStatus === 'pending' || room.isMember || room.status !== 'available' || room.availableSlots < 1} onClick={requestRoom}>{requestLabel}</Button>}
+      {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`, { state: { from: back.to, focusReturnId: back.focusTarget } })}>แก้ไขประกาศของฉัน</Button> : <ConfirmSendButton className="w-full" loading={sending} disabled={requestDisabled} onConfirm={requestRoom}
+        roomMessage={`เมื่อคำขอได้รับอนุมัติ ${ownContactDisclosure('ผู้ลงประกาศ', ownChannels)} และคุณจะเห็นช่องทางติดต่อที่ผู้ลงประกาศระบุไว้เพื่อประสานเรื่องเข้าพัก`}>
+        {requestLabel}
+      </ConfirmSendButton>}
       {!room.isOwner && room.requestStatus === 'pending' && <Button variant="quiet" className="w-full" onClick={() => { setRequestError(''); setWithdrawError(''); setWithdrawOpen(true); }}>ถอนคำขอ</Button>}
       {room.requestStatus === 'cancelled' && <p ref={cancelledNote} tabIndex={-1} className="inline-note" role="status">คุณถอนคำขอแล้ว ประวัติยังอยู่ และส่งคำขอใหม่ได้เมื่อห้องเปิดรับและมีที่ว่าง</p>}
       {room.isMember && !room.isOwner && <Button variant="quiet" className="w-full" onClick={() => { setLeaveError(''); setLeaveOpen(true); }}>ออกจากห้องนี้</Button>}

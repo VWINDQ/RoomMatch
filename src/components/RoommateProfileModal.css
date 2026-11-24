@@ -16,7 +16,7 @@
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   justify-items: center;
   text-align: center;
 }

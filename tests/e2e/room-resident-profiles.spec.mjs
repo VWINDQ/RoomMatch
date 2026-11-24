@@ -52,24 +52,17 @@ test('resident profiles keep each invitation state centered and details scrollab
   const footer = dialog.locator('.resident-invitation');
   const body = dialog.locator('.modal-body');
   const sendInvite = footer.getByRole('button', { name: 'ส่งคำชวนเป็นเพื่อน' });
-  async function checkFooter(message, hasButton = false) {
+  async function checkFooter(message) {
     const text = footer.getByText(message, { exact: true });
     await expect(text).toBeVisible();
     await expect(text).toHaveCSS('text-align', 'center');
-    await expect(sendInvite).toHaveCount(hasButton ? 1 : 0);
+    await expect(sendInvite).toHaveCount(0);
     await expect(footer.locator('..')).toHaveCSS('border-top-width', '1px');
     const area = await footer.boundingBox();
     const messageBox = await text.boundingBox();
     const center = ({ x, width }) => x + width / 2;
     expect(center(messageBox)).toBeCloseTo(center(area), 0);
-    if (hasButton) {
-      const inviteBox = await sendInvite.boundingBox();
-      expect(center(inviteBox)).toBeCloseTo(center(area), 0);
-      expect(inviteBox.y - (messageBox.y + messageBox.height)).toBeGreaterThanOrEqual(8);
-      if (page.viewportSize().width <= 480) expect(inviteBox.width).toBeCloseTo(area.width, 0);
-    } else {
-      expect(area.height).toBeCloseTo(messageBox.height, 0);
-    }
+    expect(area.height).toBeCloseTo(messageBox.height, 0);
     await body.evaluate(element => { element.scrollTop = element.scrollHeight; });
     const bodyBox = await body.boundingBox();
     const lastLine = await detail('งบค่าห้องที่ตั้งไว้').boundingBox();
@@ -139,8 +132,9 @@ test('resident profiles keep each invitation state centered and details scrollab
     if (index === 1) await checkFooter('เป็นเพื่อนกันแล้ว');
     if (index === 2) await checkFooter('มีคำชวนจากคนนี้ที่รอคุณตอบ');
     if (index === 3) {
-      await checkFooter('หากอีกฝ่ายตอบรับ คุณทั้งคู่จะเห็นช่องทางติดต่อที่แต่ละคนแชร์ไว้', true);
       await sendInvite.click();
+      await expect(page.getByRole('dialog', { name: 'ยืนยันส่งคำชวนเป็นเพื่อน' }).locator('.contact-disclosure')).toBeVisible();
+      await page.getByRole('button', { name: 'ยืนยันส่งคำชวน', exact: true }).click();
       await checkFooter('ส่งคำชวนแล้ว · รอตอบรับ');
       const connection = await environment.db.prepare('SELECT connection_id, status FROM FRIEND_CONNECTION WHERE sender_id=1 AND recipient_id=4').get();
       expect(connection?.status).toBe('pending');
@@ -181,6 +175,7 @@ test('resident profiles keep each invitation state centered and details scrollab
   await close.click();
   await button(3).click();
   await dialog.getByRole('button', { name: 'ส่งคำชวนเป็นเพื่อน' }).click();
+  await page.getByRole('button', { name: 'ยืนยันส่งคำชวน', exact: true }).click();
   await expect(dialog.getByText('ส่งคำชวนแล้ว · รอตอบรับ', { exact: true })).toBeVisible();
   await close.click();
   await signIn(page, environment, 'empty');

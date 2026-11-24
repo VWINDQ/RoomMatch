@@ -36,12 +36,14 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function Modal({ title, children, onClose, actions, className = '' }: { title: string; children: ReactNode; onClose: () => void; actions?: ReactNode; className?: string }) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
     dialogRef.current?.querySelector<HTMLButtonElement>('.modal-card button')?.focus();
     const handleKey = (event: KeyboardEvent) => {
+      if (Array.from(document.querySelectorAll('.modal-layer')).at(-1) !== dialogRef.current) return;
       if (event.key === 'Escape') { event.preventDefault(); closeRef.current(); }
       if (event.key !== 'Tab') return;
       const controls = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('.modal-card button:not(:disabled), .modal-card a[href], .modal-card input:not(:disabled)') || []);
@@ -52,10 +54,10 @@ export function Modal({ title, children, onClose, actions, className = '' }: { t
     document.addEventListener('keydown', handleKey);
     return () => { document.removeEventListener('keydown', handleKey); previousFocus?.focus(); };
   }, []);
-  return <div ref={dialogRef} className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  return <div ref={dialogRef} className="modal-layer" role="dialog" aria-modal="true" aria-labelledby={titleId}>
     <button className="modal-scrim" onClick={onClose} aria-label="ปิดหน้าต่าง" />
     <section className={className ? `modal-card ${className}` : 'modal-card'}>
-      <header><h2 id="modal-title">{title}</h2><button className="icon-button" onClick={onClose} aria-label="ปิด"><X size={20}/></button></header>
+      <header><h2 id={titleId}>{title}</h2><button className="icon-button" onClick={onClose} aria-label="ปิด"><X size={20}/></button></header>
       <div className="modal-body">{children}</div>{actions && <footer>{actions}</footer>}
     </section>
   </div>;
