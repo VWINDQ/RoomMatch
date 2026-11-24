@@ -187,6 +187,10 @@ the stale development API incident, exact boundary matrix and runtime safeguards
 
 Room write payload fields include `title`, `description`, `googleMapsUrl`, `price`, `capacity`, `ownerIsResident`, `status`, and `images`. `title` is encoded into the first description line per the presentation convention.
 
+The edit form sends `status` only when the owner changes the publication setting.
+When an edit omits `status`, the API reads the latest setting under the room lock.
+Open listings still derive availability from current occupancy.
+
 Listing validation is shared by the form and room create/update APIs in
 `shared/listingValidation.js`. Price is a positive safe integer in whole baht; capacity is
 1–100 residents and cannot be reduced below current occupancy. The boolean
