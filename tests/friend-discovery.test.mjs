@@ -254,7 +254,7 @@ test('acceptance reveals contacts only to both participants and never changes ro
   assert.deepEqual(await originalTables(), before);
 });
 
-test('decline stays private and only the original sender can create a new invitation', async () => {
+test('decline stays private and permits a new invitation in either direction', async () => {
   const invitation = await invite();
   const result = await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'declined' });
   assert.equal(result.status, 200);
@@ -262,12 +262,13 @@ test('decline stays private and only the original sender can create a new invita
   assert.deepEqual(Object.keys(result.body.connection.person).sort(), profileKeys);
   for (const userId of [1, 2]) {
     assert.deepEqual(Object.keys((await api('/friends/connections', userId)).body.connections[0].person).sort(), profileKeys);
+    const otherId = userId === 1 ? 2 : 1;
+    const profile = (await api('/friends', userId)).body.people.find(person => person.userId === otherId);
+    assert.deepEqual(Object.keys(profile).sort(), profileKeys);
   }
   for (const status of ['accepted', 'declined']) {
     assert.equal((await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status })).status, 409);
   }
-  assert.equal((await api('/friends/connections', 2, 'POST', { recipientId: 1 })).status, 409);
-  assert.equal((await api('/friends', 1)).body.people.some(person => person.userId === 2), false);
   const attempts = await Promise.all([
     api('/friends/connections', 1, 'POST', { recipientId: 2 }),
     api('/friends/connections', 1, 'POST', { recipientId: 2 }),
@@ -275,11 +276,12 @@ test('decline stays private and only the original sender can create a new invita
   ]);
   assert.deepEqual(attempts.map(attempt => attempt.status).sort(), [201, 409, 409]);
   const retry = attempts.find(attempt => attempt.status === 201).body.connection;
+  const recipientId = retry.person.userId;
   assert.notEqual(retry.connectionId, invitation.connectionId);
   assert.deepEqual((await api('/friends/connections', 1)).body.connections.map(item => [item.connectionId, item.status]),
     [[retry.connectionId, 'pending'], [invitation.connectionId, 'declined']]);
   await assert.rejects(db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (2, 1)').run(), { code: '23505' });
-  assert.equal((await api(`/friends/connections/${retry.connectionId}`, 2, 'PATCH', { status: 'accepted' })).status, 200);
+  assert.equal((await api(`/friends/connections/${retry.connectionId}`, recipientId, 'PATCH', { status: 'accepted' })).status, 200);
   for (const [sender, recipientId] of [[1, 2], [2, 1]]) {
     assert.equal((await api('/friends/connections', sender, 'POST', { recipientId })).status, 409);
   }

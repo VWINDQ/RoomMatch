@@ -84,7 +84,8 @@ export function FriendsPage() {
   const pendingFilterFocus = useRef<InvitationView | null>(null);
   const profileDialog = useRef<HTMLDivElement>(null);
   const tabsRef = useRef<HTMLElement>(null);
-  const selectedConnection = selected ? connections.find(connection => connection.person.userId === selected.userId) : undefined;
+  const selectedConnection = selected ? connections.find(connection => connection.person.userId === selected.userId
+    && (view !== 'discover' || connection.status !== 'declined')) : undefined;
   const selectedPerson = selectedConnection?.person || selected;
   const openProfile = (person: FriendProfile) => { setActionError(''); setSelected(person); };
   const closeProfile = () => { if (busy) return; setSelected(null); requestAnimationFrame(() => { if (document.activeElement === document.body) tabsRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus(); }); };
@@ -162,15 +163,16 @@ export function FriendsPage() {
       setPeople(current => current.filter(person => person.userId !== result.person.userId));
       notify(message);
       if (result.status === 'accepted') setView('friends');
+      if (result.status === 'declined') setReload(current => current + 1);
     } catch (caught) {
       const reason = caught instanceof Error ? caught.message : 'ดำเนินการไม่สำเร็จ';
       setActionError(reason);
       if (caught instanceof ApiError && caught.status === 409) {
         setActionNeedsRefresh(true);
         try {
-          const latest = await api.friendConnections();
+          const [profiles, latest] = await Promise.all([api.friends(query.trim()), api.friendConnections()]);
           setConnections(latest);
-          setPeople(current => current.filter(person => !latest.some(connection => connection.person.userId === person.userId)));
+          setPeople(profiles);
           setActionNeedsRefresh(false);
         } catch { setActionError(`${reason} ยังตรวจสถานะล่าสุดไม่ได้ กรุณากดอัปเดตคำชวนก่อนลองอีกครั้ง`); }
       }
@@ -182,14 +184,13 @@ export function FriendsPage() {
   const history = connections.filter(item => item.status !== 'pending');
   const blockedRecipients = new Set(connections.filter(connection =>
     connection.status === 'accepted' || connection.status === 'pending'
-    || (connection.status === 'declined' && connection.direction === 'incoming')
   ).map(connection => connection.person.userId));
-  const resendable = new Map<string, FriendConnection>();
+  const latestHistory = new Map<string, FriendConnection>();
   for (const connection of history) {
     const recipient = connection.person.userId;
-    if (connection.direction !== 'outgoing' || blockedRecipients.has(recipient)) continue;
-    const previous = resendable.get(recipient);
-    if (!previous || Number(connection.connectionId) > Number(previous.connectionId)) resendable.set(recipient, connection);
+    if (blockedRecipients.has(recipient)) continue;
+    const previous = latestHistory.get(recipient);
+    if (!previous || Number(connection.connectionId) > Number(previous.connectionId)) latestHistory.set(recipient, connection);
   }
   const resend = (connection: FriendConnection) => act(
     `invite-${connection.person.userId}`,
@@ -228,7 +229,7 @@ export function FriendsPage() {
         {sentPending.map(connection => <PersonCard key={`sent-${connection.connectionId}`} person={connection.person} onView={() => openProfile(connection.person)} badge={<span className="status pending"><Check size={15}/>ส่งคำชวนแล้ว · รอตอบรับ</span>} actions={<Button variant="secondary" className="w-full" onClick={() => openInvitations('outgoing')}>ดูคำชวนที่ส่ง</Button>}/>)}
         {people.map(person => <PersonCard key={person.userId} person={person} onView={() => openProfile(person)} actions={<ConfirmSendButton className="w-full" loading={busy === `invite-${person.userId}`} disabled={Boolean(busy) || actionNeedsRefresh} onConfirm={() => act(`invite-${person.userId}`, () => api.inviteFriend(person.userId), 'ส่งคำชวนแล้ว ดูสถานะได้ที่แท็บคำชวน')}><UserRoundPlus size={18}/>ส่งคำชวนเป็นเพื่อน</ConfirmSendButton>}/>)}</div></>
         : <EmptyState icon={<Search/>} title={query ? 'ไม่พบเพื่อนที่ตรงกับคำค้น' : 'ยังไม่มีคนใหม่ให้ทำความรู้จัก'} text={query ? 'ลองค้นหาชื่อ มหาวิทยาลัย หรือไลฟ์สไตล์อื่น' : 'ดูคำชวนที่ส่งไว้ หรือกลับมาดูเมื่อมีสมาชิกใหม่'} action={<Button variant="secondary" onClick={() => query ? setQuery('') : openInvitations()}>{query ? 'ล้างคำค้น' : 'ดูคำชวน'}</Button>}/>
-      : view === 'invitations' ? activeInvitation.items.length ? <div className="friend-grid">{activeInvitation.items.map(connection => <PersonCard key={connection.connectionId} person={connection.person} onView={() => openProfile(connection.person)} badge={<><span className={`status ${connection.status === 'accepted' ? 'available' : connection.status === 'pending' ? 'pending' : 'unavailable'}`}>{invitationLabel(connection)}</span><small className="invitation-date">{connection.status === 'cancelled' ? 'ถอนเมื่อ ' : connection.respondedAt ? 'ตอบเมื่อ ' : 'ส่งเมื่อ '}{new Date(connection.respondedAt || connection.createdAt).toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'numeric'})}</small></>} actions={connection.status === 'pending' && connection.direction === 'incoming' ? <><Button loading={busy === connection.connectionId} disabled={Boolean(busy) || actionNeedsRefresh} onClick={() => act(connection.connectionId, () => api.decideFriend(connection.connectionId, 'accepted'), 'ตอบรับแล้ว เริ่มหาห้องด้วยกันได้เลย')}><Check size={17}/>ตอบรับคำชวน</Button><Button variant="quiet" disabled={Boolean(busy) || actionNeedsRefresh} onClick={() => act(connection.connectionId, () => api.decideFriend(connection.connectionId, 'declined'), 'ปฏิเสธคำชวนแล้ว')}>ปฏิเสธ</Button></> : connection.status === 'pending' ? <Button variant="quiet" disabled={Boolean(busy)} onClick={() => openWithdrawal(connection)}><X size={16}/>ถอนคำชวน</Button> : connection.status === 'accepted' ? <Button variant="secondary" className="w-full" onClick={() => setView('friends')}>ดูเพื่อนของฉัน</Button> : connection.direction === 'outgoing' && resendable.get(connection.person.userId)?.connectionId === connection.connectionId ? <ConfirmSendButton variant="secondary" loading={busy === `invite-${connection.person.userId}`} disabled={Boolean(busy) || actionNeedsRefresh} onConfirm={() => resend(connection)}>ส่งคำชวนใหม่</ConfirmSendButton> : <p className="friend-waiting">เก็บไว้ในประวัติคำชวน</p>}/>)}</div>
+      : view === 'invitations' ? activeInvitation.items.length ? <div className="friend-grid">{activeInvitation.items.map(connection => <PersonCard key={connection.connectionId} person={connection.person} onView={() => openProfile(connection.person)} badge={<><span className={`status ${connection.status === 'accepted' ? 'available' : connection.status === 'pending' ? 'pending' : 'unavailable'}`}>{invitationLabel(connection)}</span><small className="invitation-date">{connection.status === 'cancelled' ? 'ถอนเมื่อ ' : connection.respondedAt ? 'ตอบเมื่อ ' : 'ส่งเมื่อ '}{new Date(connection.respondedAt || connection.createdAt).toLocaleDateString('th-TH', {day:'numeric',month:'short',year:'numeric'})}</small></>} actions={connection.status === 'pending' && connection.direction === 'incoming' ? <><Button loading={busy === connection.connectionId} disabled={Boolean(busy) || actionNeedsRefresh} onClick={() => act(connection.connectionId, () => api.decideFriend(connection.connectionId, 'accepted'), 'ตอบรับแล้ว เริ่มหาห้องด้วยกันได้เลย')}><Check size={17}/>ตอบรับคำชวน</Button><Button variant="quiet" disabled={Boolean(busy) || actionNeedsRefresh} onClick={() => act(connection.connectionId, () => api.decideFriend(connection.connectionId, 'declined'), 'ปฏิเสธคำชวนแล้ว')}>ปฏิเสธ</Button></> : connection.status === 'pending' ? <Button variant="quiet" disabled={Boolean(busy)} onClick={() => openWithdrawal(connection)}><X size={16}/>ถอนคำชวน</Button> : connection.status === 'accepted' ? <Button variant="secondary" className="w-full" onClick={() => setView('friends')}>ดูเพื่อนของฉัน</Button> : connection.status === 'cancelled' && connection.direction === 'outgoing' && latestHistory.get(connection.person.userId)?.connectionId === connection.connectionId ? <ConfirmSendButton variant="secondary" loading={busy === `invite-${connection.person.userId}`} disabled={Boolean(busy) || actionNeedsRefresh} onConfirm={() => resend(connection)}>ส่งคำชวนใหม่</ConfirmSendButton> : <p className="friend-waiting">เก็บไว้ในประวัติคำชวน</p>}/>)}</div>
         : <EmptyState icon={<Send/>} title={activeInvitation.empty} text={activeInvitation.emptyText} action={invitationView === 'incoming' && outgoing.length > 0 ? <Button onClick={() => openInvitations('outgoing')}>ดูคำชวนที่ส่ง</Button> : <Button onClick={() => setView('discover')}>ทำความรู้จักเพื่อน</Button>}/>
       : accepted.length ? <div className="friend-grid">{accepted.map(connection => <PersonCard key={connection.connectionId} person={connection.person} accepted onView={() => openProfile(connection.person)} badge={<span className="status available"><HeartHandshake size={15}/>ตอบรับกันแล้ว</span>} actions={<Link className="button button-secondary w-full" to={`/rooms?withFriend=${connection.person.userId}`}>ค้นหาห้องด้วยกัน</Link>}/>)}</div>
         : <EmptyState icon={<HeartHandshake/>} title="ยังไม่มีเพื่อนที่ตอบรับ" text="เมื่ออีกฝ่ายตอบรับคำชวน คุณจะเห็นช่องทางติดต่อและเริ่มหาห้องด้วยกันได้ที่นี่" action={<Button onClick={() => setView('discover')}>เริ่มหาเพื่อน</Button>}/>}

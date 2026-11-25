@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | ช่องทางติดต่อเป็นส่วนตัว |
 | `accepted` | ค้นหาห้องด้วยกัน; ยังไม่มี unfriend | ทั้งสองฝ่ายเห็น LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้ |
-| `declined` | ผู้ส่งเดิมส่งคำชวนใหม่จากประวัติได้ | ช่องทางติดต่อเป็นส่วนตัว |
+| `declined` | ทั้งสองฝ่ายส่งคำชวนใหม่จากแท็บทำความรู้จักได้ และดูรายการเดิมในประวัติ | ช่องทางติดต่อเป็นส่วนตัว |
 | `cancelled` | ผู้ส่งถอนซ้ำโดยได้ผลเดิม หรือส่งคำชวนใหม่จากประวัติ | ช่องทางติดต่อเป็นส่วนตัว |
 
 การ์ดและหน้าต่างโปรไฟล์แสดงอายุเต็มปีและเพศของเจ้าของโปรไฟล์ทั้งก่อนและหลังส่งคำชวน โดยเก็บวันเกิดเป็นส่วนตัว
@@ -97,13 +97,13 @@ business tables. The internal migration ledger is not another business entity.
 A pair can have multiple cancelled or declined records and at most one pending or accepted invitation. Self-invitations and duplicate reversed invitations are forbidden. Status starts `pending`; only the recipient can move it
 to `accepted` or `declined`. Migration `006` also permits the sender to withdraw a
 pending invitation as `cancelled`. All three final states remain in history and
-cannot be reversed. PostgreSQL migration 008 allows a fresh invitation after withdrawal while preserving the withdrawn row. Migration 010 also allows the original sender to resend after a decline. A pending or accepted invitation blocks duplicate invitations in either direction. Several accepted connections are
+cannot be reversed. PostgreSQL migration 008 allows a fresh invitation after withdrawal while preserving the withdrawn row. Migration 010 excludes declined rows from the unique pair index, so either person can create a new invitation after a decline. A pending or accepted invitation blocks duplicate invitations in either direction. Several accepted connections are
 allowed; acceptance is not exclusive.
 
 ## API
 
 - `GET /api/friends?q=...`: authenticated discovery by name, university, bio, or
-  lifestyle. Excludes self, inactive users, and users already connected by an invitation.
+  lifestyle. Excludes self, inactive users, and users whose latest invitation with the viewer is pending, accepted, or cancelled.
   Full first-and-last-name searches are supported, including Thai names.
 - `GET /api/friends/connections`: only the viewer's connections, with incoming/outgoing direction.
 - `POST /api/friends/connections` with numeric `recipientId`: sends a pending invitation.
