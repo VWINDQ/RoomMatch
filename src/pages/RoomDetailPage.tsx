@@ -23,7 +23,8 @@ function ResidentFriendInvitation({ recipientId }: { recipientId: string }) {
   useEffect(() => {
     let active = true;
     api.friendConnections().then(connections => {
-      if (active) setConnection(connections.find(item => item.person.userId === recipientId && item.status !== 'cancelled') ?? null);
+      const latest = connections.find(item => item.person.userId === recipientId && item.status !== 'cancelled');
+      if (active) setConnection(latest?.status === 'unfriended' ? null : latest ?? null);
     }).catch(caught => {
       if (active && !(caught instanceof SessionChangedError)) setError(caught instanceof Error ? caught.message : 'ตรวจสอบคำชวนไม่สำเร็จ');
     });

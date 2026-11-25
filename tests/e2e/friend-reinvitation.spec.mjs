@@ -75,6 +75,7 @@ for (const sender of ['seeker', 'owner']) {
     ]);
     await receivingTab.getByRole('button', { name: /^คำชวน/ }).click();
     await button(cards[recipient], 'ตอบรับคำชวน').click();
+    await expect.poll(async () => (await read(recipient))[0].status).toBe('accepted');
 
     for (const [actor, tab] of Object.entries(parties)) {
       await tab.goto('/friends?view=friends');

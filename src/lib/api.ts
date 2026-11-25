@@ -298,6 +298,7 @@ export const api = {
   async inviteFriend(recipientId: string) { const result = await request<JsonObject>('/friends/connections', { method: 'POST', body: JSON.stringify({ recipientId: Number(recipientId) }) }); return normalizeConnection(result.connection); },
   async decideFriend(connectionId: string, status: 'accepted' | 'declined') { const result = await request<JsonObject>(`/friends/connections/${connectionId}`, { method: 'PATCH', body: JSON.stringify({ status }) }); return normalizeConnection(result.connection); },
   async cancelFriendInvitation(connectionId: string) { const result = await request<JsonObject>(`/friends/connections/${encodeURIComponent(connectionId)}/cancel`, { method: 'POST' }); return normalizeConnection(result.connection); },
+  async unfriend(connectionId: string) { const result = await request<JsonObject>(`/friends/connections/${encodeURIComponent(connectionId)}/unfriend`, { method: 'POST' }); return normalizeConnection(result.connection); },
   async login(payload: { email: string; password: string }) { return parseAuthSession(await request<unknown>('/auth/login', { method: 'POST', body: JSON.stringify(payload) })); },
   async register(payload: JsonObject) { return parseAuthSession(await request<unknown>('/auth/register', { method: 'POST', body: JSON.stringify(payload) })); },
   async oauthProviders() { const result = await request<JsonObject>('/auth/oauth/providers'); return { google: result.google === true }; },
