@@ -94,6 +94,23 @@ test('search supports Thai full names, name parts, university, bio and lifestyle
   }
 });
 
+test('multi-word discovery matches every term without requiring order or adjacency', async () => {
+  await db.prepare('UPDATE LIFESTYLE SET lifestyle_name = ? WHERE user_id = 2')
+    .run('นอนเร็ว ตื่นเช้า ไม่สูบบุหรี่ สะอาด ทำอาหาร ชอบฟังเพลง');
+  for (const query of ['ตื่นเช้า สะอาด', 'สะอาด ตื่นเช้า', '  สะอาด\tตื่นเช้า  ', 'สมชาย สะอาด', 'ใจดี สมชาย', 'สะอาด KMUTT']) {
+    const result = await api(`/friends?q=${encodeURIComponent(query)}`, 1);
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.people.map(person => person.userId), [2], query);
+  }
+  for (const query of ['ตื่นเช้า เลี้ยงแมว', 'สะอาด Carol', 'ไม่มีคนนี้ ตื่นเช้า']) {
+    assert.deepEqual((await api(`/friends?q=${encodeURIComponent(query)}`, 1)).body.people, [], query);
+  }
+  await db.prepare('UPDATE USER SET bio = ? WHERE user_id = 2').run('100% _quiet \\ room');
+  for (const query of ['สะอาด %', '_quiet ตื่นเช้า', '\\ สะอาด']) {
+    assert.deepEqual((await api(`/friends?q=${encodeURIComponent(query)}`, 1)).body.people.map(person => person.userId), [2], query);
+  }
+});
+
 test('discovery calculates completed years and keeps birthdays and contacts private before and after inviting', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date(2026, 5, 15, 12) });
   await db.prepare('UPDATE USER SET date_of_birth = ? WHERE user_id = ?').run('2004-06-16', 2);
