@@ -43,6 +43,61 @@ async function openForm(page, editing, environment, testInfo) {
   return id;
 }
 
+test('RM-QA-01: stale edits preserve the latest pause unless status was changed', async ({ page, context, environment }, testInfo) => {
+  const id = await openForm(page, true, environment, testInfo);
+  const second = await context.newPage();
+  const listing = tab => tab.locator(`[id="listing-${id}"]`);
+  const toggle = tab => listing(tab).locator('.status-toggle');
+  const save = page.getByRole('button', { name: 'บันทึกการแก้ไข', exact: true });
+  const description = page.locator('textarea[name="description"]');
+  const browse = page.locator(`.room-card-link[href="/rooms/${id}"]`);
+  const title = 'RM-QA-01 renamed listing';
+  const browsePath = `/rooms?q=${encodeURIComponent(title)}`;
+
+  try {
+    await signIn(second, environment);
+    await second.goto('/my-listings');
+    await expect(toggle(second)).toHaveText('พักประกาศ');
+    await toggle(second).click();
+    await expect(toggle(second)).toHaveText('เปิดประกาศ');
+
+    await titleInput(page).fill(title);
+    const renameRequest = page.waitForRequest(request => request.method() === 'PATCH' && new URL(request.url()).pathname === `/api/rooms/${id}`);
+    await save.click();
+    expect((await renameRequest).postDataJSON()).not.toHaveProperty('status');
+    await expect(page).toHaveURL(/\/my-listings$/);
+    await page.reload();
+    await expect(listing(page)).toContainText(title);
+    await expect(toggle(page)).toHaveText('เปิดประกาศ');
+    await page.goto(browsePath);
+    await expect(page.locator('.list-toolbar p')).toHaveText('พบ 0 ห้อง');
+    await expect(browse).toHaveCount(0);
+
+    await page.goto(`/my-listings/${id}/edit`);
+    const pause = page.getByRole('button', { name: 'พักประกาศ', exact: true });
+    await expect(pause).toHaveAttribute('aria-pressed', 'true');
+    // The paused form is now stale because the other tab has already opened the listing.
+    await toggle(second).click();
+    await expect(toggle(second)).toHaveText('พักประกาศ');
+    await page.getByRole('button', { name: 'เปิดรับคำขอ', exact: true }).click();
+    await description.fill('');
+    const reopenRequest = page.waitForRequest(request => request.method() === 'PATCH' && new URL(request.url()).pathname === `/api/rooms/${id}`);
+    await save.click();
+    expect((await reopenRequest).postDataJSON()).toMatchObject({ status: 'available', description: '' });
+    await expect(toggle(page)).toHaveText('พักประกาศ');
+    await page.goto(browsePath);
+    await expect(browse).toBeVisible();
+
+    await page.goto(`/my-listings/${id}/edit`);
+    await expect(description).toHaveValue('');
+    await pause.click();
+    await save.click();
+    await expect(toggle(page)).toHaveText('เปิดประกาศ');
+  } finally {
+    await second.close();
+  }
+});
+
 for (const editing of [false, true]) {
   const mode = editing ? 'edit' : 'create';
   test(`RM-13 ${mode}: pristine, validation and reverted fields leave without a warning`, async ({ page, environment }, testInfo) => {

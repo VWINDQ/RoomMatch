@@ -1,7 +1,7 @@
 import { test, expect, signIn, noOverflow, imageHost } from './fixtures.mjs';
 import { createToken } from '../../server/auth.js';
 
-test('authorized viewers can open each resident’s profile from room details', async ({ page, environment }) => {
+test('resident profiles keep each invitation state centered and details scrollable', async ({ page, environment }) => {
   const names = ['เจ้าของห้อง', 'ผู้พักชื่อยาวมาก'.repeat(7), 'สมาชิกคนที่สาม', 'สมาชิกคนที่สี่'];
   const bios = ['แนะนำตัวเจ้าของห้อง\n'.repeat(40).trim(), 'แนะนำตัวผู้พักคนที่สอง', 'แนะนำตัวผู้พักคนที่สาม', null];
   const updateUser = environment.db.prepare('UPDATE USER SET first_name=?, last_name=?, date_of_birth=?, gender=?, university=?, bio=? WHERE user_id=?');
@@ -49,6 +49,29 @@ test('authorized viewers can open each resident’s profile from room details', 
   const dialog = page.getByRole('dialog', { name: 'โปรไฟล์สมาชิกห้อง' });
   const close = dialog.getByRole('button', { name: 'ปิด', exact: true });
   const detail = label => dialog.getByRole('heading', { name: label, exact: true }).locator('xpath=following-sibling::p[1]');
+  const footer = dialog.locator('.resident-invitation');
+  const body = dialog.locator('.modal-body');
+  const sendInvite = footer.getByRole('button', { name: 'ส่งคำชวนเป็นเพื่อน' });
+  async function checkFooter(message) {
+    const text = footer.getByText(message, { exact: true });
+    await expect(text).toBeVisible();
+    await expect(text).toHaveCSS('text-align', 'center');
+    await expect(sendInvite).toHaveCount(0);
+    await expect(footer.locator('..')).toHaveCSS('border-top-width', '1px');
+    const area = await footer.boundingBox();
+    const messageBox = await text.boundingBox();
+    const center = ({ x, width }) => x + width / 2;
+    expect(center(messageBox)).toBeCloseTo(center(area), 0);
+    expect(area.height).toBeCloseTo(messageBox.height, 0);
+    await body.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    const bodyBox = await body.boundingBox();
+    const lastLine = await detail('งบค่าห้องที่ตั้งไว้').boundingBox();
+    expect(lastLine.y).toBeGreaterThanOrEqual(bodyBox.y);
+    expect(lastLine.y + lastLine.height).toBeLessThanOrEqual(bodyBox.y + bodyBox.height + 1);
+    expect(bodyBox.y + bodyBox.height).toBeLessThanOrEqual(area.y);
+    expect(area.y + area.height).toBeLessThanOrEqual(page.viewportSize().height);
+    await noOverflow(page);
+  }
   async function checkProfile(index, demographics, gender, range) {
     await expect(dialog.getByRole('heading', { name: `${names[index]} ทดสอบ`, exact: true })).toBeVisible();
     await expect(dialog.locator('.profile-demographics')).toHaveText(demographics);
@@ -56,7 +79,6 @@ test('authorized viewers can open each resident’s profile from room details', 
     await expect(detail('เกี่ยวกับฉัน')).toHaveText(bios[index]?.replace(/\s+/g, ' ') || 'ยังไม่ได้เขียนแนะนำตัว');
     await expect(detail('เพศที่สะดวกแชร์ห้อง')).toHaveText(gender);
     await expect(detail('ช่วงอายุที่สะดวกแชร์ห้อง')).toHaveText(range);
-    await expect(dialog.getByRole('button')).toHaveText(['', '']);
   }
   const year = new Date().getFullYear();
   await page.goto(`/rooms/${roomId}`);
@@ -64,10 +86,10 @@ test('authorized viewers can open each resident’s profile from room details', 
   await button(0).focus();
   await page.keyboard.press('Enter');
   await checkProfile(0, `อายุ ${year - 2000} ปี · เพศหญิง`, 'นอนไบนารี', '20–25 ปี');
+  await expect(dialog.getByRole('button', { name: 'ส่งคำชวนเป็นเพื่อน' })).toHaveCount(0);
   await expect(close).toBeFocused();
   await expect(detail('ไลฟ์สไตล์')).toHaveText('ชอบห้องเงียบ');
   await expect(detail('งบค่าห้องที่ตั้งไว้')).toHaveText('฿3,000–5,000 / เดือน');
-  const body = dialog.locator('.modal-body');
   await body.evaluate(element => { element.scrollTop = element.scrollHeight; });
   expect(await body.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
   await page.keyboard.press('Escape');
@@ -90,8 +112,40 @@ test('authorized viewers can open each resident’s profile from room details', 
     [3, 'ยังไม่ระบุอายุ · ยังไม่ระบุเพศ', 'ยังไม่ระบุ', 'ยังไม่ระบุ'],
     [0, `อายุ ${year - 2000} ปี · เพศหญิง`, 'นอนไบนารี', '20–25 ปี'],
   ]) {
-    await button(index).click();
+    if (index === 3) {
+      let resume;
+      const responseGate = new Promise(resolve => { resume = resolve; });
+      await page.route('**/api/friends/connections', async route => {
+        await responseGate;
+        await route.continue();
+      }, { times: 1 });
+      try {
+        await button(index).click();
+        await checkFooter('กำลังตรวจสอบคำชวน…');
+      } finally {
+        resume();
+      }
+    } else {
+      await button(index).click();
+    }
     await checkProfile(index, summary, gender, range);
+    if (index === 1) await checkFooter('เป็นเพื่อนกันแล้ว');
+    if (index === 2) await checkFooter('มีคำชวนจากคนนี้ที่รอคุณตอบ');
+    if (index === 3) {
+      await sendInvite.click();
+      await expect(page.getByRole('dialog', { name: 'ยืนยันส่งคำชวนเป็นเพื่อน' }).locator('.contact-disclosure')).toBeVisible();
+      await page.getByRole('button', { name: 'ยืนยันส่งคำชวน', exact: true }).click();
+      await checkFooter('ส่งคำชวนแล้ว · รอตอบรับ');
+      const connection = await environment.db.prepare('SELECT connection_id, status FROM FRIEND_CONNECTION WHERE sender_id=1 AND recipient_id=4').get();
+      expect(connection?.status).toBe('pending');
+      await close.click();
+      const declined = await page.request.patch(`/api/friends/connections/${connection.connection_id}`, {
+        headers: headers(4), data: { status: 'declined' },
+      });
+      expect(declined.ok()).toBe(true);
+      await button(index).click();
+      await checkFooter('คำชวนนี้ถูกปฏิเสธแล้ว');
+    }
     if (index === 3) await expect(detail('ไลฟ์สไตล์')).toHaveText('ยังไม่ได้ระบุ');
     await noOverflow(page);
     await close.click();
@@ -116,8 +170,20 @@ test('authorized viewers can open each resident’s profile from room details', 
   await page.goto(`/rooms/${roomId}`);
   await expect(button(0)).toBeVisible();
   await expect(section.getByRole('button')).toHaveCount(4);
+  await button(0).click();
+  await expect(dialog.getByText('เป็นเพื่อนกันแล้ว', { exact: true })).toBeVisible();
+  await close.click();
+  await button(3).click();
+  await dialog.getByRole('button', { name: 'ส่งคำชวนเป็นเพื่อน' }).click();
+  await page.getByRole('button', { name: 'ยืนยันส่งคำชวน', exact: true }).click();
+  await expect(dialog.getByText('ส่งคำชวนแล้ว · รอตอบรับ', { exact: true })).toBeVisible();
+  await close.click();
   await signIn(page, environment, 'empty');
   await page.goto(`/rooms/${roomId}`);
   await expect(section.locator('.detail-member')).toHaveCount(0);
   await expect(section.getByText('ผู้พัก 4 คนไม่ได้เปิดเผยโปรไฟล์')).toBeVisible();
+  await environment.db.prepare('UPDATE USER SET share_resident_profile=TRUE WHERE user_id=4').run();
+  await page.reload();
+  await button(3).click();
+  await expect(dialog.getByRole('button', { name: 'ส่งคำชวนเป็นเพื่อน' })).toHaveCount(0);
 });

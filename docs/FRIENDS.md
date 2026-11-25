@@ -18,8 +18,9 @@
 | สถานะ | ผู้ทำรายการต่อได้ | การเปิดเผยช่องทางติดต่อ |
 | --- | --- | --- |
 | `pending` | ผู้รับ accepted/declined; ผู้ส่ง cancelled | ช่องทางติดต่อเป็นส่วนตัว |
-| `accepted` | ค้นหาห้องด้วยกัน; ยังไม่มี unfriend | ทั้งสองฝ่ายเห็น LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้ |
-| `declined` | ดูประวัติ ไม่ส่งซ้ำ/เปลี่ยนผล | ช่องทางติดต่อเป็นส่วนตัว |
+| `accepted` | ค้นหาห้องด้วยกัน หรือเลิกเป็นเพื่อนจากแท็บเพื่อนของฉัน | ทั้งสองฝ่ายเห็น LINE, Instagram, อีเมล และเบอร์โทรที่กรอกไว้ |
+| `unfriended` | ทั้งสองฝ่ายกลับมาชวนใหม่จากแท็บทำความรู้จักได้ | สิทธิ์ติดต่อจากการเป็นเพื่อนสิ้นสุด |
+| `declined` | ทั้งสองฝ่ายส่งคำชวนใหม่จากแท็บทำความรู้จักได้ และดูรายการเดิมในประวัติ | ช่องทางติดต่อเป็นส่วนตัว |
 | `cancelled` | ผู้ส่งถอนซ้ำโดยได้ผลเดิม หรือส่งคำชวนใหม่จากประวัติ | ช่องทางติดต่อเป็นส่วนตัว |
 
 การ์ดและหน้าต่างโปรไฟล์แสดงอายุเต็มปีและเพศของเจ้าของโปรไฟล์ทั้งก่อนและหลังส่งคำชวน โดยเก็บวันเกิดเป็นส่วนตัว
@@ -27,7 +28,7 @@
 หากไม่มีวันเกิดหรือคำนวณไม่ได้ ค่าอายุจะเป็น `null` และแสดง “ยังไม่ระบุอายุ”
 คนนอกไม่เห็น connection ของคู่อื่นแม้แนบ userId ใน query Instagram, LINE, อีเมล และเบอร์โทรเปิดเผยกับเพื่อนที่ตอบรับแล้วเท่านั้น
 เมื่อคู่ inactive API จะไม่คืนคู่นั้นใน connections; หลังโหลดใหม่ UI ต้องไม่ใช้ contact ที่ cache ไว้
-ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ, unfriend, ส่งซ้ำหลัง declined
+ข้อจำกัดปัจจุบันไม่มี Like/Pass, mutual-like อัตโนมัติ
 หรือการสมัครห้องแบบกลุ่ม (อย่าใช้ POST สวนทางแทนการตอบรับ ต้อง PATCH โดยผู้รับ)
 
 ### ตัวอย่างเรียก API
@@ -94,20 +95,20 @@ merged Favorites migration adds `ROOM_FAVORITE`, so the current database has ten
 business tables. The internal migration ledger is not another business entity.
 
 `USER 1:N FRIEND_CONNECTION` has two roles: sender and recipient. No room is required.
-A pair can have multiple withdrawn records and one current pending, accepted, or declined invitation. Self-invitations and duplicate reversed invitations are forbidden. Status starts `pending`; only the recipient can move it
+A pair can have multiple cancelled or declined records and at most one pending or accepted invitation. Self-invitations and duplicate reversed invitations are forbidden. Status starts `pending`; only the recipient can move it
 to `accepted` or `declined`. Migration `006` also permits the sender to withdraw a
-pending invitation as `cancelled`. All three final states remain in history and
-cannot be reversed. PostgreSQL migration 008 allows a fresh invitation after withdrawal while preserving the withdrawn row. A pending, accepted, or declined invitation blocks duplicate invitations in either direction. Several accepted connections are
+pending invitation as `cancelled`. Migration 011 lets either participant end an accepted friendship as `unfriended`, preserving the original ID, sender, recipient, and acceptance timestamp. Cancelled, declined, and unfriended rows remain in history and release the pair for a new invitation. The unique pair index blocks duplicate pending or accepted invitations in either direction. Several accepted connections are
 allowed; acceptance is not exclusive.
 
 ## API
 
 - `GET /api/friends?q=...`: authenticated discovery by name, university, bio, or
-  lifestyle. Excludes self, inactive users, and users already connected by an invitation.
+  lifestyle. Excludes self, inactive users, and users whose latest invitation with the viewer is pending, accepted, or cancelled.
   Full first-and-last-name searches are supported, including Thai names.
 - `GET /api/friends/connections`: only the viewer's connections, with incoming/outgoing direction.
 - `POST /api/friends/connections` with numeric `recipientId`: sends a pending invitation.
 - `PATCH /api/friends/connections/:id` with `status: accepted | declined`: recipient-only decision.
+- `POST /api/friends/connections/:id/unfriend`: either participant can end an accepted friendship. Retrying the same ID returns the ended record without contacts or affecting a newer friendship.
 - `POST /api/friends/connections/:id/cancel`: sender-only withdrawal of a pending
   invitation, with no request body required. Returns `{ connection }` with status
   `cancelled` and its withdrawal time in `respondedAt`. Retrying an already

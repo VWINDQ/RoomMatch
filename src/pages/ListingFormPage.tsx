@@ -98,11 +98,13 @@ export function ListingFormPage() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) { showSaveErrors(); submitLocked.current = false; return; }
     setFocusErrors(false);
+    const originalStatus = existing?.status === 'inactive' ? 'inactive' : 'available';
     const payload = {
       title: String(values.title).trim(), description: String(values.description || '').trim(),
       googleMapsUrl: String(values.googleMapsUrl).trim(), price: Number(values.price), capacity: Number(values.capacity),
       priceBasis: String(values.priceBasis || ''), locality: String(values.locality || '').trim(),
-      costNotes: String(values.costNotes || '').trim(), status, ownerIsResident,
+      costNotes: String(values.costNotes || '').trim(), ownerIsResident,
+      ...(!existing || status !== originalStatus ? { status } : {}),
     };
     setSaving(true);
     let stage = 'upload';

@@ -116,6 +116,6 @@ export type FriendProfile = RoommateProfile & {
 };
 export type FriendConnection = {
   connectionId: string; direction: 'incoming' | 'outgoing';
-  status: 'pending' | 'accepted' | 'declined' | 'cancelled'; createdAt: string; respondedAt: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'unfriended'; createdAt: string; respondedAt: string;
   person: FriendProfile;
 };

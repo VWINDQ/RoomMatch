@@ -1,5 +1,30 @@
 import { test, expect, signIn, noOverflow } from './fixtures.mjs';
 import { createToken } from '../../server/auth.js';
+const invitationNotice = 'หากอีกฝ่ายตอบรับ อีกฝ่ายจะเห็น LINE, Instagram, เบอร์โทร และ อีเมล ของคุณ และคุณจะเห็นช่องทางติดต่อที่อีกฝ่ายระบุไว้';
+
+test('the friend subtitle wraps within the space beside refresh', async ({ page, environment }) => {
+  await signIn(page, environment);
+  await page.goto('/friends');
+  const header = page.locator('.friends-page .page-header');
+  await expect(header.getByRole('heading', { name: 'ค้นหาเพื่อนใหม่', exact: true })).toBeVisible();
+  const subtitle = header.getByText('เจอคนที่อยากแชร์ชีวิตประจำวันด้วย แล้วค่อยเลือกห้องไปด้วยกัน', { exact: true });
+  const refresh = header.getByRole('button', { name: 'อัปเดตคำชวน', exact: true });
+  await expect(subtitle).toBeVisible();
+  await expect(refresh).toBeEnabled();
+  await page.evaluate(() => document.fonts.ready);
+  const { lines, rightEdge } = await subtitle.evaluate(element => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rects = [...range.getClientRects()];
+    return { lines: new Set(rects.map(rect => rect.top)).size, rightEdge: Math.max(...rects.map(rect => rect.right)) };
+  });
+  const buttonBox = await refresh.boundingBox();
+  expect(rightEdge).toBeLessThanOrEqual(buttonBox.x);
+  expect(lines).toBe(page.viewportSize().width >= 768 ? 1 : 2);
+  await refresh.click();
+  await expect(refresh).toBeEnabled();
+  await noOverflow(page);
+});
 
 test('friend cards and profiles show age without overflow and keep it after sending an invitation', async ({ page, environment }) => {
   const longName = 'ทดสอบชื่อยาวสำหรับจอมือถือ'.repeat(3);
@@ -18,7 +43,7 @@ test('friend cards and profiles show age without overflow and keep it after send
 
   await signIn(page, environment);
   await page.goto('/friends');
-  await expect(page.getByRole('heading', { name: 'หาเพื่อนก่อนหาห้อง', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'ค้นหาเพื่อนใหม่', exact: true })).toBeVisible();
   const dialog = page.getByRole('dialog', { name: 'ทำความรู้จักเพื่อน' });
   const personCard = name => page.locator('.friend-card').filter({ has: page.getByRole('heading', { name: `${name} นามสกุลทดสอบ`, exact: true }) });
 
@@ -63,16 +88,28 @@ test('friend cards and profiles show age without overflow and keep it after send
   await card.getByRole('button', { name: 'ดูโปรไฟล์' }).click();
   await checkAge(dialog, summary, longName);
   await expectModalDetails('นอนไบนารี', '20–25 ปี');
+  await expect(dialog.getByText(invitationNotice, { exact: true })).toHaveCount(0);
   await noOverflow(page);
-  await dialog.getByRole('button', { name: 'ชวนหาห้องด้วยกัน' }).click();
+  await dialog.getByRole('button', { name: 'ปิด', exact: true }).click();
+  await expect(card.getByText(invitationNotice, { exact: true })).toHaveCount(0);
+  await card.getByRole('button', { name: 'ส่งคำชวนเป็นเพื่อน', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: 'ยืนยันส่งคำชวนเป็นเพื่อน' });
+  await expect(confirmation.getByText(invitationNotice, { exact: true })).toBeVisible();
+  await confirmation.getByRole('button', { name: 'ยืนยันส่งคำชวน', exact: true }).click();
+  await expect(card.getByText('ส่งคำชวนแล้ว · รอตอบรับ')).toBeVisible();
+  await expect(card.getByText(invitationNotice, { exact: true })).toHaveCount(0);
+  await card.getByRole('button', { name: 'ดูคำชวนที่ส่ง', exact: true }).click();
+  await expect(page).toHaveURL(/invitations=outgoing/);
+  await card.getByRole('button', { name: 'ดูโปรไฟล์' }).click();
   await expect(dialog.getByRole('button', { name: 'ถอนคำชวน' })).toBeVisible();
+  await expect(dialog.locator('.contact-actions')).toHaveCount(0);
   await checkAge(dialog, summary, longName);
   await expectModalDetails('นอนไบนารี', '20–25 ปี');
   await dialog.getByRole('button', { name: 'ปิด', exact: true }).click();
   await checkAge(card, summary, longName);
 
   const { connection_id: connectionId } = await environment.db.prepare(
-    'SELECT connection_id FROM FRIEND_CONNECTION WHERE sender_id = 1 AND recipient_id = ?',
+    "SELECT connection_id FROM FRIEND_CONNECTION WHERE sender_id = 1 AND recipient_id = ? AND status = 'pending'",
   ).get(long.user_id);
   const response = await page.request.patch(`/api/friends/connections/${connectionId}`, {
     headers: { Authorization: `Bearer ${createToken(long.user_id)}` },
@@ -89,5 +126,43 @@ test('friend cards and profiles show age without overflow and keep it after send
   await card.getByRole('button', { name: 'ดูโปรไฟล์' }).click();
   await checkAge(dialog, summary, longName);
   await expectModalDetails('นอนไบนารี', '20–25 ปี');
+  await expect(dialog.locator('.contact-actions-email')).toBeVisible();
+  await noOverflow(page);
+});
+
+test('a friend profile shows the disclosure before sending from its dialog', async ({ page, environment }) => {
+  if (page.viewportSize().width === 360) await page.setViewportSize({ width: 320, height: 800 });
+  const name = 'Fixture Contact Dialog';
+  await environment.db.prepare('INSERT INTO USER(first_name,last_name,email) VALUES(?,?,?)')
+    .run(name, 'QA', 'contact-dialog@example.test');
+  await signIn(page, environment);
+  await page.goto(`/friends?q=${encodeURIComponent(name)}`);
+  await page.getByRole('button', { name: 'ดูโปรไฟล์', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'ทำความรู้จักเพื่อน' });
+  const send = dialog.getByRole('button', { name: 'ชวนหาห้องด้วยกัน', exact: true });
+  const confirmation = page.getByRole('dialog', { name: 'ยืนยันส่งคำชวนเป็นเพื่อน' });
+  let posts = 0;
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/friends/connections') posts++;
+  });
+  for (const dismiss of ['ยกเลิก', 'ปิด', 'Escape']) {
+    await send.click();
+    await expect(confirmation.getByText(invitationNotice, { exact: true })).toBeVisible();
+    const title = await confirmation.getByRole('heading').boundingBox();
+    const box = await confirmation.locator('.modal-card').boundingBox();
+    expect(title.x + title.width / 2).toBeCloseTo(box.x + box.width / 2, 0);
+    expect(posts).toBe(0);
+    if (dismiss === 'Escape') await page.keyboard.press('Escape');
+    else await confirmation.getByRole('button', { name: dismiss, exact: true }).click();
+    await expect(confirmation).toHaveCount(0);
+    await expect(send).toBeFocused();
+  }
+  await send.click();
+  await confirmation.getByRole('button', { name: 'ยืนยันส่งคำชวน', exact: true }).evaluate(button => { button.click(); button.click(); });
+  await expect(dialog.getByText('ส่งคำชวนแล้ว · รอเพื่อนตอบรับ', { exact: true })).toBeVisible();
+  await expect(confirmation).toHaveCount(0);
+  expect(posts).toBe(1);
+  await expect(dialog.getByText(invitationNotice, { exact: true })).toHaveCount(0);
+  await expect(dialog.locator('.contact-actions')).toHaveCount(0);
   await noOverflow(page);
 });

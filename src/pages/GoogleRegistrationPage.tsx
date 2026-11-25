@@ -129,7 +129,10 @@ function RegistrationForm({ flow }: { flow: string }) {
       <Input label="อีเมล *" name="email" value={preview.email} type="email" readOnly required/>
     </fieldset>
     {error && <p className="form-alert" role="alert">{error}</p>}
-    <Button className="w-full" type="submit" disabled={busy}>สมัครสมาชิก</Button>
+    <Button className="w-full" type="submit" disabled={busy} onMouseDown={event => {
+      // Keep blur validation from moving the submit button before the click lands.
+      if (event.button === 0) event.preventDefault();
+    }}>สมัครสมาชิก</Button>
     <Button className="w-full" type="button" variant="quiet" disabled={busy} onClick={cancel}>ยกเลิก</Button>
   </form>;
 }

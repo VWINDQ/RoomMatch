@@ -17,6 +17,39 @@ const ready = async (page, number, count = 12) => {
   expect(Number(new URL(page.url()).searchParams.get('page') || 1)).toBe(number);
 };
 
+test('minimum vacancies combine with price and persist across room pages until cleared', async ({ page, environment }) => {
+  const rooms = await environment.db.prepare(`INSERT INTO ROOM(owner_id, description, google_maps_url, price, capacity, owner_is_resident)
+    SELECT 1, 'RM12 vacancies ' || n, 'https://maps.google.com', CASE WHEN n = 16 THEN 500 ELSE 1000 END,
+      CASE WHEN n = 1 THEN 2 WHEN n % 2 = 0 THEN 3 ELSE 4 END, TRUE
+    FROM generate_series(1,16) n RETURNING room_id, capacity, price`).all();
+  await page.goto('/rooms?q=RM12%20vacancies');
+  await expect(page.locator('.list-toolbar p')).toHaveText('พบ 16 ห้อง');
+  const filterButton = page.getByRole('button', { name: /^ตัวกรอง/ });
+  await filterButton.click();
+  const filter = page.getByRole('dialog');
+  const slots = filter.getByRole('spinbutton', { name: /^จำนวนที่ว่างที่ต้องการ/ });
+  await expect(filter.getByText('เลือกจำนวนคนที่จะเข้าพัก เช่น 2 ที่ = คุณกับเพื่อน ระบบจะแสดงเฉพาะห้องที่เหลือที่ว่างตามจำนวนนี้ขึ้นไป', { exact: true })).toBeVisible();
+  await slots.fill('2');
+  await filter.getByLabel('ราคาต่ำสุด', { exact: true }).fill('1000');
+  await filter.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }).click();
+  await expect(page.locator('.list-toolbar p')).toHaveText('พบ 14 ห้อง');
+  const links = page.locator('.room-card-link');
+  const paths = () => links.evaluateAll(items => items.map(link => link.getAttribute('href')));
+  await expect(links).toHaveCount(12);
+  const firstPage = await paths();
+  await page.getByRole('button', { name: 'ถัดไป', exact: true }).click();
+  await expect(links).toHaveCount(2);
+  const expected = rooms.filter(room => room.capacity >= 3 && room.price >= 1000).map(room => `/rooms/${room.room_id}`);
+  expect([...firstPage, ...await paths()].sort()).toEqual(expected.sort());
+  await filterButton.click();
+  await filter.getByRole('button', { name: 'ล้างตัวกรอง', exact: true }).click();
+  await expect(slots).toHaveValue('');
+  await filter.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }).click();
+  await expect(page.locator('.list-toolbar p')).toHaveText('พบ 16 ห้อง');
+  await expect(page).not.toHaveURL(/minSlots|minPrice|page=/);
+  await noOverflow(page);
+});
+
 test('pagination URL, refresh, detail return, history and responsive controls', async ({ page, environment }, testInfo) => {
   await page.goto('/rooms?q=RM12&sort=price_asc');
   await ready(page, 1);

@@ -254,7 +254,7 @@ test('acceptance reveals contacts only to both participants and never changes ro
   assert.deepEqual(await originalTables(), before);
 });
 
-test('decline never shares contacts and final decisions cannot be changed or re-sent', async () => {
+test('decline stays private and permits a new invitation in either direction', async () => {
   const invitation = await invite();
   const result = await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status: 'declined' });
   assert.equal(result.status, 200);
@@ -262,12 +262,79 @@ test('decline never shares contacts and final decisions cannot be changed or re-
   assert.deepEqual(Object.keys(result.body.connection.person).sort(), profileKeys);
   for (const userId of [1, 2]) {
     assert.deepEqual(Object.keys((await api('/friends/connections', userId)).body.connections[0].person).sort(), profileKeys);
+    const otherId = userId === 1 ? 2 : 1;
+    const profile = (await api('/friends', userId)).body.people.find(person => person.userId === otherId);
+    assert.deepEqual(Object.keys(profile).sort(), profileKeys);
   }
   for (const status of ['accepted', 'declined']) {
     assert.equal((await api(`/friends/connections/${invitation.connectionId}`, 2, 'PATCH', { status })).status, 409);
   }
-  assert.equal((await api('/friends/connections', 2, 'POST', { recipientId: 1 })).status, 409);
-  assert.equal((await api('/friends', 1)).body.people.some(person => person.userId === 2), false);
+  const attempts = await Promise.all([
+    api('/friends/connections', 1, 'POST', { recipientId: 2 }),
+    api('/friends/connections', 1, 'POST', { recipientId: 2 }),
+    api('/friends/connections', 2, 'POST', { recipientId: 1 }),
+  ]);
+  assert.deepEqual(attempts.map(attempt => attempt.status).sort(), [201, 409, 409]);
+  const retry = attempts.find(attempt => attempt.status === 201).body.connection;
+  const recipientId = retry.person.userId;
+  assert.notEqual(retry.connectionId, invitation.connectionId);
+  assert.deepEqual((await api('/friends/connections', 1)).body.connections.map(item => [item.connectionId, item.status]),
+    [[retry.connectionId, 'pending'], [invitation.connectionId, 'declined']]);
+  await assert.rejects(db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (2, 1)').run(), { code: '23505' });
+  assert.equal((await api(`/friends/connections/${retry.connectionId}`, recipientId, 'PATCH', { status: 'accepted' })).status, 200);
+  for (const [sender, recipientId] of [[1, 2], [2, 1]]) {
+    assert.equal((await api('/friends/connections', sender, 'POST', { recipientId })).status, 409);
+  }
+});
+
+test('unfriend is participant-only and concurrent requests preserve history and revoke friend access', async () => {
+  const room = await db.prepare(`INSERT INTO ROOM(owner_id,description,google_maps_url,price,capacity)
+    VALUES (1,'Unfriend match fixture','https://maps.google.com',2500,3) RETURNING room_id`).get();
+  const join = await api(`/rooms/${room.room_id}/requests`, 2, 'POST');
+  assert.equal(join.status, 201);
+  assert.equal((await api(`/requests/${join.body.request.requestId}`, 1, 'PATCH', { status: 'approved' })).status, 200);
+  const before = await originalTables();
+  const original = await invite();
+  const path = `/friends/connections/${original.connectionId}/unfriend`;
+  assert.equal((await api(path, null, 'POST')).status, 401);
+  assert.equal((await api(path, 1, 'POST')).status, 409);
+  const accepted = await api(`/friends/connections/${original.connectionId}`, 2, 'PATCH', { status: 'accepted' });
+  assert.equal(accepted.status, 200);
+  assert.equal((await api(path, 3, 'POST')).status, 403);
+
+  const ended = await Promise.all([api(path, 1, 'POST'), api(path, 2, 'POST')]);
+  for (const [index, result] of ended.entries()) {
+    const { connection } = result.body;
+    assert.equal(result.status, 200);
+    assert.equal(connection.connectionId, original.connectionId);
+    assert.equal(connection.respondedAt, accepted.body.connection.respondedAt);
+    assert.equal(connection.status, 'unfriended');
+    assert.equal(connection.direction, index === 0 ? 'outgoing' : 'incoming');
+    assert.deepEqual(Object.keys(connection.person).sort(), profileKeys);
+  }
+  for (const [viewer, other] of [[1, 2], [2, 1]]) {
+    const { connections } = (await api('/friends/connections', viewer)).body;
+    assert.equal(connections.length, 1);
+    assert.equal(connections[0].status, 'unfriended');
+    assert.deepEqual(Object.keys(connections[0].person).sort(), profileKeys);
+    const { people } = (await api('/friends', viewer)).body;
+    assert.deepEqual(Object.keys(people.find(person => person.userId === other)).sort(), profileKeys);
+    assert.equal((await api(`/rooms?withFriend=${other}`, viewer)).status, 403);
+    const { matches } = (await api('/matches', viewer)).body;
+    assert.equal(matches.find(match => match.room.roomId === room.room_id).otherUser.lineId, `line-${other}`);
+  }
+  const retry = await invite(2, 1);
+  assert.notEqual(retry.connectionId, original.connectionId);
+  for (const [viewer, other] of [[1, 2], [2, 1]]) {
+    assert.equal((await api('/friends/connections', viewer, 'POST', { recipientId: other })).status, 409);
+  }
+  const renewed = await api(`/friends/connections/${retry.connectionId}`, 1, 'PATCH', { status: 'accepted' });
+  assert.equal(renewed.status, 200);
+  assert.equal(renewed.body.connection.person.lineId, 'line-2');
+  assert.equal((await api(path, 2, 'POST')).status, 200);
+  const { connections } = (await api('/friends/connections', 1)).body;
+  assert.deepEqual(connections.map(item => item.status), ['accepted', 'unfriended']);
+  assert.deepEqual(await originalTables(), before);
 });
 
 test('inactive partners disappear from connections and cannot be accepted', async () => {

@@ -6,17 +6,62 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
 import { RoomGallery } from '../components/RoomGallery';
 import { RoommateProfileModal } from '../components/RoommateProfileModal';
+import { matchContactNames, ownContactDisclosure } from '../components/ContactDisclosure';
+import { ConfirmSendButton } from '../components/ConfirmSendButton';
 import { ProfilePhoto } from '../components/ProfilePhoto';
 import { Price } from '../components/RoomCard';
 import { Button, EmptyState, Modal, StatusBadge } from '../components/UI';
 import { api, ApiError, SessionChangedError } from '../lib/api';
 import { roomReturn } from '../lib/roomNavigation';
-import type { Room } from '../types';
+import type { FriendConnection, Room } from '../types';
+
+function ResidentFriendInvitation({ recipientId }: { recipientId: string }) {
+  const [connection, setConnection] = useState<FriendConnection | null>();
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    api.friendConnections().then(connections => {
+      const latest = connections.find(item => item.person.userId === recipientId && item.status !== 'cancelled');
+      if (active) setConnection(latest?.status === 'unfriended' ? null : latest ?? null);
+    }).catch(caught => {
+      if (active && !(caught instanceof SessionChangedError)) setError(caught instanceof Error ? caught.message : 'ตรวจสอบคำชวนไม่สำเร็จ');
+    });
+    return () => { active = false; };
+  }, [recipientId]);
+
+  async function invite() {
+    setSending(true);
+    setError('');
+    try {
+      setConnection(await api.inviteFriend(recipientId));
+    } catch (caught) {
+      if (!(caught instanceof SessionChangedError)) setError(caught instanceof Error ? caught.message : 'ส่งคำชวนไม่สำเร็จ');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const status = connection
+    ? connection.status === 'accepted' ? 'เป็นเพื่อนกันแล้ว'
+      : connection.status === 'declined' ? 'คำชวนนี้ถูกปฏิเสธแล้ว'
+        : connection.direction === 'incoming' ? 'มีคำชวนจากคนนี้ที่รอคุณตอบ'
+          : 'ส่งคำชวนแล้ว · รอตอบรับ'
+    : connection === undefined && !error ? 'กำลังตรวจสอบคำชวน…' : '';
+
+  return <div className="resident-invitation">
+    {error && <p role="alert">{error}</p>}
+    {status && <p role="status">{status}</p>}
+    {connection === null && <ConfirmSendButton loading={sending} onConfirm={invite}>ส่งคำชวนเป็นเพื่อน</ConfirmSendButton>}
+  </div>;
+}
 
 export function RoomDetailPage() {
-  const { id = '' } = useParams(); const navigate = useNavigate(); const { notify } = useApp();
+  const { id = '' } = useParams(); const navigate = useNavigate(); const { notify, user } = useApp();
   const [room, setRoom] = useState<Room | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [sending, setSending] = useState(false); const [reload, setReload] = useState(0);
   const [requestError, setRequestError] = useState('');
+  const [unavailableRoomId, setUnavailableRoomId] = useState<string | null>(null);
   const [requestNeedsRefresh, setRequestNeedsRefresh] = useState(false);
   const [selectedResidentId, setSelectedResidentId] = useState<string | null>(null);
   const requestFeedback = useRef<HTMLParagraphElement>(null);
@@ -65,6 +110,11 @@ export function RoomDetailPage() {
     } catch (caught) {
       if (currentRoomId.current !== room.roomId) return;
       const message = caught instanceof Error ? caught.message : 'ส่งคำขอไม่สำเร็จ';
+      if (caught instanceof ApiError && caught.status === 404) {
+        setUnavailableRoomId(room.roomId);
+        setRoom(null);
+        return;
+      }
       setRequestError(message);
       if (caught instanceof ApiError && caught.status === 409) {
         setRequestNeedsRefresh(true);
@@ -101,6 +151,7 @@ export function RoomDetailPage() {
   const closeWithdrawal = () => { if (withdrawing) return; setWithdrawOpen(false); if (room?.requestStatus !== 'pending') requestAnimationFrame(() => requestPanel.current?.focus()); };
   useEffect(() => { setWithdrawOpen(false); setWithdrawError(''); setRequestError(''); setRequestNeedsRefresh(false); setSending(false); setSelectedResidentId(null); }, [id]);
   if (loading) return <div className="page"><Skeleton variant="room-detail"/></div>;
+  if (unavailableRoomId === id) return <div className="page"><EmptyState icon={<RefreshCw/>} title="ประกาศนี้ไม่พร้อมใช้งาน" text="ไม่พบประกาศห้องนี้แล้ว" action={<Button onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}>{back.label}</Button>}/></div>;
   if (error || !room) return <div className="page"><EmptyState icon={<RefreshCw/>} title="เปิดประกาศนี้ไม่ได้" text={error || 'ไม่พบประกาศห้องนี้'} action={<Button onClick={() => setReload(value => value + 1)}>ลองอีกครั้ง</Button>}/></div>;
   const ownerResident = room.ownerResidentProfile;
   const sharedResidents = room.sharedResidentProfiles;
@@ -109,6 +160,8 @@ export function RoomDetailPage() {
     : ownerResident?.userId === selectedResidentId ? ownerResident
       : room.members?.find(member => member.userId === selectedResidentId)?.profile
         ?? sharedResidents?.find(member => member.userId === selectedResidentId);
+  const requestDisabled = requestNeedsRefresh || room.requestStatus === 'pending' || room.isMember || room.status !== 'available' || room.availableSlots < 1;
+  const ownChannels = matchContactNames(user);
   const requestLabel = room.requestStatus === 'pending' ? 'ส่งคำขอแล้ว · รอเจ้าของห้องตอบกลับ' : room.isMember ? 'คุณเป็นสมาชิกห้องนี้แล้ว' : room.status === 'inactive' ? 'ประกาศนี้พักรับคำขอ' : room.status !== 'available' || room.availableSlots < 1 ? 'ห้องนี้เต็มแล้ว' : 'ขอเข้าพักห้องนี้';
   return <div className="page detail-page"><button className="back-link" onClick={() => navigate(back.to, { state: { focusTarget: back.focusTarget } })}><ArrowLeft size={18}/>{back.label}</button>
     <FriendSearchContext/>
@@ -132,7 +185,10 @@ export function RoomDetailPage() {
       </section>
       {room.googleMapsUrl && <section className="map-preview"><div><MapPin/><span><strong>ตำแหน่งห้อง</strong><small>เปิด Google Maps ในแท็บใหม่</small></span></div><a className="button button-secondary" href={room.googleMapsUrl} target="_blank" rel="noreferrer">ดูบนแผนที่ <ExternalLink size={16}/></a></section>}
     </div><aside ref={requestPanel} tabIndex={-1} className="detail-sidebar" aria-label="คำขอเข้าพักและเจ้าของห้อง"><Price amount={room.price} basis={room.priceBasis}/><StatusBadge status={room.status}/><Button variant="secondary" className={`w-full ${favoriteFeedback ? 'has-favorite-feedback' : ''}`} onAnimationEnd={() => setFavoriteFeedback(false)} aria-label={room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'} aria-pressed={Boolean(room.isFavorite)} loading={savingFavorite} onClick={toggleFavorite}><Heart size={17} fill={room.isFavorite ? 'currentColor' : 'none'}/>{room.isFavorite ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}</Button><hr/><h2>ผู้ลงประกาศ</h2><div className="owner-mini"><span><ProfilePhoto src={room.owner?.profileImage || ''} fallback={room.owner?.firstName?.charAt(0) || 'R'}/></span><div><strong>{room.owner ? `${room.owner.firstName} ${room.owner.lastName}` : 'สมาชิก RoomMatch'}</strong><small>{room.ownerIsResident ? 'พักอยู่ด้วย' : 'ไม่ได้พักในห้อง'}{room.owner?.university && ` · ${room.owner.university}`}</small></div></div>
-      {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`, { state: { from: back.to, focusReturnId: back.focusTarget } })}>แก้ไขประกาศของฉัน</Button> : <Button className="w-full" loading={sending} disabled={requestNeedsRefresh || room.requestStatus === 'pending' || room.isMember || room.status !== 'available' || room.availableSlots < 1} onClick={requestRoom}>{requestLabel}</Button>}
+      {room.isOwner ? <Button className="w-full" onClick={() => navigate(`/my-listings/${room.roomId}/edit`, { state: { from: back.to, focusReturnId: back.focusTarget } })}>แก้ไขประกาศของฉัน</Button> : <ConfirmSendButton className="w-full" loading={sending} disabled={requestDisabled} onConfirm={requestRoom}
+        roomMessage={`เมื่อคำขอได้รับอนุมัติ ${ownContactDisclosure('ผู้ลงประกาศ', ownChannels)} และคุณจะเห็นช่องทางติดต่อที่ผู้ลงประกาศระบุไว้เพื่อประสานเรื่องเข้าพัก`}>
+        {requestLabel}
+      </ConfirmSendButton>}
       {!room.isOwner && room.requestStatus === 'pending' && <Button variant="quiet" className="w-full" onClick={() => { setRequestError(''); setWithdrawError(''); setWithdrawOpen(true); }}>ถอนคำขอ</Button>}
       {room.requestStatus === 'cancelled' && <p ref={cancelledNote} tabIndex={-1} className="inline-note" role="status">คุณถอนคำขอแล้ว ประวัติยังอยู่ และส่งคำขอใหม่ได้เมื่อห้องเปิดรับและมีที่ว่าง</p>}
       {room.isMember && !room.isOwner && <Button variant="quiet" className="w-full" onClick={() => { setLeaveError(''); setLeaveOpen(true); }}>ออกจากห้องนี้</Button>}
@@ -142,7 +198,10 @@ export function RoomDetailPage() {
     </aside></div>
     {withdrawOpen && <Modal title="ถอนคำขอเข้าพัก?" onClose={closeWithdrawal} actions={<><Button variant="quiet" disabled={withdrawing} onClick={closeWithdrawal}>{room.requestStatus === 'pending' ? 'เก็บคำขอไว้' : 'กลับไปดูสถานะ'}</Button><Button variant="danger" loading={withdrawing} disabled={room.requestStatus !== 'pending' || !room.pendingRequestId} onClick={withdraw}>ยืนยันถอนคำขอ</Button></>}><p>ถอนคำขอสำหรับ “{room.title}” เจ้าของห้องจะเห็นว่าคุณถอนแล้ว ประวัติจะยังอยู่และส่งคำขอใหม่ได้หากห้องยังว่าง</p>{room.requestStatus === 'pending' && !room.pendingRequestId && <p className="form-alert" role="alert">ยังโหลดรหัสคำขอไม่ได้ กรุณาปิดหน้าต่างแล้วรีเฟรชหน้านี้ก่อนลองอีกครั้ง</p>}{room.requestStatus !== 'pending' && <p className="inline-note" role="status">{room.requestStatus === 'approved' ? 'เจ้าของอนุมัติคำขอแล้ว การถอนครั้งนี้ไม่สำเร็จ' : 'คำขอนี้ไม่ได้รอพิจารณาแล้ว กรุณาตรวจสอบสถานะล่าสุด'}</p>}{withdrawError && <p ref={withdrawFeedback} tabIndex={-1} className="form-alert" role="alert">{withdrawError}</p>}</Modal>}
     {leaveOpen && <Modal title="ออกจากห้องนี้?" onClose={() => { if (!leaving) setLeaveOpen(false); }} actions={<><Button variant="quiet" disabled={leaving} onClick={() => setLeaveOpen(false)}>อยู่ในห้องต่อ</Button><Button variant="danger" loading={leaving} onClick={leave}>ยืนยันออกจากห้อง</Button></>}><p>คุณจะคืนที่ว่างและไม่เห็นสมาชิกหรือช่องทางติดต่อผ่านห้องนี้อีก ประวัติคำขอจะยังอยู่ หากกลับเข้าพักต้องให้เจ้าของอนุมัติใหม่</p><p className="inline-note">ควรคุยกับเจ้าของเรื่องการย้ายออกและค่าใช้จ่ายที่ตกลงกันก่อน</p>{leaveError && <p className="form-alert" role="alert">{leaveError}</p>}</Modal>}
-    {selectedResident && <RoommateProfileModal title="โปรไฟล์สมาชิกห้อง" person={selectedResident} onClose={() => setSelectedResidentId(null)}/>}
+    {selectedResident && <RoommateProfileModal title="โปรไฟล์สมาชิกห้อง" person={selectedResident} onClose={() => setSelectedResidentId(null)}
+      actions={user && (room.isOwner || room.isMember) && user.userId !== selectedResident.userId
+        ? <ResidentFriendInvitation key={selectedResident.userId} recipientId={selectedResident.userId}/>
+        : undefined}/>}
   </div>;
 }
 

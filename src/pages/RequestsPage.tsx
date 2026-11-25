@@ -4,6 +4,7 @@ import { ArrowUpRight, Inbox, RefreshCw, Send, UserCheck, UserRound, UserX } fro
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useApp } from '../AppContext';
+import { ContactDisclosure, matchContactNames, ownContactDisclosure } from '../components/ContactDisclosure';
 import { useOwnerRequests } from '../OwnerRequestsContext';
 import { PageHeader } from '../components/Layout';
 import { RequesterProfileModal } from '../components/RequesterProfileModal';
@@ -15,7 +16,8 @@ type RequestView = 'incoming' | 'sent';
 type Decision = { request: JoinRequest; status: 'approved' | 'rejected'; fromProfile: boolean };
 
 export function RequestsPage() {
-  const { notify } = useApp();
+  const { notify, user } = useApp();
+  const sharedChannels = matchContactNames(user);
   const [mine, setMine] = useState<JoinRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -31,6 +33,7 @@ export function RequestsPage() {
   const sentTab = useRef<HTMLButtonElement>(null);
   const cancelFeedback = useRef<HTMLParagraphElement>(null);
   const decisionFeedback = useRef<HTMLParagraphElement>(null);
+  const decisionLocked = useRef(false);
   const [cancelNeedsRefresh, setCancelNeedsRefresh] = useState(false);
   const currentWithdrawal = withdrawing ? mine.find(request => request.requestId === withdrawing.requestId) || withdrawing : null;
   useEffect(() => { if (cancelError && !busyId) cancelFeedback.current?.focus(); }, [cancelError, busyId]);
@@ -79,11 +82,12 @@ export function RequestsPage() {
     setSelectedRequester(null);
     setDecision({ request, status, fromProfile });
   };
-  const closeDecision = () => { if (!busyId) { if (decision?.fromProfile) setSelectedRequester(owner.find(request => request.requestId === decision.request.requestId) || decision.request); setDecision(null); setActionError(''); } };
+  const closeDecision = () => { if (!decisionLocked.current && !busyId) { if (decision?.fromProfile) setSelectedRequester(owner.find(request => request.requestId === decision.request.requestId) || decision.request); setDecision(null); setActionError(''); } };
   const stillPending = decision && owner.some(request => request.requestId === decision.request.requestId && request.status === 'pending');
   const canApprove = room && room.status === 'available' && room.availableSlots > 0;
   const decide = async () => {
-    if (!decision || busyId || ownerError || !stillPending || (decision.status === 'approved' && !canApprove)) return;
+    if (decisionLocked.current || !decision || busyId || ownerError || !stillPending || (decision.status === 'approved' && !canApprove)) return;
+    decisionLocked.current = true;
     const { request, status } = decision;
     setActionError(''); setBusyId(request.requestId);
     try {
@@ -99,7 +103,10 @@ export function RequestsPage() {
         await refreshOwnerRequests();
         setRoomReload(value => value + 1);
       }
-    } finally { setBusyId(''); }
+    } finally {
+      decisionLocked.current = false;
+      setBusyId('');
+    }
   };
 
   const closeWithdrawal = () => {
@@ -169,16 +176,19 @@ export function RequestsPage() {
         </RequestSection>}</div>}
     {withdrawing && <Modal title="ถอนคำขอเข้าพัก?" onClose={closeWithdrawal} actions={<><Button variant="quiet" disabled={Boolean(busyId)} onClick={closeWithdrawal}>{currentWithdrawal?.status === 'pending' ? 'เก็บคำขอไว้' : 'กลับไปดูสถานะ'}</Button><Button variant="danger" loading={Boolean(busyId)} disabled={cancelNeedsRefresh || currentWithdrawal?.status !== 'pending'} onClick={withdraw}>ยืนยันถอนคำขอ</Button></>}><p>ถอนคำขอสำหรับ “{withdrawing.room?.title}” เจ้าของห้องจะเห็นว่าคุณถอนแล้ว ประวัติจะยังอยู่และส่งคำขอใหม่ได้หากห้องยังว่าง</p>{currentWithdrawal?.status !== 'pending' && <p className="inline-note" role="status">{currentWithdrawal?.status === 'approved' ? 'คำขอนี้ได้รับอนุมัติแล้ว จึงถอนไม่ได้ ดูข้อมูลสมาชิกปัจจุบันได้ที่รายการคำขอ' : 'คำขอนี้ไม่ได้รอพิจารณาแล้ว ดูสถานะล่าสุดได้ที่รายการคำขอ'}</p>}{cancelError && <p ref={cancelFeedback} tabIndex={-1} className="form-alert" role="alert">{cancelError}</p>}{cancelNeedsRefresh && <Button variant="secondary" loading={Boolean(busyId)} onClick={retryWithdrawalStatus}>อัปเดตสถานะคำขอ</Button>}</Modal>}
     {selectedRequester && <RequesterProfileModal key={selectedRequester.requestId} request={owner.find(request => request.requestId === selectedRequester.requestId) || selectedRequester} onClose={() => setSelectedRequester(null)} onDecide={status => openDecision(selectedRequester, status, true)}/>}
-    {decision && <Modal title={decision.status === 'approved' ? 'ยืนยันอนุมัติเข้าพัก' : 'ยืนยันปฏิเสธคำขอ'} onClose={closeDecision} actions={<>
+    {decision && <Modal className={decision.status === 'approved' ? 'confirmation-modal approval-confirmation' : ''} title={decision.status === 'approved' ? 'ยืนยันอนุมัติเข้าพัก' : 'ยืนยันปฏิเสธคำขอ'} onClose={closeDecision} actions={<>
       <Button variant="quiet" disabled={Boolean(busyId)} onClick={closeDecision}>ยกเลิก</Button>
       <Button variant={decision.status === 'approved' ? 'primary' : 'danger'} loading={Boolean(busyId)} disabled={Boolean(ownerError) || !stillPending || (decision.status === 'approved' && (roomLoading || Boolean(roomError) || !canApprove))} onClick={decide}>{decision.status === 'approved' ? 'ยืนยันอนุมัติ' : 'ยืนยันปฏิเสธ'}</Button>
     </>}>
       <div className="request-confirm-summary"><strong>{`${decision.request.requester?.firstName || ''} ${decision.request.requester?.lastName || ''}`.trim() || 'ผู้ขอเข้าพัก'}</strong><span>{decision.request.room?.title || 'ห้องของคุณ'}</span></div>
-      <p className="request-confirm-message">{decision.status === 'approved' ? 'เมื่อยืนยัน ผู้ขอจะอยู่ในรายชื่อผู้พัก ส่วนข้อมูลติดต่อของผู้ลงประกาศและผู้พักจะแสดงในเมนูสมาชิกห้องตามสิทธิ์ของแต่ละคน' : 'เมื่อยืนยัน ผู้ขอจะเห็นสถานะไม่อนุมัติ หากห้องยังรับอยู่ ผู้ขอสามารถส่งคำขอใหม่ได้'}</p>
+      {decision.status === 'rejected' && <p className="request-confirm-message">เมื่อยืนยัน ผู้ขอจะเห็นสถานะไม่อนุมัติ หากห้องยังรับอยู่ ผู้ขอสามารถส่งคำขอใหม่ได้</p>}
       {decision.status === 'approved' && (roomLoading ? <p className="request-confirm-note" role="status">กำลังตรวจสอบที่ว่างล่าสุด…</p>
         : roomError ? <div className="request-confirm-note"><p role="alert">ตรวจสอบที่ว่างไม่สำเร็จ: {roomError}</p><Button variant="secondary" onClick={() => setRoomReload(value => value + 1)}>ลองตรวจสอบอีกครั้ง</Button></div>
           : canApprove ? <p className="request-confirm-note">ว่างอยู่ {room!.availableSlots} ที่ · หลังอนุมัติจะเหลือ {room!.availableSlots - 1} ที่</p>
             : <p className="form-alert" role="alert">{room?.status === 'inactive' ? 'ประกาศนี้พักรับคำขออยู่ เปิดรับในหน้าประกาศของฉันก่อนอนุมัติ' : 'ห้องนี้เต็มแล้ว จึงอนุมัติสมาชิกเพิ่มไม่ได้'}</p>)}
+      {decision.status === 'approved' && <ContactDisclosure lines={[
+        `${ownContactDisclosure('ผู้สมัคร', sharedChannels)} และคุณจะเห็นช่องทางติดต่อที่ผู้สมัครระบุไว้`,
+      ]}/>}
       {!stillPending && <p className="form-alert" role="alert">คำขอนี้ถูกจัดการแล้ว กรุณาปิดหน้าต่างเพื่อดูสถานะล่าสุด</p>}
       {ownerError && <div className="request-confirm-note"><p role="alert">ยังตรวจสถานะคำขอล่าสุดไม่ได้: {ownerError}</p><Button variant="secondary" disabled={Boolean(busyId)} onClick={() => { void refreshOwnerRequests(); }}>อัปเดตสถานะคำขอ</Button></div>}{actionError && <p ref={decisionFeedback} tabIndex={-1} className="form-alert" role="alert">{actionError}</p>}
     </Modal>}

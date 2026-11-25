@@ -1,12 +1,14 @@
 import { AtSign, Check, Copy, ExternalLink, Mail, MessageCircle, Phone } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { instagramProfileUrl } from '../lib/contactLinks';
+import { contactDetails } from '../lib/contactDetails';
 import './ContactActions.css';
 
 type ContactDetails = { lineId?: string; instagram?: string; email?: string; phone?: string };
 type CopyFeedback = { field: string; value: string; failed: boolean };
 
-export function ContactActions({ lineId, instagram, email, phone }: ContactDetails) {
+export function ContactActions(person: ContactDetails) {
+  const { lineId, instagram, email, phone } = contactDetails(person);
   const [copying, setCopying] = useState(false);
   const [feedback, setFeedback] = useState<CopyFeedback | null>(null);
   const instagramUrl = instagram ? instagramProfileUrl(instagram) : null;

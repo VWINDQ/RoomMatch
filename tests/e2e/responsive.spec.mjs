@@ -113,7 +113,7 @@ test('filter sheet scrolls, validates, applies and closes', async ({ page, envir
   await expect(priceBasis).toBeFocused();
   await noOverflow(page);
   await reachable(dialog.getByRole('spinbutton', { name: /^จำนวนผู้พักทั้งหมด/ }));
-  await reachable(dialog.getByRole('spinbutton', { name: /^ที่ว่างสำหรับผู้พักใหม่อย่างน้อย/ }));
+  await reachable(dialog.getByRole('spinbutton', { name: /^จำนวนที่ว่างที่ต้องการ/ }));
   await reachable(dialog.getByRole('button', { name: 'ใช้ตัวกรอง', exact: true }));
   await capture(page, testInfo, 'filter-sheet');
   await dialog.getByRole('button', { name: 'ล้างตัวกรอง', exact: true }).click();

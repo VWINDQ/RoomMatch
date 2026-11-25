@@ -77,6 +77,53 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .field input.has-error, .field textarea.has-error { border-color: var(--danger); }
 .field-error { color: var(--danger); font-size: .76rem; }
 .field-hint { color: var(--text-secondary); font-size: .75rem; }
+.contact-disclosure {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.contact-disclosure p {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.modal-card.confirmation-modal {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 40px);
+}
+.confirmation-modal > header,
+.confirmation-modal > footer { flex-shrink: 0; }
+.confirmation-modal > .modal-body { min-height: 0; overflow-y: auto; }
+.modal-card.confirmation-modal > header {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+.confirmation-modal > header h2 {
+  grid-column: 2;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.confirmation-modal > header .icon-button { grid-column: 3; }
+.confirmation-modal > .modal-body > .contact-disclosure { text-align: center; }
+.modal-card.confirmation-modal > footer {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+@media (max-width: 480px) {
+  .confirmation-modal > footer > .button { flex: 1 1 auto; }
+}
+.modal-card > footer:has(> .contact-disclosure) {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.modal-card > footer > .contact-disclosure {
+  flex-basis: 100%;
+  text-align: center;
+}
+@media (max-width: 480px) {
+  .modal-card > footer:has(> .contact-disclosure) > .button { flex: 1; }
+}
 .select-chip { min-height: 40px; padding: 8px 13px; border: 1px solid #c9c7c2; border-radius: 13px; background: var(--surface); color: #4d535e; cursor: pointer; transition: 170ms ease; }
 .select-chip:hover { border-color: #9ca6b6; }
 .select-chip.selected { border-color: #b9c4d3; background: var(--primary-soft); color: var(--primary); font-weight: 600; box-shadow: inset 2px 2px 5px rgba(29,49,84,.1), inset -2px -2px 4px white; }
@@ -561,6 +608,15 @@ p,.description,.field-hint,.field-error,input,textarea,select { font-family: 'Fr
 .modal-body .request-confirm-message { margin-top: 16px; line-height: 1.8; }
 .modal-body .request-confirm-note { margin-top: 14px; padding: 12px; border-radius: 14px; background: var(--pastel-yellow); color: var(--primary); font-size: .8rem; line-height: 1.7; }
 .request-confirm-note .button { margin-top: 10px; }
+.approval-confirmation > .modal-body {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+.approval-confirmation .request-confirm-summary { padding: 10px 12px; gap: 2px; }
+.approval-confirmation > .modal-body > .request-confirm-note { margin-top: 0; }
+.approval-confirmation > .modal-body > .contact-disclosure { text-align: start; }
+.approval-confirmation > footer { border-top: 1px solid var(--border-soft); }
 .request-card { min-width: 0; padding: 13px; border: 1px solid rgba(167,151,135,.18); border-radius: 18px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 11px; background: #fffdf9; }
 .request-person { width: 44px; height: 44px; border-radius: 15px; display: grid; place-items: center; overflow: hidden; background: var(--pastel-yellow); color: var(--primary); font-weight: 700; }
 .room-request-icon { background: var(--pastel-blue); }
@@ -635,7 +691,7 @@ p,.description,.field-hint,.field-error,input,textarea,select { font-family: 'Fr
 .friend-search-context { background: var(--pastel-yellow); }
 @media (min-width: 1500px) { .friend-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (max-width: 767px) {
-  .friends-page .page-header { position: relative; padding-right: 50px; }.friends-page .page-actions { position: absolute; top: 0; right: 0; margin: 0; width: auto; }.friend-refresh { width: 44px; padding: 10px; }.friend-refresh>span { display: none; }
+  .friends-page .page-header { gap: 8px; }.friend-refresh { width: 44px; padding: 10px; }.friend-refresh>span { display: none; }
   .friend-grid { grid-template-columns: 1fr; gap: 16px; }.friend-card { padding: 20px; }
   .friends-note { padding: 16px; display: grid; grid-template-columns: auto minmax(0,1fr); gap: 12px; }.friends-note>a { grid-column: 2; padding: 0; }
   .friend-tabs { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 6px; }.friend-tabs button { min-width: 0; padding: 9px 7px; font-size: .76rem; gap: 5px; }

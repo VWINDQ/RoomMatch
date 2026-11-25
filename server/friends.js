@@ -52,9 +52,10 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
     const rows = await db.prepare(`
       SELECT u.* FROM USER u LEFT JOIN LIFESTYLE l ON l.user_id = u.user_id
       WHERE u.is_active = 1 AND u.user_id != ?
-        AND NOT EXISTS (SELECT 1 FROM FRIEND_CONNECTION f
+        AND COALESCE((SELECT f.status FROM FRIEND_CONNECTION f
           WHERE (f.sender_id = ? AND f.recipient_id = u.user_id)
-             OR (f.recipient_id = ? AND f.sender_id = u.user_id))
+             OR (f.recipient_id = ? AND f.sender_id = u.user_id)
+          ORDER BY f.connection_id DESC LIMIT 1), 'declined') IN ('declined', 'unfriended')
         AND (u.first_name ILIKE ? ESCAPE '\\' OR u.last_name ILIKE ? ESCAPE '\\'
           OR (u.first_name || ' ' || u.last_name) ILIKE ? ESCAPE '\\'
           OR u.university ILIKE ? ESCAPE '\\' OR u.bio ILIKE ? ESCAPE '\\'
@@ -87,11 +88,10 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
       assert(await db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(body.recipientId), 404, 'ไม่พบผู้ใช้นี้');
       await db.prepare('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))').get(`friend:${Math.min(viewerId, body.recipientId)}:${Math.max(viewerId, body.recipientId)}`);
       const existing = await db.prepare(`SELECT status FROM FRIEND_CONNECTION
-        WHERE status <> 'cancelled' AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))`)
+        WHERE status IN ('pending', 'accepted') AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))`)
         .get(viewerId, body.recipientId, body.recipientId, viewerId);
-      assert(existing?.status !== 'declined', 409, 'คำชวนนี้ถูกปฏิเสธแล้ว จึงส่งคำชวนใหม่ให้คนนี้ไม่ได้');
       assert(existing?.status !== 'accepted', 409, 'คุณเป็นเพื่อนกันแล้ว ดูได้ที่แท็บเพื่อนของฉัน');
-      assert(!existing, 409, 'คุณกับคนนี้มีคำชวนอยู่แล้ว กรุณาดูที่แท็บคำชวนหรือเพื่อนของฉัน');
+      assert(existing?.status !== 'pending', 409, 'คุณกับคนนี้มีคำชวนอยู่แล้ว กรุณาดูที่แท็บคำชวนหรือเพื่อนของฉัน');
       const result = await db.prepare('INSERT INTO FRIEND_CONNECTION(sender_id, recipient_id) VALUES (?, ?) RETURNING connection_id').run(viewerId, body.recipientId);
       const row = await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ? FOR UPDATE').get(result.insertId);
       return await connectionDto(db, row, viewerId);
@@ -117,6 +117,24 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
         WHERE connection_id = ? AND status = 'pending'`).run(connectionId);
       assert(result.changes === 1, 409, 'คำชวนนี้เปลี่ยนสถานะแล้ว กรุณาอัปเดตคำชวน');
       const updated = await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ?').get(connectionId);
+      return await connectionDto(db, updated, viewerId);
+    });
+    sendJson(response, 200, { connection }, request);
+    return;
+  }
+
+  const unfriendMatch = /^\/api\/friends\/connections\/(\d+)\/unfriend$/.exec(url.pathname);
+  if (request.method === 'POST' && unfriendMatch) {
+    const connectionId = Number(unfriendMatch[1]);
+    assert(Number.isSafeInteger(connectionId) && connectionId > 0, 400, 'connectionId must be a positive safe integer');
+    const connection = await writeConnection(db, async () => {
+      assert(await db.prepare('SELECT 1 FROM USER WHERE user_id = ? AND is_active = 1').get(viewerId), 401, 'Authentication required');
+      const row = await db.prepare('SELECT * FROM FRIEND_CONNECTION WHERE connection_id = ? FOR UPDATE').get(connectionId);
+      assert(row, 404, 'ไม่พบรายการเพื่อน');
+      assert(row.sender_id === viewerId || row.recipient_id === viewerId, 403, 'เฉพาะเพื่อนในรายการนี้เท่านั้นที่เลิกเป็นเพื่อนได้');
+      if (row.status === 'unfriended') return await connectionDto(db, row, viewerId);
+      assert(row.status === 'accepted', 409, 'รายการนี้ไม่ได้เป็นเพื่อนกันแล้ว');
+      const updated = await db.prepare("UPDATE FRIEND_CONNECTION SET status = 'unfriended' WHERE connection_id = ? RETURNING *").get(connectionId);
       return await connectionDto(db, updated, viewerId);
     });
     sendJson(response, 200, { connection }, request);
