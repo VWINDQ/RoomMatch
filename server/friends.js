@@ -1,4 +1,5 @@
 import { calculateAge } from '../shared/age.js';
+import { friendSearchTerms } from '../shared/friendSearch.js';
 import { assert, HttpError } from './errors.js';
 
 async function writeConnection(db, operation) {
@@ -48,7 +49,12 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
   if (request.method === 'GET' && url.pathname === '/api/friends') {
     const query = (url.searchParams.get('q') ?? '').trim();
     assert(query.length <= 100, 400, 'คำค้นหาต้องไม่เกิน 100 ตัวอักษร');
-    const pattern = `%${query.replace(/[\\%_]/g, '\\$&')}%`;
+    const terms = friendSearchTerms(query);
+    const searchClause = terms.map(() => `(u.first_name ILIKE ? ESCAPE '\\' OR u.last_name ILIKE ? ESCAPE '\\'
+      OR (u.first_name || ' ' || u.last_name) ILIKE ? ESCAPE '\\'
+      OR u.university ILIKE ? ESCAPE '\\' OR u.bio ILIKE ? ESCAPE '\\'
+      OR l.lifestyle_name ILIKE ? ESCAPE '\\')`).join(' AND ');
+    const patterns = terms.flatMap(term => Array(6).fill(`%${term.replace(/[\\%_]/g, '\\$&')}%`));
     const rows = await db.prepare(`
       SELECT u.* FROM USER u LEFT JOIN LIFESTYLE l ON l.user_id = u.user_id
       WHERE u.is_active = 1 AND u.user_id != ?
@@ -56,12 +62,9 @@ export async function handleFriendRoutes({ db, request, response, url, user, rea
           WHERE (f.sender_id = ? AND f.recipient_id = u.user_id)
              OR (f.recipient_id = ? AND f.sender_id = u.user_id)
           ORDER BY f.connection_id DESC LIMIT 1), 'declined') IN ('declined', 'unfriended')
-        AND (u.first_name ILIKE ? ESCAPE '\\' OR u.last_name ILIKE ? ESCAPE '\\'
-          OR (u.first_name || ' ' || u.last_name) ILIKE ? ESCAPE '\\'
-          OR u.university ILIKE ? ESCAPE '\\' OR u.bio ILIKE ? ESCAPE '\\'
-          OR l.lifestyle_name ILIKE ? ESCAPE '\\')
+        ${searchClause ? `AND ${searchClause}` : ''}
       ORDER BY lower(u.first_name), u.user_id
-    `).all(viewerId, viewerId, viewerId, pattern, pattern, pattern, pattern, pattern, pattern);
+    `).all(viewerId, viewerId, viewerId, ...patterns);
     const people = [];
     for (const row of rows) people.push(await profile(db, row));
     sendJson(response, 200, { people }, request);
