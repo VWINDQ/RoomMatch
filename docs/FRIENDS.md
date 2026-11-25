@@ -105,6 +105,9 @@ allowed; acceptance is not exclusive.
 - `GET /api/friends?q=...`: authenticated discovery by name, university, bio, or
   lifestyle. Excludes self, inactive users, and users whose latest invitation with the viewer is pending, accepted, or cancelled.
   Full first-and-last-name searches are supported, including Thai names.
+  Space-separated terms must all match public profile fields, in any order and without needing to be adjacent.
+  For example, `ตื่นเช้า สะอาด` also matches `นอนเร็ว ตื่นเช้า ไม่สูบบุหรี่ สะอาด ทำอาหาร`.
+  The same rule applies to pending invitations shown in discovery; private contact fields are not searched.
 - `GET /api/friends/connections`: only the viewer's connections, with incoming/outgoing direction.
 - `POST /api/friends/connections` with numeric `recipientId`: sends a pending invitation.
 - `PATCH /api/friends/connections/:id` with `status: accepted | declined`: recipient-only decision.

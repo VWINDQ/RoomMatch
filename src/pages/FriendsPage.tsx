@@ -15,6 +15,7 @@ import { FriendInstagram } from '../components/FriendInstagram';
 import { Button, EmptyState, Modal } from '../components/UI';
 import { api, ApiError } from '../lib/api';
 import type { FriendConnection, FriendProfile } from '../types';
+import { matchesFriendSearch } from '../../shared/friendSearch.js';
 import './FriendsPage.css';
 
 type View = 'discover' | 'invitations' | 'friends';
@@ -27,12 +28,6 @@ function invitationLabel(connection: FriendConnection) {
   if (connection.status === 'cancelled') return connection.direction === 'outgoing' ? 'คุณถอนคำชวนแล้ว' : 'ผู้ส่งถอนคำชวนแล้ว';
   if (connection.status === 'declined') return connection.direction === 'incoming' ? 'คุณปฏิเสธคำชวน' : 'คำชวนไม่ได้รับการตอบรับ';
   return connection.direction === 'incoming' ? 'ชวนคุณหาห้องด้วยกัน' : 'รอเพื่อนตอบรับ';
-}
-
-function matchesSearch(person: FriendProfile, query: string) {
-  const term = query.trim().toLocaleLowerCase();
-  return [person.firstName, person.lastName, `${person.firstName} ${person.lastName}`, person.university, person.bio, person.lifestyle]
-    .some(value => value.toLocaleLowerCase().includes(term));
 }
 
 function FriendAvatar({ person }: { person: FriendProfile }) {
@@ -225,7 +220,7 @@ export function FriendsPage() {
   );
   const incomingCount = incoming.length;
   const accepted = connections.filter(item => item.status === 'accepted');
-  const sentPending = outgoing.filter(item => matchesSearch(item.person, query));
+  const sentPending = outgoing.filter(item => matchesFriendSearch(item.person, query));
   const invitationGroups = {
     incoming: { label: 'รอฉันตอบ', title: 'คำชวนที่รอคุณตอบ', description: 'เมื่อตอบรับ ทั้งสองฝ่ายจะเห็น LINE อีเมล และเบอร์โทรและ Instagram', items: incoming, empty: 'ไม่มีคำชวนรอคุณตอบ', emptyText: 'เมื่อมีคนชวนคุณหาห้องด้วยกัน คำชวนจะแสดงที่นี่' },
     outgoing: { label: 'รอเพื่อนตอบ', title: 'คำชวนที่คุณส่ง', description: 'รออีกฝ่ายตอบรับก่อนแชร์ LINE อีเมล และเบอร์โทร แล้วเริ่มหาห้องด้วยกัน', items: outgoing, empty: 'ยังไม่มีคำชวนรอเพื่อนตอบ', emptyText: 'เริ่มจากโปรไฟล์ที่สนใจ แล้วชวนเพื่อนหาห้องด้วยกัน' },
